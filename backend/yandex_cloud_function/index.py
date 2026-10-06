@@ -8,11 +8,14 @@ TOKEN = os.environ.get('WIKI_TOKEN', '')
 ORG_ID = os.environ.get('ORG_ID', '')
 GRID_IDS = json.loads(os.environ.get('GRID_IDS_JSON', '{}'))
 
+
 def headers():
     return {'Authorization': f'OAuth {TOKEN}', 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json'}
 
+
 def grid(name):
     return GRID_IDS.get(name)
+
 
 def read_grid(name):
     gid = grid(name)
@@ -22,11 +25,14 @@ def read_grid(name):
     r.raise_for_status()
     return r.json()
 
+
 def sha256(value):
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
+
 def response(status, body):
     return {'statusCode': status, 'headers': {'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*'}, 'body': json.dumps(body, ensure_ascii=False)}
+
 
 def handler(event, context):
     if event.get('httpMethod') == 'OPTIONS':

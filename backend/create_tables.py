@@ -1,4 +1,6 @@
-"""Create the Navigator grid set in Yandex Wiki."""
+"""Create the Navigator grid set in Yandex Wiki.
+Run with WIKI_TOKEN and ORG_ID. This is intentionally not executed by the app.
+"""
 import os, requests
 API='https://api.wiki.yandex.net/v1'
 TOKEN=os.environ['WIKI_TOKEN']; ORG=os.environ['ORG_ID']; PAGE=os.environ.get('WIKI_PAGE_SLUG','navigator-data')

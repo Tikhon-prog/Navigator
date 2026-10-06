@@ -1,0 +1,4 @@
+version:
+  revision: "local-flutter-3.47.4"
+  channel: "stable"
+project_type: app

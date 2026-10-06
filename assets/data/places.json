@@ -1,0 +1,75 @@
+{
+  "places": [
+    {
+      "id": "place_canteen",
+      "floor": 1,
+      "name": "Столовая"
+    },
+    {
+      "id": "place_food",
+      "floor": 1,
+      "name": "Пищеблок"
+    },
+    {
+      "id": "place_pool",
+      "floor": 1,
+      "name": "Бассейн"
+    },
+    {
+      "id": "place_engineering",
+      "floor": 1,
+      "name": "Междисциплинарный инженерный цех"
+    },
+    {
+      "id": "place_drone",
+      "floor": 1,
+      "name": "Трасса для дрон-рейсинга"
+    },
+    {
+      "id": "place_gym",
+      "floor": 1,
+      "name": "Тренажёрный зал"
+    },
+    {
+      "id": "place_choreo",
+      "floor": 1,
+      "name": "Зал хореографии"
+    },
+    {
+      "id": "place_bio_lab",
+      "floor": 1,
+      "name": "Лаборатория бактериальных экспериментов"
+    },
+    {
+      "id": "place_auditorium",
+      "floor": 2,
+      "name": "Актовый зал"
+    },
+    {
+      "id": "place_stage",
+      "floor": 2,
+      "name": "Сцена"
+    },
+    {
+      "id": "place_dressing",
+      "floor": 2,
+      "name": "Гримерная"
+    },
+    {
+      "id": "place_sport",
+      "floor": 2,
+      "name": "Спортивный зал"
+    },
+    {
+      "id": "place_library",
+      "floor": 3,
+      "name": "Информационно-библиотечный центр"
+    },
+    {
+      "id": "place_terrace",
+      "floor": 3,
+      "name": "Терраса"
+    }
+  ],
+  "note": "Координаты и соединения с коридорами заданы в lib/main.dart по схемам этажей школы."
+}
