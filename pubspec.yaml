@@ -1,0 +1,40 @@
+name: navigator
+description: Navigator for Generation school with offline navigation, class schedules, supplements, admin tools and online sync.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.4
+  crypto: ^3.0.6
+  http: ^1.5.0
+  flutter_local_notifications: ^19.4.2
+  timezone: ^0.10.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/maps/floor1.webp
+    - assets/maps/floor2.webp
+    - assets/maps/floor3.webp
+    - assets/data/rooms.json
+    - assets/data/routes.json
+    - assets/data/places.json
+    - assets/data/door_points.json
+    - assets/data/schedule.json
+    - assets/data/school_schedule_2026-10-05.json
+    - Расписание_с_05.10.xlsx
+    - assets/maps/school_maps_source.pdf
+    - assets/maps/floor1_source.png
+    - assets/maps/floor2_source.png
+    - assets/maps/floor3_source.png
