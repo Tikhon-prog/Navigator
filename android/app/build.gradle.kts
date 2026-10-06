@@ -6,6 +6,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Navigator test/release builds use the local Android debug keystore unless a
+// dedicated release key.properties file is supplied. This prevents generating
+// an unsigned APK (which Android reports as INSTALL_PARSE_FAILED_NO_CERTIFICATES).
 val releaseKeyPropertiesFile = rootProject.file("key.properties")
 val releaseKeyProperties = Properties()
 if (releaseKeyPropertiesFile.exists()) {
@@ -16,11 +19,13 @@ android {
     namespace = "com.example.navigator"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
+
     defaultConfig {
         applicationId = "com.example.navigator"
         minSdk = 23
@@ -28,8 +33,12 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+
     signingConfigs {
+        // The debug key is deliberately used only when no dedicated release key
+        // is configured. A locally generated key.properties file takes priority.
         getByName("debug")
+
         create("navigatorRelease") {
             if (releaseKeyPropertiesFile.exists()) {
                 val storePath = releaseKeyProperties.getProperty("storeFile")
@@ -42,14 +51,26 @@ android {
             }
         }
     }
+
     buildTypes {
         getByName("release") {
-            signingConfig = if (releaseKeyPropertiesFile.exists()) signingConfigs.getByName("navigatorRelease") else signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeyPropertiesFile.exists()) {
+                signingConfigs.getByName("navigatorRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
-kotlin { jvmToolchain(21) }
-flutter { source = "../.." }
+
+kotlin {
+    jvmToolchain(21)
+}
+
+flutter {
+    source = "../.."
+}

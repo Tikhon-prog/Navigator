@@ -1,19 +1,19 @@
-# Navigator backend
+# Navigator backend для Яндекс Облака
 
-HTTPS Cloud Function + динамические таблицы Яндекс Вики.
+Backend рассчитан на HTTPS Cloud Function + динамические таблицы Яндекс Вики. Яндекс официально предоставляет API динамических таблиц: таблицы, столбцы, строки и ячейки можно создавать и изменять через API.
 
-Переменные окружения:
-- WIKI_TOKEN
-- ORG_ID
-- GRID_IDS_JSON
+Нужны переменные окружения:
+- `WIKI_TOKEN` — OAuth-токен серверной функции, не APK.
+- `ORG_ID` — идентификатор организации.
+- `GRID_IDS_JSON` — JSON с ID таблиц, например `{"Admins":"...","BaseSchedule":"...","Supplements":"...","Announcements":"..."}`.
 
-OAuth-токен и секреты не должны попадать во Flutter APK.
+Никогда не кладите OAuth-токен или секретный API-ключ в Flutter-приложение.
 
-Эндпоинты:
-- GET /health
-- GET /schedule?class_id=...
-- GET /supplements
-- GET /announcements
-- POST /admin/login
+## Эндпоинты
+- `GET /health`
+- `GET /schedule?class_id=8-informatics`
+- `GET /supplements`
+- `GET /announcements`
+- `POST /admin/login`
 
-Для production серверный login требует сессию/JWT, rate-limit, аудит и серверную проверку роли.
+В production к login следует добавить серверную сессию/JWT, rate-limit, аудит и проверку роли. Прототип уже хранит пароль только как SHA-256 и не отправляет секреты в клиентскую таблицу.

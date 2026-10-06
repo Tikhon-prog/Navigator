@@ -31,7 +31,7 @@ class OnlineDataService {
   }
 
   Map<String, String> _headers() => {
-    'Content-Type': 'application/json',
-    if (config.clientKey.isNotEmpty) 'X-Navigator-Key': config.clientKey,
-  };
+        'Content-Type': 'application/json',
+        if (config.clientKey.isNotEmpty) 'X-Navigator-Key': config.clientKey,
+      };
 }
