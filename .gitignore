@@ -1,0 +1,15 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+build/
+.idea/
+.vscode/
+*.iml
+android/.gradle/
+android/local.properties
+
+# Local Android signing credentials
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
