@@ -45,7 +45,7 @@ class NavigatorStudentProvider {
     ]);
 
     final split =
-        RegExp(r'^\\s*(\\d{1,2})\\s*([А-ЯЁA-Z])\\s*$',
+        RegExp(r'^\s*(\d{1,2})\s*([А-ЯЁA-Z])\s*$',
                 caseSensitive: false)
             .firstMatch(classId);
 
@@ -286,11 +286,11 @@ class DopParser {
     final result = <DopProgram>[];
 
     final cards = RegExp(
-      r'<article\\b[^>]*\\bdata-program-card\\s*=\\s*["' +
+      r'<article\b[^>]*\bdata-program-card\s*=\s*["' +
           "'" +
-          r'](\\d+)["' +
+          r'](\d+)["' +
           "'" +
-          r'][^>]*>([\\s\\S]*?)</article>',
+          r'][^>]*>([\s\S]*?)</article>',
       caseSensitive: false,
     ).allMatches(html);
 
@@ -314,7 +314,7 @@ class DopParser {
 
       final subgroups = <DopSubgroup>[];
       final sgMatches = RegExp(
-        r'<section\\b[^>]*\\bdata-subgroup-card\\b[^>]*>([\\s\\S]*?)</section>',
+        r'<section\b[^>]*\bdata-subgroup-card\b[^>]*>([\s\S]*?)</section>',
         caseSensitive: false,
       ).allMatches(body);
 
@@ -322,11 +322,11 @@ class DopParser {
         final sg = sgMatch.group(1) ?? '';
 
         final input = RegExp(
-          r'<input\\b[^>]*\\bclass\\s*=\\s*["' +
+          r'<input\b[^>]*\bclass\s*=\s*["' +
               "'" +
               r'][^"' +
               "'" +
-              r']*\\bdiscipline-checkbox\\b[^"' +
+              r']*\bdiscipline-checkbox\b[^"' +
               "'" +
               r']*["' +
               "'" +
@@ -418,7 +418,7 @@ class DopParser {
     final result = <String>{};
 
     for (final m in RegExp(
-      r'<input\\b[^>]*>',
+      r'<input\b[^>]*>',
       caseSensitive: false,
     ).allMatches(html)) {
       final tag = m.group(0)!;
@@ -435,7 +435,7 @@ class DopParser {
       }
 
       final pair =
-          RegExp(r'^(\\d+):(\\d+)$').firstMatch(value);
+          RegExp(r'^(\d+):(\d+)$').firstMatch(value);
 
       final lower = tag.toLowerCase();
 
@@ -451,7 +451,7 @@ class DopParser {
     }
 
     for (final m in RegExp(
-      r'\\bchoice-(\\d+)-(\\d+)\\b',
+      r'\bchoice-(\d+)-(\d+)\b',
       caseSensitive: false,
     ).allMatches(html)) {
       result.add(
@@ -464,9 +464,9 @@ class DopParser {
 
   String _attr(String tag, String name) {
     final pattern = RegExp(
-      r'(?:\\s|^)' +
+      r'(?:\s|^)' +
           RegExp.escape(name) +
-          r'\\s*=\\s*["' +
+          r'\s*=\s*["' +
           "'" +
           r']([^"' +
           "'" +
@@ -485,7 +485,7 @@ class DopParser {
     return _clean(RegExp(
       '<' +
           tag +
-          r'\\b[^>]*>([\\s\\S]*?)</' +
+          r'\b[^>]*>([\s\S]*?)</' +
           tag +
           '>',
       caseSensitive: false,
@@ -497,22 +497,22 @@ class DopParser {
     String className, {
     String? tag,
   }) {
-    final tagName = tag ?? r'\\w+';
+    final tagName = tag ?? r'\w+';
 
     return _clean(RegExp(
       '<' +
           tagName +
-          r'\\b[^>]*class\\s*=\\s*["' +
+          r'\b[^>]*class\s*=\s*["' +
           "'" +
           r'][^"' +
           "'" +
-          r']*\\b' +
+          r']*\b' +
           RegExp.escape(className) +
-          r'\\b[^"' +
+          r'\b[^"' +
           "'" +
           r']*["' +
           "'" +
-          r'][^>]*>([\\s\\S]*?)</' +
+          r'][^>]*>([\s\S]*?)</' +
           tagName +
           r'>',
       caseSensitive: false,
@@ -522,7 +522,7 @@ class DopParser {
   String _clean(String value) {
     var v = _decode(value);
     v = v.replaceAll(RegExp(r'<[^>]+>'), ' ');
-    v = v.replaceAll(RegExp(r'\\s+'), ' ');
+    v = v.replaceAll(RegExp(r'\s+'), ' ');
     return v.trim();
   }
 
@@ -540,7 +540,7 @@ class DopParser {
 
   int _number(String value) =>
       int.tryParse(
-        RegExp(r'\\d+').firstMatch(value)?.group(0) ?? '',
+        RegExp(r'\d+').firstMatch(value)?.group(0) ?? '',
       ) ??
       0;
 
@@ -701,7 +701,7 @@ class _DopResponse {
 
 String _inputValue(String html, String name) {
   final tag = RegExp(
-    r'<input\\b[^>]*\\bname\\s*=\\s*["' +
+    r'<input\b[^>]*\bname\s*=\s*["' +
         "'" +
         RegExp.escape(name) +
         r'["' +
@@ -713,7 +713,7 @@ String _inputValue(String html, String name) {
   if (tag == null) return '';
 
   return RegExp(
-    r'\\bvalue\\s*=\\s*["' +
+    r'\bvalue\s*=\s*["' +
         "'" +
         r']([^"' +
         "'" +
