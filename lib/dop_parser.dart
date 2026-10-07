@@ -252,20 +252,52 @@ class DopParser {
       final currentUri =
           catalogResponse.uri.resolve('current_application.php');
       final currentResponse = await session.get(currentUri);
-      final activeRefs =
+      final currentChoices =
           _parseCurrentApplication(currentResponse.body);
 
       final disciplines = <DopSubgroup>[];
 
-      for (final program in programs) {
-        for (final subgroup in program.subgroups) {
-          final key = subgroup.programId.toString() +
-              ':' +
-              subgroup.subgroupId.toString();
+      for (final choice in currentChoices) {
+        final program = _findProgram(programs, choice.name);
+        if (program == null) {
+          // Даже если программа исчезла из каталога, сохраняем факт
+          // текущего выбора из current_application.php.
+          disciplines.add(
+            DopSubgroup(
+              programId: 0,
+              subgroupId: 0,
+              name: choice.name,
+              hours: choice.hours,
+              limitHours: choice.hours,
+              teacher: choice.teacher,
+              schedule: choice.schedule,
+              supplies: null,
+            ),
+          );
+          continue;
+        }
 
-          if (activeRefs.contains(key)) {
-            disciplines.add(subgroup);
-          }
+        var subgroup = _findBestSubgroup(program, choice);
+
+        if (subgroup == null && program.subgroups.isNotEmpty) {
+          subgroup = program.subgroups.first;
+        }
+
+        if (subgroup != null) {
+          disciplines.add(subgroup);
+        } else {
+          disciplines.add(
+            DopSubgroup(
+              programId: program.programId,
+              subgroupId: 0,
+              name: choice.name,
+              hours: choice.hours,
+              limitHours: choice.hours,
+              teacher: choice.teacher,
+              schedule: choice.schedule,
+              supplies: null,
+            ),
+          );
         }
       }
 
@@ -283,7 +315,7 @@ class DopParser {
   }
 
   List<DopProgram> _parseCatalog(String html) {
-    final result = <DopProgram>[];
+  final result = <DopProgram>[];
 
     final cards = RegExp(
       r'<article\b[^>]*\bdata-program-card\s*=\s*["' +
@@ -414,28 +446,433 @@ class DopParser {
     return result;
   }
 
-  Set<String> _parseCurrentApplication(String html) {
-    final result = <String>{};
+  List<_DopCurrentChoice> _parseCurrentApplication(String html) {
+    final result = <_DopCurrentChoice>[];
 
-    for (final m in RegExp(
-      r'<input\b[^>]*>',
+    final cardMatches = RegExp(
+      r'<article\b[^>]*\bclass\s*=\s*["' +
+          "'" +
+          r'][^"' +
+          "'" +
+          r']*\bsuccess-program-card\b[^"' +
+          "'" +
+          r']*["' +
+          "'" +
+          r'][^>]*>([\s\S]*?)</article>',
       caseSensitive: false,
-    ).allMatches(html)) {
-      final tag = m.group(0)!;
-      final program =
-          int.tryParse(_attr(tag, 'data-program-id'));
-      final subgroup =
-          int.tryParse(_attr(tag, 'data-subgroup-id'));
-      final value = _attr(tag, 'value');
+    ).allMatches(html);
 
-      if (program != null && subgroup != null) {
-        result.add(
-          program.toString() + ':' + subgroup.toString(),
+    for (final match in cardMatches) {
+      final body = match.group(1) ?? '';
+      final name = _textClass(body, 'success-program-name', tag: 'strong');
+      if (name.isEmpty) continue;
+
+      final hours = _number(_textClass(body, 'hours-badge'));
+      final teacher = _textClass(
+        body,
+        'program-subgroup-teacher',
+        tag: 'b',
+      );
+      final scheduleText = _textClass(body, 'program-subgroup-schedule');
+
+      final schedule = _parseDisplayedSchedule(scheduleText);
+
+      result.add(
+        _DopCurrentChoice(
+          name: name,
+          hours: hours,
+          teacher: teacher,
+          schedule: schedule,
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  List<DopScheduleItem> _parseDisplayedSchedule(String text) {
+    if (text.isEmpty) return const [];
+
+    final result = <DopScheduleItem>[];
+
+    final parts = text.split(RegExp(r'(?=\p{L}+\\s*·)', unicode: true));
+
+    for (final part in parts) {
+      final day = _dayNumber(part);
+      if (day == 0) continue;
+
+      final lessonMatch =
+          RegExp(r'уроки\\s+(\\d+)\\s*[–-]\\s*(\\d+)', caseSensitive: false)
+              .firstMatch(part);
+
+      final roomMatch =
+          RegExp(r'·\\s*(?:уроки\\s+\\d+\\s*[–-]\\s*\\d+\\s*·\\s*)?(.+)$',
+                  caseSensitive: false)
+              .firstMatch(part);
+
+      result.add(
+        DopScheduleItem(
+          day: day,
+          start: int.tryParse(lessonMatch?.group(1) ?? '') ?? 0,
+          end: int.tryParse(lessonMatch?.group(2) ?? '') ?? 0,
+          room: (roomMatch?.group(1) ?? '').replaceFirst(
+            RegExp(r'\\s*КАБИНЕТ\\s*$', caseSensitive: false),
+            '',
+          ).trim(),
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  int _dayNumber(String text) {
+    final lower = text.toLowerCase();
+    if (lower.contains('понедельник')) return 1;
+    if (lower.contains('вторник')) return 2;
+    if (lower.contains('среда')) return 3;
+    if (lower.contains('четверг')) return 4;
+    if (lower.contains('пятница')) return 5;
+    if (lower.contains('суббота')) return 6;
+    return 0;
+  }
+
+  DopProgram? _findProgram(
+    List<DopProgram> programs,
+    String name,
+  ) {
+    final wanted = name.trim().toLowerCase();
+
+    for (final program in programs) {
+      if (program.name.trim().toLowerCase() == wanted) {
+        return program;
+      }
+    }
+
+    return null;
+  }
+
+  DopSubgroup? _findBestSubgroup(
+    DopProgram program,
+    _DopCurrentChoice choice,
+  ) {
+    if (program.subgroups.isEmpty) return null;
+
+    for (final subgroup in program.subgroups) {
+      if (choice.teacher.isNotEmpty &&
+          subgroup.teacher.trim().isNotEmpty &&
+          subgroup.teacher.trim() == choice.teacher.trim()) {
+        return subgroup;
+      }
+    }
+
+    if (choice.schedule.isNotEmpty) {
+      for (final subgroup in program.subgroups) {
+        if (_sameSchedule(subgroup.schedule, choice.schedule)) {
+          return subgroup;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  bool _sameSchedule(
+    List<DopScheduleItem> a,
+    List<DopScheduleItem> b,
+  ) {
+    if (a.length != b.length) return false;
+
+    bool same(DopScheduleItem x, DopScheduleItem y) =>
+        x.day == y.day &&
+        x.start == y.start &&
+        x.end == y.end &&
+        x.room.trim().toLowerCase() ==
+            y.room.trim().toLowerCase();
+
+    for (final x in a) {
+      if (!b.any((y) => same(x, y))) return false;
+    }
+
+    return true;
+  }
+
+  String _attr(String tag, String name) {
+    final pattern = RegExp(
+      r'(?:\s|^)' +
+          RegExp.escape(name) +
+          r'\s*=\s*["' +
+          "'" +
+          r']([^"' +
+          "'" +
+          r']*)["' +
+          "'" +
+          r']',
+      caseSensitive: false,
+    );
+
+    return _decode(
+      pattern.firstMatch(tag)?.group(1) ?? '',
+    ).trim();
+  }
+
+  String _textTag(String html, String tag) {
+    return _clean(RegExp(
+      '<' +
+          tag +
+          r'\b[^>]*>([\s\S]*?)</' +
+          tag +
+          '>',
+      caseSensitive: false,
+    ).firstMatch(html)?.group(1) ?? '');
+  }
+
+  String _textClass(
+    String html,
+    String className, {
+    String? tag,
+  }) {
+    final tagName = tag ?? r'\w+';
+
+    return _clean(RegExp(
+      '<' +
+          tagName +
+          r'\b[^>]*class\s*=\s*["' +
+          "'" +
+          r'][^"' +
+          "'" +
+          r']*\b' +
+          RegExp.escape(className) +
+          r'\b[^"' +
+          "'" +
+          r']*["' +
+          "'" +
+          r'][^>]*>([\s\S]*?)</' +
+          tagName +
+          r'>',
+      caseSensitive: false,
+    ).firstMatch(html)?.group(1) ?? '');
+  }
+
+  String _clean(String value) {
+    var v = _decode(value);
+    v = v.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    v = v.replaceAll(RegExp(r'\s+'), ' ');
+    return v.trim();
+  }
+
+  String _decode(String value) {
+    return value
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#34;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&#39;', "'")
+        .replaceAll('&#039;', "'")
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
+  }
+
+  int _number(String value) =>
+      int.tryParse(
+        RegExp(r'\d+').firstMatch(value)?.group(0) ?? '',
+      ) ??
+      0;
+
+  int _toInt(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  String? _nullable(String value) =>
+      value.trim().isEmpty ? null : value.trim();
+}
+
+class _DopCurrentChoice {
+  final String name;
+  final int hours;
+  final String teacher;
+  final List<DopScheduleItem> schedule;
+
+  const _DopCurrentChoice({
+    required this.name,
+    required this.hours,
+    required this.teacher,
+    required this.schedule,
+  });
+}
+
+class DopProgram {
+  final int programId;
+  final String name;
+  final String direction;
+  final int hours;
+  final String classes;
+  final String? startDate;
+  final List<DopSubgroup> subgroups;
+
+  const DopProgram({
+    required this.programId,
+    required this.name,
+    required this.direction,
+    required this.hours,
+    required this.classes,
+    required this.startDate,
+    required this.subgroups,
+  });
+}
+
+class _DopSession {
+  final HttpClient _client = HttpClient();
+  final Map<String, String> _cookies = {};
+
+  Future<_DopResponse> get(Uri uri) =>
+      _request('GET', uri);
+
+  Future<_DopResponse> post(
+    Uri uri,
+    Map<String, String> data,
+  ) =>
+      _request('POST', uri, data: data);
+
+  Future<_DopResponse> _request(
+    String method,
+    Uri uri, {
+    Map<String, String> data = const {},
+  }) async {
+    var currentUri = uri;
+    var currentMethod = method;
+    var currentData = data;
+
+    for (var i = 0; i < 6; i++) {
+      final request =
+          await _client.openUrl(currentMethod, currentUri);
+
+      request.followRedirects = false;
+
+      for (final c in _cookies.entries) {
+        request.cookies.add(
+          Cookie(c.key, c.value),
         );
       }
 
-      final pair =
-          RegExp(r'^(\d+):(\d+)$').firstMatch(value);
+      if (currentMethod == 'POST') {
+        request.headers.contentType = ContentType(
+          'application',
+          'x-www-form-urlencoded',
+          charset: 'utf-8',
+        );
+
+        request.write(
+          currentData.entries
+              .map(
+                (e) =>
+                    Uri.encodeQueryComponent(e.key) +
+                    '=' +
+                    Uri.encodeQueryComponent(e.value),
+              )
+              .join('&'),
+        );
+      }
+
+      final response = await request.close();
+
+      for (final cookie in response.cookies) {
+        if (cookie.expires != null &&
+            cookie.expires!.isBefore(DateTime.now())) {
+          _cookies.remove(cookie.name);
+        } else {
+          _cookies[cookie.name] = cookie.value;
+        }
+      }
+
+      final body =
+          await utf8.decoder.bind(response).join();
+
+      if (response.isRedirect) {
+        final location =
+            response.headers.value('location');
+
+        if (location == null || location.isEmpty) {
+          return _DopResponse(
+            response.statusCode,
+            body,
+            currentUri,
+          );
+        }
+
+        if (response.statusCode == 301 ||
+            response.statusCode == 302 ||
+            response.statusCode == 303) {
+          currentMethod = 'GET';
+          currentData = const {};
+        }
+
+        currentUri =
+            currentUri.resolve(location);
+        continue;
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 400) {
+        throw DopParserException(
+          'HTTP ' +
+              response.statusCode.toString() +
+              ' при обращении к ' +
+              currentUri.toString(),
+        );
+      }
+
+      return _DopResponse(
+        response.statusCode,
+        body,
+        currentUri,
+      );
+    }
+
+    throw const DopParserException(
+      'Слишком много перенаправлений intranet.',
+    );
+  }
+
+  void close() => _client.close(force: true);
+}
+
+class _DopResponse {
+  final int statusCode;
+  final String body;
+  final Uri uri;
+
+  const _DopResponse(
+    this.statusCode,
+    this.body,
+    this.uri,
+  );
+}
+
+String _inputValue(String html, String name) {
+  final tag = RegExp(
+    r'<input\b[^>]*\bname\s*=\s*["' +
+        "'" +
+        RegExp.escape(name) +
+        r'["' +
+        "'" +
+        r'][^>]*>',
+    caseSensitive: false,
+  ).firstMatch(html)?.group(0);
+
+  if (tag == null) return '';
+
+  return RegExp(
+    r'\bvalue\s*=\s*["' +
+        "'" +
+        r']([^"' +
+        "'" +
+        r']*)["' +
+        "'" +
+        r']',
+    caseSensitive: false,
+  ).firstMatch(tag)?.group(1) ?? '';
+}
+).firstMatch(value);
 
       final lower = tag.toLowerCase();
 
@@ -461,6 +898,268 @@ class DopParser {
 
     return result;
   }
+
+  String _attr(String tag, String name) {
+    final pattern = RegExp(
+      r'(?:\s|^)' +
+          RegExp.escape(name) +
+          r'\s*=\s*["' +
+          "'" +
+          r']([^"' +
+          "'" +
+          r']*)["' +
+          "'" +
+          r']',
+      caseSensitive: false,
+    );
+
+    return _decode(
+      pattern.firstMatch(tag)?.group(1) ?? '',
+    ).trim();
+  }
+
+  String _textTag(String html, String tag) {
+    return _clean(RegExp(
+      '<' +
+          tag +
+          r'\b[^>]*>([\s\S]*?)</' +
+          tag +
+          '>',
+      caseSensitive: false,
+    ).firstMatch(html)?.group(1) ?? '');
+  }
+
+  String _textClass(
+    String html,
+    String className, {
+    String? tag,
+  }) {
+    final tagName = tag ?? r'\w+';
+
+    return _clean(RegExp(
+      '<' +
+          tagName +
+          r'\b[^>]*class\s*=\s*["' +
+          "'" +
+          r'][^"' +
+          "'" +
+          r']*\b' +
+          RegExp.escape(className) +
+          r'\b[^"' +
+          "'" +
+          r']*["' +
+          "'" +
+          r'][^>]*>([\s\S]*?)</' +
+          tagName +
+          r'>',
+      caseSensitive: false,
+    ).firstMatch(html)?.group(1) ?? '');
+  }
+
+  String _clean(String value) {
+    var v = _decode(value);
+    v = v.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    v = v.replaceAll(RegExp(r'\s+'), ' ');
+    return v.trim();
+  }
+
+  String _decode(String value) {
+    return value
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#34;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&#39;', "'")
+        .replaceAll('&#039;', "'")
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
+  }
+
+  int _number(String value) =>
+      int.tryParse(
+        RegExp(r'\d+').firstMatch(value)?.group(0) ?? '',
+      ) ??
+      0;
+
+  int _toInt(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  String? _nullable(String value) =>
+      value.trim().isEmpty ? null : value.trim();
+}
+
+class DopProgram {
+  final int programId;
+  final String name;
+  final String direction;
+  final int hours;
+  final String classes;
+  final String? startDate;
+  final List<DopSubgroup> subgroups;
+
+  const DopProgram({
+    required this.programId,
+    required this.name,
+    required this.direction,
+    required this.hours,
+    required this.classes,
+    required this.startDate,
+    required this.subgroups,
+  });
+}
+
+class _DopSession {
+  final HttpClient _client = HttpClient();
+  final Map<String, String> _cookies = {};
+
+  Future<_DopResponse> get(Uri uri) =>
+      _request('GET', uri);
+
+  Future<_DopResponse> post(
+    Uri uri,
+    Map<String, String> data,
+  ) =>
+      _request('POST', uri, data: data);
+
+  Future<_DopResponse> _request(
+    String method,
+    Uri uri, {
+    Map<String, String> data = const {},
+  }) async {
+    var currentUri = uri;
+    var currentMethod = method;
+    var currentData = data;
+
+    for (var i = 0; i < 6; i++) {
+      final request =
+          await _client.openUrl(currentMethod, currentUri);
+
+      request.followRedirects = false;
+
+      for (final c in _cookies.entries) {
+        request.cookies.add(
+          Cookie(c.key, c.value),
+        );
+      }
+
+      if (currentMethod == 'POST') {
+        request.headers.contentType = ContentType(
+          'application',
+          'x-www-form-urlencoded',
+          charset: 'utf-8',
+        );
+
+        request.write(
+          currentData.entries
+              .map(
+                (e) =>
+                    Uri.encodeQueryComponent(e.key) +
+                    '=' +
+                    Uri.encodeQueryComponent(e.value),
+              )
+              .join('&'),
+        );
+      }
+
+      final response = await request.close();
+
+      for (final cookie in response.cookies) {
+        if (cookie.expires != null &&
+            cookie.expires!.isBefore(DateTime.now())) {
+          _cookies.remove(cookie.name);
+        } else {
+          _cookies[cookie.name] = cookie.value;
+        }
+      }
+
+      final body =
+          await utf8.decoder.bind(response).join();
+
+      if (response.isRedirect) {
+        final location =
+            response.headers.value('location');
+
+        if (location == null || location.isEmpty) {
+          return _DopResponse(
+            response.statusCode,
+            body,
+            currentUri,
+          );
+        }
+
+        if (response.statusCode == 301 ||
+            response.statusCode == 302 ||
+            response.statusCode == 303) {
+          currentMethod = 'GET';
+          currentData = const {};
+        }
+
+        currentUri =
+            currentUri.resolve(location);
+        continue;
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 400) {
+        throw DopParserException(
+          'HTTP ' +
+              response.statusCode.toString() +
+              ' при обращении к ' +
+              currentUri.toString(),
+        );
+      }
+
+      return _DopResponse(
+        response.statusCode,
+        body,
+        currentUri,
+      );
+    }
+
+    throw const DopParserException(
+      'Слишком много перенаправлений intranet.',
+    );
+  }
+
+  void close() => _client.close(force: true);
+}
+
+class _DopResponse {
+  final int statusCode;
+  final String body;
+  final Uri uri;
+
+  const _DopResponse(
+    this.statusCode,
+    this.body,
+    this.uri,
+  );
+}
+
+String _inputValue(String html, String name) {
+  final tag = RegExp(
+    r'<input\b[^>]*\bname\s*=\s*["' +
+        "'" +
+        RegExp.escape(name) +
+        r'["' +
+        "'" +
+        r'][^>]*>',
+    caseSensitive: false,
+  ).firstMatch(html)?.group(0);
+
+  if (tag == null) return '';
+
+  return RegExp(
+    r'\bvalue\s*=\s*["' +
+        "'" +
+        r']([^"' +
+        "'" +
+        r']*)["' +
+        "'" +
+        r']',
+    caseSensitive: false,
+  ).firstMatch(tag)?.group(1) ?? '';
+}
 
   String _attr(String tag, String name) {
     final pattern = RegExp(
