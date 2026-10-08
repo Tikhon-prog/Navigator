@@ -458,7 +458,7 @@ class _AdminEditorState extends State<_AdminEditor> {
         title: Text(AdminPermissions.labels[p] ?? p),
       )),
       SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, value: active, onChanged: (v) => setState(() => active = v), title: const Text('Аккаунт активен')),
-    ]),
+    ])),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
       FilledButton(onPressed: () {
