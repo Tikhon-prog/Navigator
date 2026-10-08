@@ -95,19 +95,7 @@ class NavigatorStudentProvider {
       'student_profile_name',
     ]);
 
-    final residence = first([
-      'residence_type',
-      'student_residence_type',
-    ]);
-
-    return DopStudent(
-      lastName: lastName,
-      firstName: firstName,
-      classNumber: classNumber,
-      classLetter: classLetter,
-      profile: profile,
-      residenceType: residence.isEmpty ? 'day' : residence,
-    );
+    return DopStudent(lastName:lastName,firstName:firstName,classNumber:classNumber,classLetter:classLetter,profile:profile,residenceType:'auto');
   }
 }
 
@@ -232,92 +220,33 @@ class DopParser {
       );
     }
 
-    final session = _DopSession();
-
-    try {
-      final firstPage = await session.get(baseUri);
-
-      final csrf = _inputValue(firstPage.body, 'csrf_token');
-      if (csrf.isEmpty) {
-        throw const DopParserException(
-          'Не найден csrf_token на стартовой странице intranet.',
-        );
-      }
-
-      final catalogPage = await session.post(firstPage.uri, {
-        'csrf_token': csrf,
-        'last_name': student.lastName,
-        'first_name': student.firstName,
-        'class_number': student.classNumber,
-        'class_letter': student.classLetter,
-        'profile': student.profile,
-        'residence_type': student.residenceType,
-      });
-
-      final programs = _parseCatalog(catalogPage.body);
-
-      final currentPage = await session.get(
-        catalogPage.uri.resolve('current_application.php'),
-      );
-
-      final currentChoices =
-          _parseCurrentApplication(currentPage.body);
-
-      final disciplines = <DopSubgroup>[];
-
-      for (final choice in currentChoices) {
-        final program = _findProgram(programs, choice.name);
-
-        if (program == null) {
-          disciplines.add(
-            DopSubgroup(
-              programId: 0,
-              subgroupId: 0,
-              name: choice.name,
-              hours: choice.hours,
-              limitHours: choice.hours,
-              teacher: choice.teacher,
-              schedule: choice.schedule,
-              supplies: null,
-            ),
-          );
-          continue;
+    for (final residence in const ['day', 'campus']) {
+      final session = _DopSession();
+      try {
+        final candidate = DopStudent(lastName:student.lastName,firstName:student.firstName,classNumber:student.classNumber,classLetter:student.classLetter,profile:student.profile,residenceType:residence);
+        final firstPage = await session.get(baseUri);
+        final csrf = _inputValue(firstPage.body, 'csrf_token');
+        if (csrf.isEmpty) throw const DopParserException('Не найден csrf_token на стартовой странице intranet.');
+        final catalogPage = await session.post(firstPage.uri, {'csrf_token':csrf,'last_name':candidate.lastName,'first_name':candidate.firstName,'class_number':candidate.classNumber,'class_letter':candidate.classLetter,'profile':candidate.profile,'residence_type':residence});
+        final programs = _parseCatalog(catalogPage.body);
+        final currentPage = await session.get(catalogPage.uri.resolve('current_application.php'));
+        final currentChoices = _parseCurrentApplication(currentPage.body);
+        if (currentChoices.isEmpty) continue;
+        final disciplines=<DopSubgroup>[];
+        for(final choice in currentChoices){
+          final program=_findProgram(programs,choice.name);
+          if(program==null){disciplines.add(DopSubgroup(programId:0,subgroupId:0,name:choice.name,hours:choice.hours,limitHours:choice.hours,teacher:choice.teacher,schedule:choice.schedule,supplies:null));continue;}
+          final subgroup=_findBestSubgroup(program,choice) ?? (program.subgroups.isNotEmpty?program.subgroups.first:null);
+          if(subgroup!=null){disciplines.add(subgroup);}else{disciplines.add(DopSubgroup(programId:program.programId,subgroupId:0,name:program.name,hours:choice.hours>0?choice.hours:program.hours,limitHours:choice.hours>0?choice.hours:program.hours,teacher:choice.teacher,schedule:choice.schedule,supplies:null));}
         }
-
-        final subgroup = _findBestSubgroup(program, choice) ??
-            (program.subgroups.isNotEmpty
-                ? program.subgroups.first
-                : null);
-
-        if (subgroup != null) {
-          disciplines.add(subgroup);
-        } else {
-          disciplines.add(
-            DopSubgroup(
-              programId: program.programId,
-              subgroupId: 0,
-              name: program.name,
-              hours: choice.hours > 0 ? choice.hours : program.hours,
-              limitHours: choice.hours > 0 ? choice.hours : program.hours,
-              teacher: choice.teacher,
-              schedule: choice.schedule,
-              supplies: null,
-            ),
-          );
+        if(disciplines.isNotEmpty){
+          return DopParseResult(application:DopApplication(student:candidate,updatedAt:DateTime.now(),disciplines:disciplines),availablePrograms:programs.length);
         }
+      } finally {
+        session.close();
       }
-
-      return DopParseResult(
-        application: DopApplication(
-          student: student,
-          updatedAt: DateTime.now(),
-          disciplines: disciplines,
-        ),
-        availablePrograms: programs.length,
-      );
-    } finally {
-      session.close();
     }
+    throw const DopParserException('Не удалось автоматически определить тип проживания (дневное/пансион) или найти текущие ДОПы.');
   }
 
   List<DopProgram> _parseCatalog(String html) {
