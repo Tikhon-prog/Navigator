@@ -128,7 +128,8 @@ class SchoolScheduleCatalog {
   static Map<String, dynamic>? _data;
   static Future<void> load() async {
     if (_data != null) return;
-    _data = Map<String, dynamic>.from(jsonDecode(await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json')) as Map);
+    final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
+    _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
   static List<String> classesForGrade(String grade) => List<String>.from(((_data?['class_order'] as Map?)?[grade] as List?) ?? const []);
@@ -136,43 +137,73 @@ class SchoolScheduleCatalog {
     final raw = ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
     return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
   }
+  static String baseSubject(String value) {
+    var subject = value.trim();
+    subject = subject.replaceFirst(RegExp(r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'), '');
+    return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
+  }
   static Map<String, Set<int>> subjectGroups(String className) {
     final result = <String, Set<int>>{};
     for (final e in variants(className)) {
-      final subject = '${e['subject'] ?? ''}'.trim();
+      final subject = baseSubject('${e['subject'] ?? ''}');
       if (subject.isEmpty) continue;
       (result[subject] ??= <int>{}).add(int.tryParse('${e['group']}') ?? 1);
     }
     return result;
   }
-
   static Set<String> splitSubjects(String className) => subjectGroups(className).entries.where((e) => e.value.length > 1).map((e) => e.key).toSet();
   static List<ScheduleEntry> buildPersonal(String className, Map<String, int> selected) {
-    final all = variants(className), result = <ScheduleEntry>[]; final seen = <String>{};
+    final all = variants(className);
+    final result = <ScheduleEntry>[];
+    final seen = <String>{};
     for (final e in all) {
-      final subject = '${e['subject'] ?? ''}'.trim(); final group = int.tryParse('${e['group']}') ?? 1; final wanted = selected[subject] ?? 1;
-      final slotGroups = all.where((x) => '${x['day']}' == '${e['day']}' && '${x['time']}' == '${e['time']}' && '${x['subject'] ?? ''}'.trim() == subject).map((x) => int.tryParse('${x['group']}') ?? 1).toSet();
+      final subject = baseSubject('${e['subject'] ?? ''}');
+      if (subject.isEmpty) continue;
+      final group = int.tryParse('${e['group']}') ?? 1;
+      final wanted = selected[subject] ?? 1;
+      final slotGroups = all.where((x) => '${x['day']}' == '${e['day']}' && '${x['time']}' == '${e['time']}' && baseSubject('${x['subject'] ?? ''}') == subject).map((x) => int.tryParse('${x['group']}') ?? 1).toSet();
       if (slotGroups.length > 1 && group != wanted) continue;
-      final key = '${e['day']}|${e['time']}|$subject|${e['room']}|${e['teacher']}'; if (!seen.add(key)) continue;
-      result.add(ScheduleEntry(id: '${className}_${e['day']}_${e['time']}_${subject.hashCode}_$group', day: int.tryParse('${e['day']}') ?? 1, time: '${e['time'] ?? ''}', subject: subject, room: '${e['room'] ?? ''}', teacher: '${e['teacher'] ?? ''}', group: group));
+      final day = int.tryParse('${e['day']}') ?? 1;
+      final time = '${e['time'] ?? ''}'.trim();
+      final room = '${e['room'] ?? ''}'.trim();
+      final key = '$day|$time|$subject|$room';
+      if (!seen.add(key)) continue;
+      result.add(ScheduleEntry(id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'), day: day, time: time, subject: subject, room: room, group: group));
     }
-    result.sort((a,b) => a.day != b.day ? a.day.compareTo(b.day) : a.time.compareTo(b.time)); return result;
+    result.sort((a,b) => a.day != b.day ? a.day.compareTo(b.day) : a.time.compareTo(b.time));
+    return result;
   }
 }
 
-class _StudentClassDialog extends StatefulWidget { const _StudentClassDialog(); @override State<_StudentClassDialog> createState() => _StudentClassDialogState(); }
+class _StudentClassDialog extends StatefulWidget {
+  final bool requiredChoice;
+  const _StudentClassDialog({this.requiredChoice = false});
+  @override State<_StudentClassDialog> createState() => _StudentClassDialogState();
+}
 class _StudentClassDialogState extends State<_StudentClassDialog> {
   String? grade;
-  @override Widget build(BuildContext context) { final grades=SchoolScheduleCatalog.grades(); final classes=grade==null ? const <String>[] : SchoolScheduleCatalog.classesForGrade(grade!); return AlertDialog(title: const Text('Какой у вас класс?'), content: SizedBox(width:420, child: Column(mainAxisSize:MainAxisSize.min, children:[DropdownButtonFormField<String>(decoration:const InputDecoration(labelText:'Параллель'), initialValue:grade, items:grades.map((g)=>DropdownMenuItem(value:g,child:Text(g))).toList(), onChanged:(v)=>setState(()=>grade=v)), if(classes.isNotEmpty) ...[const SizedBox(height:12), Wrap(spacing:8,runSpacing:8,children:classes.map((c)=>ActionChip(label:Text(c),onPressed:()=>Navigator.pop(context,c))).toList())]]))); }
+  @override Widget build(BuildContext context) {
+    final grades = SchoolScheduleCatalog.grades();
+    final classes = grade == null ? const <String>[] : SchoolScheduleCatalog.classesForGrade(grade!);
+    return AlertDialog(title: const Text('Выбери класс'), content: SizedBox(width: 430, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('Расписание встроено в приложение.'),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(initialValue: grade, decoration: const InputDecoration(labelText: 'Параллель'), items: grades.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(), onChanged: (v) => setState(() => grade = v)),
+      if (classes.isNotEmpty) ...[const SizedBox(height: 12), Wrap(spacing: 8, runSpacing: 8, children: classes.map((c) => ActionChip(label: Text(c), onPressed: () => Navigator.pop(context, c))).toList())],
+    ])), actions: widget.requiredChoice ? null : [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена'))]);
+  }
 }
-Future<void> showStudentGroupSelection(BuildContext context,String className,{bool onlyIfNeeded=false}) async {
-  await SchoolScheduleCatalog.load(); final subjects=SchoolScheduleCatalog.splitSubjects(className).toList()..sort(); if(subjects.isEmpty && onlyIfNeeded)return; final prefs=await SharedPreferences.getInstance(); final values=<String,int>{for(final s in subjects)s:prefs.getInt('student_group_${className}_$s')??1};
-  if(!context.mounted)return; await showDialog<void>(context:context,builder:(_)=>_StudentGroupsDialog(className:className,subjects:subjects,values:values));
+Future<void> showStudentGroupSelection(BuildContext context, String className) async {
+  await SchoolScheduleCatalog.load();
+  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
+  if (subjects.isEmpty || !context.mounted) return;
+  final prefs = await SharedPreferences.getInstance();
+  final values = <String, int>{for (final s in subjects) s: prefs.getInt('student_group_${className}_$s') ?? 1};
+  if (!context.mounted) return;
+  await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
 }
 class _StudentGroupsDialog extends StatefulWidget {
-  final String className;
-  final List<String> subjects;
-  final Map<String, int> values;
+  final String className; final List<String> subjects; final Map<String, int> values;
   const _StudentGroupsDialog({required this.className, required this.subjects, required this.values});
   @override State<_StudentGroupsDialog> createState() => _StudentGroupsDialogState();
 }
@@ -183,175 +214,11 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     title: Text('Группы • ${widget.className}'),
     content: SizedBox(width: 560, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
       final groups = (available[s] ?? <int>{1}).toList()..sort();
-      return ListTile(
-        title: Text(s),
-        subtitle: const Text('Выбор действует только для этого предмета'),
-        trailing: SegmentedButton<int>(
-          segments: groups.map((g) => ButtonSegment(value: g, label: Text('Группа $g'))).toList(),
-          selected: {values[s] ?? groups.first},
-          onSelectionChanged: (v) => setState(() => values[s] = v.first),
-        ),
-      );
+      return ListTile(title: Text(s), subtitle: const Text('Выбор сохраняется отдельно для предмета.'), trailing: SegmentedButton<int>(segments: groups.map((g) => ButtonSegment(value: g, label: Text('Группа $g'))).toList(), selected: {values[s] ?? groups.first}, onSelectionChanged: (v) => setState(() => values[s] = v.first)));
     }).toList())),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      FilledButton(onPressed: () async {
-        final p = await SharedPreferences.getInstance();
-        for (final e in values.entries) await p.setInt('student_group_${widget.className}_${e.key}', e.value);
-        if (context.mounted) Navigator.pop(context);
-      }, child: const Text('Сохранить')),
-    ],
-  );
-}
-
-class SchoolScheduleCatalog {
-  static Map<String, dynamic>? _data;
-
-  static Future<void> load() async {
-    if (_data != null) return;
-    final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
-    _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-  }
-
-  static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
-
-  static List<String> classesForGrade(String grade) => List<String>.from(
-    ((_data?['class_order'] as Map?)?[grade] as List?) ?? const [],
-  );
-
-  static List<Map<String, dynamic>> variants(String className) {
-    final raw = ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
-    return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
-  }
-
-  // В исходном расписании преподаватель находится внутри поля subject.
-  // Для выбора группы используем базовое название предмета без ФИО.
-  static String baseSubject(String value) {
-    var subject = value.trim();
-    subject = subject.replaceFirst(
-      RegExp(r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'),
-      '',
-    );
-    return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
-  }
-
-  static Map<String, Set<int>> subjectGroups(String className) {
-    final result = <String, Set<int>>{};
-    for (final e in variants(className)) {
-      final subject = baseSubject('${e['subject'] ?? ''}');
-      if (subject.isEmpty) continue;
-      (result[subject] ??= <int>{}).add(int.tryParse('${e['group']}') ?? 1);
-    }
-    return result;
-  }
-
-  static Set<String> splitSubjects(String className) => subjectGroups(className)
-      .entries.where((e) => e.value.length > 1).map((e) => e.key).toSet();
-
-  static List<ScheduleEntry> buildPersonal(String className, Map<String, int> selected) {
-    final all = variants(className);
-    final result = <ScheduleEntry>[];
-    final seen = <String>{};
-    for (final e in all) {
-      final subject = baseSubject('${e['subject'] ?? ''}');
-      if (subject.isEmpty) continue;
-      final group = int.tryParse('${e['group']}') ?? 1;
-      final wanted = selected[subject] ?? 1;
-      final slotGroups = all.where((x) =>
-        '${x['day']}' == '${e['day']}' &&
-        '${x['time']}' == '${e['time']}' &&
-        baseSubject('${x['subject'] ?? ''}') == subject,
-      ).map((x) => int.tryParse('${x['group']}') ?? 1).toSet();
-      if (slotGroups.length > 1 && group != wanted) continue;
-      final day = int.tryParse('${e['day']}') ?? 1;
-      final time = '${e['time'] ?? ''}'.trim();
-      final room = '${e['room'] ?? ''}'.trim();
-      final key = '$day|$time|$subject|$room';
-      if (!seen.add(key)) continue;
-      result.add(ScheduleEntry(
-        id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'),
-        day: day, time: time, subject: subject, room: room,
-      ));
-    }
-    result.sort((a, b) => a.day != b.day ? a.day.compareTo(b.day) : a.time.compareTo(b.time));
-    return result;
-  }
-}
-
-class _StudentClassDialog extends StatefulWidget {
-  final bool requiredChoice;
-  const _StudentClassDialog({this.requiredChoice = false});
-  @override State<_StudentClassDialog> createState() => _StudentClassDialogState();
-}
-
-class _StudentClassDialogState extends State<_StudentClassDialog> {
-  String? grade;
-  @override Widget build(BuildContext context) {
-    final grades = SchoolScheduleCatalog.grades();
-    final classes = grade == null ? const <String>[] : SchoolScheduleCatalog.classesForGrade(grade!);
-    return AlertDialog(
-      title: const Text('Выбери класс'),
-      content: SizedBox(width: 430, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Расписание автоматически возьмётся из встроенной базы школы.'),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          initialValue: grade,
-          decoration: const InputDecoration(labelText: 'Параллель'),
-          items: grades.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
-          onChanged: (v) => setState(() => grade = v),
-        ),
-        if (classes.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Wrap(spacing: 8, runSpacing: 8, children: classes.map((c) => ActionChip(label: Text(c), onPressed: () => Navigator.pop(context, c))).toList()),
-        ],
-      ])),
-      actions: widget.requiredChoice ? null : [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена'))],
-    );
-  }
-}
-
-Future<void> showStudentGroupSelection(BuildContext context, String className) async {
-  await SchoolScheduleCatalog.load();
-  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
-  if (subjects.isEmpty || !context.mounted) return;
-  final prefs = await SharedPreferences.getInstance();
-  final values = <String, int>{for (final s in subjects) s: prefs.getInt('student_group_${className}_$s') ?? 1};
-  if (!context.mounted) return;
-  await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
-}
-
-class _StudentGroupsDialog extends StatefulWidget {
-  final String className;
-  final List<String> subjects;
-  final Map<String, int> values;
-  const _StudentGroupsDialog({required this.className, required this.subjects, required this.values});
-  @override State<_StudentGroupsDialog> createState() => _StudentGroupsDialogState();
-}
-
-class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
-  late final Map<String, int> values = Map<String, int>.of(widget.values);
-  late final Map<String, Set<int>> available = SchoolScheduleCatalog.subjectGroups(widget.className);
-  @override Widget build(BuildContext context) => AlertDialog(
-    title: Text('Группы • ${widget.className}'),
-    content: SizedBox(width: 560, child: ListView(shrinkWrap: true, children: widget.subjects.map((subject) {
-      final groups = (available[subject] ?? <int>{1}).toList()..sort();
-      return ListTile(
-        title: Text(subject),
-        subtitle: const Text('Выбор сохраняется отдельно для этого предмета.'),
-        trailing: SegmentedButton<int>(
-          segments: groups.map((g) => ButtonSegment(value: g, label: Text('Группа $g'))).toList(),
-          selected: {values[subject] ?? groups.first},
-          onSelectionChanged: (v) => setState(() => values[subject] = v.first),
-        ),
-      );
-    }).toList())),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      FilledButton(onPressed: () async {
-        final prefs = await SharedPreferences.getInstance();
-        for (final e in values.entries) await prefs.setInt('student_group_${widget.className}_${e.key}', e.value);
-        if (context.mounted) Navigator.pop(context);
-      }, child: const Text('Сохранить')),
+      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt('student_group_${widget.className}_${e.key}', e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
     ],
   );
 }
@@ -893,96 +760,34 @@ class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key, required this.onMenu});
   @override State<SchedulePage> createState() => _SchedulePageState();
 }
-
 class _SchedulePageState extends State<SchedulePage> {
   int day = math.min(DateTime.now().weekday, 6);
-  List<ScheduleEntry> entries = [];
-  String classId = '';
-  bool loading = true;
-
+  List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
   @override void initState() { super.initState(); _load(); }
-
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    await SchoolScheduleCatalog.load();
-    classId = prefs.getString('student_class_name') ?? '';
-    final groups = <String, int>{};
-    if (classId.isNotEmpty) {
-      for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) {
-        groups[subject] = prefs.getInt('student_group_${classId}_$subject') ?? 1;
-      }
-      entries = SchoolScheduleCatalog.buildPersonal(classId, groups);
-    } else {
-      entries = [];
-    }
+    final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
+    classId = p.getString('student_class_name') ?? '';
+    final groups = <String,int>{};
+    if (classId.isNotEmpty) { for (final s in SchoolScheduleCatalog.splitSubjects(classId)) groups[s] = p.getInt('student_group_${classId}_$s') ?? 1; entries = SchoolScheduleCatalog.buildPersonal(classId, groups); } else { entries = []; }
     if (mounted) setState(() => loading = false);
-    await _scheduleNotifications();
-    if (classId.isEmpty && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
-    }
+    try { await LocalNotificationService().scheduleUpcomingLessons(entries: entries.map((e) => (id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList()); } catch (_) {}
+    if (classId.isEmpty && mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
   }
-
-  Future<void> _scheduleNotifications() async {
-    try {
-      await LocalNotificationService().scheduleUpcomingLessons(
-        entries: entries.map((e) => (id: e.id, day: e.day, time: e.time, subject: e.subject, room: e.room)).toList(),
-      );
-    } catch (_) {}
-  }
-
   Future<void> _chooseClass({bool required = false}) async {
-    final selected = await showDialog<String>(
-      context: context,
-      barrierDismissible: !required,
-      builder: (_) => _StudentClassDialog(requiredChoice: required),
-    );
+    final selected = await showDialog<String>(context: context, barrierDismissible: !required, builder: (_) => _StudentClassDialog(requiredChoice: required));
     if (selected == null || selected.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_class_name', selected);
-    await prefs.setString('student_class_id', selected);
-    if (!mounted) return;
-    await showStudentGroupSelection(context, selected);
-    await _load();
+    final p = await SharedPreferences.getInstance(); await p.setString('student_class_name', selected); await p.setString('student_class_id', selected);
+    if (!mounted) return; await showStudentGroupSelection(context, selected); await _load();
   }
-
-  void _route(ScheduleEntry entry) {
-    if (entry.room.isEmpty) return;
-    final room = SchoolData.tryRoom(entry.room);
-    if (room == null) return;
-    final route = RouteEngine.build(room.id);
-    if (route != null) Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: room, route: route)));
-  }
-
+  void _route(ScheduleEntry e) { if (e.room.isEmpty) return; final r = SchoolData.tryRoom(e.room); if (r == null) return; final route = RouteEngine.build(r.id); if (route != null) Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room:r,route:route))); }
   @override Widget build(BuildContext context) {
-    final list = entries.where((e) => e.day == day).toList()..sort((a, b) => a.time.compareTo(b.time));
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
-        title: Text(classId.isEmpty ? 'Расписание' : 'Расписание • $classId', style: const TextStyle(fontWeight: FontWeight.w900)),
-        actions: [
-          IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
-          if (classId.isNotEmpty) IconButton(tooltip: 'Группы', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
-        ],
-      ),
-      body: loading ? const Center(child: CircularProgressIndicator()) : Center(
-        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Column(children: [
-          if (classId.isEmpty) Padding(padding: const EdgeInsets.fromLTRB(18, 18, 18, 8), child: Card(child: ListTile(title: const Text('Выбери класс', style: TextStyle(fontWeight: FontWeight.w900)), subtitle: const Text('После выбора расписание и группы сохранятся на устройстве.'), trailing: FilledButton(onPressed: () => _chooseClass(required: true), child: const Text('Выбрать'))))),
-          SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(18, 10, 18, 8), child: SegmentedButton<int>(
-            segments: const [ButtonSegment(value: 1, label: Text('Пн')), ButtonSegment(value: 2, label: Text('Вт')), ButtonSegment(value: 3, label: Text('Ср')), ButtonSegment(value: 4, label: Text('Чт')), ButtonSegment(value: 5, label: Text('Пт')), ButtonSegment(value: 6, label: Text('Сб'))],
-            selected: {day}, onSelectionChanged: (v) => setState(() => day = v.first),
-          )),
-          Expanded(child: list.isEmpty ? Center(child: Text(classId.isEmpty ? 'Выбери класс, чтобы увидеть расписание' : 'На этот день уроков нет')) : ListView.builder(padding: const EdgeInsets.fromLTRB(18, 8, 18, 30), itemCount: list.length, itemBuilder: (_, i) {
-            final e = list[i];
-            final room = e.room.isEmpty ? null : SchoolData.tryRoom(e.room);
-            return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
-              leading: CircleAvatar(child: Text(e.time.split(':').first)),
-              title: Text(e.subject, style: const TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text(e.room.isEmpty ? e.time : '${e.time} • каб. ${e.room}'),
-              trailing: IconButton(onPressed: room == null ? null : () => _route(e), tooltip: 'Как пройти', icon: const Icon(Icons.route_rounded)),
-            ));
-          })),
-        ])),
-      ),
+    final list = entries.where((e) => e.day == day).toList()..sort((a,b)=>a.time.compareTo(b.time));
+    return Scaffold(appBar: AppBar(leading: IconButton(onPressed: widget.onMenu,tooltip:'Меню',icon:const Icon(Icons.menu_rounded)), title: Text(classId.isEmpty?'Расписание':'Расписание • $classId',style:const TextStyle(fontWeight:FontWeight.w900)), actions:[IconButton(tooltip:'Выбрать класс',onPressed:()=>_chooseClass(),icon:const Icon(Icons.school_rounded)), if(classId.isNotEmpty) IconButton(tooltip:'Группы',onPressed:() async {await showStudentGroupSelection(context,classId);await _load();},icon:const Icon(Icons.groups_rounded))]),
+      body: loading ? const Center(child:CircularProgressIndicator()) : Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1100),child:Column(children:[
+        if(classId.isEmpty) Padding(padding:const EdgeInsets.fromLTRB(18,18,18,8),child:Card(child:ListTile(title:const Text('Выбери класс',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('После выбора расписание и группы сохранятся на устройстве.'),trailing:FilledButton(onPressed:()=>_chooseClass(required:true),child:const Text('Выбрать'))))),
+        SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.fromLTRB(18,10,18,8),child:SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('Пн')),ButtonSegment(value:2,label:Text('Вт')),ButtonSegment(value:3,label:Text('Ср')),ButtonSegment(value:4,label:Text('Чт')),ButtonSegment(value:5,label:Text('Пт')),ButtonSegment(value:6,label:Text('Сб'))],selected:{day},onSelectionChanged:(v)=>setState(()=>day=v.first))),
+        Expanded(child:list.isEmpty?Center(child:Text(classId.isEmpty?'Выбери класс, чтобы увидеть расписание':'На этот день уроков нет')):ListView.builder(padding:const EdgeInsets.fromLTRB(18,8,18,30),itemCount:list.length,itemBuilder:(_,i){final e=list[i];final room=e.room.isEmpty?null:SchoolData.tryRoom(e.room);return Card(margin:const EdgeInsets.only(bottom:10),child:ListTile(leading:CircleAvatar(child:Text(e.time.split(':').first)),title:Text(e.subject,style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text(e.room.isEmpty?e.time:'${e.time} • каб. ${e.room}'),trailing:IconButton(onPressed:room==null?null:()=>_route(e),tooltip:'Как пройти',icon:const Icon(Icons.route_rounded))));})),
+      ]))),
     );
   }
 }
