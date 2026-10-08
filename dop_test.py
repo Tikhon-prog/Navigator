@@ -533,10 +533,7 @@ def main():
     print("GET current_application.php ...")
 
     try:
-        response = opener.open(
-            urllib.request.Request(current_url),
-            timeout=20,
-        )
+        response = opener.open(urllib.request.Request(current_url), timeout=20)
     except Exception as exc:
         raise RuntimeError(
             "Не удалось открыть current_application.php: "
