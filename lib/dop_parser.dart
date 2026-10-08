@@ -380,11 +380,8 @@ class DopParser {
           _decode(_attr(input, 'data-schedule')),
         );
 
-        final teacher = _textClass(
-          subgroupHtml,
-          'program-subgroup-teacher',
-          tag: 'b',
-        );
+        final teacher =
+            _teacherFromSubgroup(subgroupHtml);
 
         final supplies = _nullable(
           _textClass(subgroupHtml, 'supplies-inline-text'),
@@ -449,11 +446,8 @@ class DopParser {
         _textClass(body, 'hours-badge'),
       );
 
-      final teacher = _textClass(
-        body,
-        'program-subgroup-teacher',
-        tag: 'b',
-      );
+      final teacher =
+          _teacherFromSubgroup(body);
 
       final scheduleText = _textClass(
         body,
@@ -667,6 +661,16 @@ class DopParser {
         ).firstMatch(html);
 
     return _clean(match?.group(1) ?? '');
+  }
+
+  String _teacherFromSubgroup(String html) {
+    final container = _textClass(
+      html,
+      'program-subgroup-teacher',
+    );
+
+    final teacher = _textTag(container, 'b');
+    return teacher.isNotEmpty ? teacher : container;
   }
 
   String _clean(String value) {
