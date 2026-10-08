@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
+import 'dop_parser.dart';
 
 class Supplement {
   final String id;
@@ -69,6 +70,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
   int day = DateTime.now().weekday.clamp(1, 6);
   List<Supplement> items = [];
   bool loading = true;
+  bool syncing = false;
+  DopStudent? student;
+  String lastSync = '';
 
   @override
   void initState() {
@@ -88,6 +92,8 @@ class _SupplementsPageState extends State<SupplementsPage> {
         items = [];
       }
     }
+    student = await const NavigatorStudentProvider().load();
+    lastSync = prefs.getString('dop_last_sync') ?? '';
     if (mounted) setState(() => loading = false);
   }
 
@@ -97,6 +103,57 @@ class _SupplementsPageState extends State<SupplementsPage> {
       'supplements_local',
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
+  }
+
+  Future<void> _editStudent() async {
+    final result = await showDialog<DopStudent>(context: context, builder: (_) => _DopStudentDialog(initial: student));
+    if (result == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('student_last_name', result.lastName);
+    await prefs.setString('student_first_name', result.firstName);
+    await prefs.setString('student_class_number', result.classNumber);
+    await prefs.setString('student_class_letter', result.classLetter);
+    await prefs.setString('student_class_name', result.className);
+    student = result;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncFromIntranet() async {
+    if (syncing) return;
+    setState(() => syncing = true);
+    try {
+      if (student == null) await _editStudent();
+      if (student == null) throw const DopParserException('Заполни профиль ученика.');
+      final result = await const DopParser().parse();
+      final imported = <Supplement>[];
+      for (final d in result.application.disciplines) {
+        for (final slot in d.schedule) {
+          imported.add(Supplement(
+            id: 'intranet_' + d.programId.toString() + '_' + d.subgroupId.toString() + '_' + slot.day.toString() + '_' + slot.start.toString(),
+            title: d.name,
+            weekday: slot.day,
+            start: 'урок ' + slot.start.toString(),
+            end: 'урок ' + slot.end.toString(),
+            teacher: d.teacher,
+            room: slot.room,
+            place: '',
+            groupName: '',
+            description: d.supplies ?? '',
+          ));
+        }
+      }
+      final manual = items.where((e) => e.id.startsWith('manual_')).toList();
+      items = [...manual, ...imported];
+      await _save();
+      final prefs = await SharedPreferences.getInstance();
+      lastSync = DateTime.now().toLocal().toString().substring(0, 16);
+      await prefs.setString('dop_last_sync', lastSync);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Загружено записей ДОПов: ' + imported.length.toString())));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка intranet: ' + e.toString())));
+    } finally {
+      if (mounted) setState(() => syncing = false);
+    }
   }
 
   @override
@@ -109,11 +166,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('ДОПы', style: TextStyle(fontWeight: FontWeight.w900)),
         actions: [
-          IconButton(
-            tooltip: 'Добавить ДОП',
-            onPressed: _add,
-            icon: const Icon(Icons.add_rounded),
-          ),
+          IconButton(tooltip: 'Профиль ученика', onPressed: _editStudent, icon: const Icon(Icons.person_rounded)),
+          IconButton(tooltip: syncing ? 'Обновление…' : 'Обновить с intranet', onPressed: syncing ? null : _syncFromIntranet, icon: syncing ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync_rounded)),
+          IconButton(tooltip: 'Добавить ДОП', onPressed: _add, icon: const Icon(Icons.add_rounded)),
         ],
       ),
       body: loading
@@ -352,4 +407,26 @@ class _SupplementEditorState extends State<_SupplementEditor> {
       ],
     );
   }
+}
+
+class _DopStudentDialog extends StatefulWidget {
+  final DopStudent? initial;
+  const _DopStudentDialog({this.initial});
+  @override State<_DopStudentDialog> createState() => _DopStudentDialogState();
+}
+class _DopStudentDialogState extends State<_DopStudentDialog> {
+  late final TextEditingController lastName, firstName, classNumber, classLetter;
+  @override void initState(){super.initState();final s=widget.initial;lastName=TextEditingController(text:s?.lastName??'');firstName=TextEditingController(text:s?.firstName??'');classNumber=TextEditingController(text:s?.classNumber??'');classLetter=TextEditingController(text:s?.classLetter??'');}
+  @override void dispose(){lastName.dispose();firstName.dispose();classNumber.dispose();classLetter.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>AlertDialog(
+    title: const Text('Профиль ученика для ДОПов'),
+    content: SizedBox(width:440,child:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(controller:lastName,decoration:const InputDecoration(labelText:'Фамилия')),
+      TextField(controller:firstName,decoration:const InputDecoration(labelText:'Имя')),
+      Row(children:[Expanded(child:TextField(controller:classNumber,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Класс'))),const SizedBox(width:10),Expanded(child:TextField(controller:classLetter,decoration:const InputDecoration(labelText:'Буква')))]),
+      const SizedBox(height:10),
+      Text('Тип проживания Navigator определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
+    ])),
+    actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:(){if(lastName.text.trim().isEmpty||firstName.text.trim().isEmpty||classNumber.text.trim().isEmpty||classLetter.text.trim().isEmpty)return;Navigator.pop(context,DopStudent(lastName:lastName.text.trim(),firstName:firstName.text.trim(),classNumber:classNumber.text.trim(),classLetter:classLetter.text.trim().toUpperCase(),residenceType:'auto'));},child:const Text('Сохранить'))],
+  );
 }
