@@ -740,7 +740,7 @@ class _StartDialogState extends State<_StartDialog> {
     return AlertDialog(
       title: const Text('Начало маршрута'),
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
-        SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v)=>setState(()=>{floor=v.first,choice='__entrance__'})),
+        SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v){setState((){floor=v.first;choice='__entrance__';});}),
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')), ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text('${r.id} — ${SchoolData.title(r)}')))], onChanged:(v)=>setState(()=>choice=v??'__entrance__')),
       ])),
