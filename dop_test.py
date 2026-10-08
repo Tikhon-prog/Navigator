@@ -199,11 +199,7 @@ def parse_catalog(html):
                     or attr(input_tag, "data-hours")
                     or hours
                 ),
-                "teacher": text_class(
-                    subgroup_html,
-                    "program-subgroup-teacher",
-                    tag="b",
-                ),
+                "teacher": extract_teacher(subgroup_html),
                 "schedule": parse_json_schedule(
                     attr(input_tag, "data-schedule")
                 ),
@@ -227,6 +223,17 @@ def parse_catalog(html):
         })
 
     return programs
+
+
+def extract_teacher(html):
+    block = text_class(
+        html,
+        "program-subgroup-teacher",
+    )
+
+    # Реальная разметка: div.program-subgroup-teacher -> b.
+    teacher = text_tag(block, "b")
+    return teacher or block
 
 
 def parse_current_application(html):
@@ -253,11 +260,7 @@ def parse_current_application(html):
         choices.append({
             "name": name,
             "hours": number(text_class(body, "hours-badge")),
-            "teacher": text_class(
-                body,
-                "program-subgroup-teacher",
-                tag="b",
-            ),
+            "teacher": extract_teacher(body),
             "schedule": parse_displayed_schedule(
                 text_class(body, "program-subgroup-schedule")
             ),
@@ -432,6 +435,11 @@ def ask_student():
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
     student = ask_student()
 
     print()
