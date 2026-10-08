@@ -449,7 +449,8 @@ class RouteEngine {
     // start or destination of this route.
     final anchorNode = <String, String>{};
     final anchorRoadNode = <String, String>{};
-    final requestedAnchors = <String>{destination.id, if (startLocationId != null) startLocationId!};
+    final requestedAnchors = <String>{destination.id};
+    if (startLocationId != null) requestedAnchors.add(startLocationId);
     for (final entry in _anchors.entries) {
       final id = entry.key;
       if (_blockedTransit.contains(id) && !requestedAnchors.contains(id)) continue;
