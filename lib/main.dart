@@ -157,13 +157,12 @@ class SchoolScheduleCatalog {
     var subject = value.trim();
     subject = subject.replaceFirst(
       RegExp(
-        r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?,
+        r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$',
       ),
       '',
     );
     return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
   }
-
   static Map<String, Set<int>> subjectGroups(String className) {
     final result = <String, Set<int>>{};
     for (final e in variants(className)) {
