@@ -659,10 +659,44 @@ class _AppShellState extends State<AppShell>{
   @override Widget build(BuildContext context){final menu=()=>key.currentState?.openDrawer();return Scaffold(key:key,drawer:_drawer(context),body:IndexedStack(index:index,children:[HomePage(userName:widget.userName,theme:widget.theme,onMenu:menu,onMap:()=>go(1),onSchedule:()=>go(2),onDop:()=>go(3)),MapPage(initialRoom:selectedRoom,onMenu:menu),SchedulePage(onMenu:menu),SupplementsPage(onMenu:menu),SettingsPage(theme:widget.theme,userName:widget.userName,onThemeChanged:widget.onThemeChanged,onNameChanged:widget.onNameChanged,onMenu:menu)]));}
   Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и админ')];return Drawer(width:330,child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Navigator',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap:()=>go(x.$1)))]))])));}
 }
-class HomePage extends StatelessWidget{
-  final String userName;final AppThemeType theme;final VoidCallback onMenu,onMap,onSchedule,onDop;
+class HomePage extends StatelessWidget {
+  final String userName;
+  final AppThemeType theme;
+  final VoidCallback onMenu, onMap, onSchedule, onDop;
   const HomePage({super.key,required this.userName,required this.theme,required this.onMenu,required this.onMap,required this.onSchedule,required this.onDop});
-  @override Widget build(BuildContext context){final colors=AppPalette.gradient(theme);return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Navigator',style:TextStyle(fontWeight:FontWeight.w900))),body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1050),child:ListView(padding:const EdgeInsets.all(18),children:[Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(gradient:LinearGradient(colors:colors),borderRadius:BorderRadius.circular(28)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(userName.isEmpty?'Главное меню':'Привет, ${userName}!',style:const TextStyle(color:Colors.white,fontSize:27,fontWeight:FontWeight.w900)),const SizedBox(height:8),const Text('Карта школы, расписание и ДОПы — в одном приложении.',style:TextStyle(color:Colors.white)),const SizedBox(height:18),Wrap(spacing:10,runSpacing:10,children:[_HeroButton('Карта школы',Icons.map_rounded,onMap),_HeroButton('Расписание',Icons.calendar_month_rounded,onSchedule),_HeroButton('ДОПы',Icons.auto_awesome_rounded,onDop)])])),const SizedBox(height:16),Card(child:ListTile(leading:Icon(Icons.offline_bolt_rounded,color:Theme.of(context).colorScheme.primary),title:const Text('Офлайн-first',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Карта и базовые данные остаются доступными без интернета.')))])))));}
+  @override
+  Widget build(BuildContext context) {
+    final colors=AppPalette.gradient(theme);
+    return Scaffold(
+      appBar: AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Navigator',style:TextStyle(fontWeight:FontWeight.w900))),
+      body: Center(child:ConstrainedBox(
+        constraints:const BoxConstraints(maxWidth:1050),
+        child:ListView(padding:const EdgeInsets.all(18),children:[
+          Container(
+            padding:const EdgeInsets.all(24),
+            decoration:BoxDecoration(gradient:LinearGradient(colors:colors),borderRadius:BorderRadius.circular(28)),
+            child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text(userName.isEmpty?'Главное меню':'Привет, '+userName+'!',style:const TextStyle(color:Colors.white,fontSize:27,fontWeight:FontWeight.w900)),
+              const SizedBox(height:8),
+              const Text('Карта школы, расписание и ДОПы — в одном приложении.',style:TextStyle(color:Colors.white)),
+              const SizedBox(height:18),
+              Wrap(spacing:10,runSpacing:10,children:[
+                _HeroButton('Карта школы',Icons.map_rounded,onMap),
+                _HeroButton('Расписание',Icons.calendar_month_rounded,onSchedule),
+                _HeroButton('ДОПы',Icons.auto_awesome_rounded,onDop),
+              ]),
+            ]),
+          ),
+          const SizedBox(height:16),
+          Card(child:ListTile(
+            leading:Icon(Icons.offline_bolt_rounded,color:Theme.of(context).colorScheme.primary),
+            title:const Text('Офлайн-first',style:TextStyle(fontWeight:FontWeight.w900)),
+            subtitle:const Text('Карта и базовые данные остаются доступными без интернета.'),
+          )),
+        ]),
+      )),
+    );
+  }
 }
 class _HeroButton extends StatelessWidget{final String text;final IconData icon;final VoidCallback onTap;const _HeroButton(this.text,this.icon,this.onTap);@override Widget build(BuildContext context)=>FilledButton.icon(onPressed:onTap,icon:Icon(icon),label:Text(text),style:FilledButton.styleFrom(backgroundColor:Colors.white24,foregroundColor:Colors.white));}
 class MapPage extends StatefulWidget{final String? initialRoom;final VoidCallback onMenu;const MapPage({super.key,this.initialRoom,required this.onMenu});@override State<MapPage> createState()=>_MapPageState();}
