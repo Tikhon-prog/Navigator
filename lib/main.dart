@@ -699,16 +699,41 @@ class HomePage extends StatelessWidget {
   }
 }
 class _HeroButton extends StatelessWidget{final String text;final IconData icon;final VoidCallback onTap;const _HeroButton(this.text,this.icon,this.onTap);@override Widget build(BuildContext context)=>FilledButton.icon(onPressed:onTap,icon:Icon(icon),label:Text(text),style:FilledButton.styleFrom(backgroundColor:Colors.white24,foregroundColor:Colors.white));}
-class MapPage extends StatefulWidget{final String? initialRoom;final VoidCallback onMenu;const MapPage({super.key,this.initialRoom,required this.onMenu});@override State<MapPage> createState()=>_MapPageState();}
+class MapPage extends StatefulWidget {
+  final String? initialRoom; final VoidCallback onMenu;
+  const MapPage({super.key,this.initialRoom,required this.onMenu});
+  @override State<MapPage> createState()=>_MapPageState();
+}
 class _MapPageState extends State<MapPage>{
-  int floor=1;String query='';String? selected;int startFloor=1;String? startId;final search=TextEditingController();
+  int floor=1; String query=''; String? selected; int startFloor=1; String? startId; final search=TextEditingController();
   @override void initState(){super.initState();selected=widget.initialRoom;if(selected!=null)floor=SchoolData.room(selected!).floor;_load();}
   Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
   @override void dispose(){search.dispose();super.dispose();}
   List<RoomInfo> get rooms=>SchoolData.rooms.where((r)=>r.floor==floor&&(query.isEmpty||r.id.toLowerCase().contains(query.toLowerCase())||SchoolData.title(r).toLowerCase().contains(query.toLowerCase()))).toList();
   Future<void> _start()async{final r=await showDialog<_StartChoice>(context:context,builder:(_)=>_StartDialog(floor:startFloor,id:startId));if(r==null)return;final p=await SharedPreferences.getInstance();await p.setInt('map_start_floor',r.floor);if(r.id==null)await p.remove('map_start_location');else await p.setString('map_start_location',r.id!);if(mounted)setState((){startFloor=r.floor;startId=r.id;});}
   void _open(RoomInfo r){setState(()=>selected=r.id);final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId);if(route==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Маршрут для этой точки недоступен.')));return;}Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));}
-  @override Widget build(BuildContext context){return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Карта школы',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_start,tooltip:'Начало маршрута',icon:const Icon(Icons.my_location_rounded)),IconButton(onPressed:()=>setState((){query='';search.clear();}),tooltip:'Очистить поиск',icon:const Icon(Icons.clear_all_rounded))]),body:Column(children:[Padding(padding:const EdgeInsets.fromLTRB(16,8,16,6),child:Row(children:[Expanded(child:TextField(controller:search,onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(prefixIcon:Icon(Icons.search_rounded),hintText:'Номер или название кабинета'))),const SizedBox(width:10),SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('1')),ButtonSegment(value:2,label:Text('2')),ButtonSegment(value:3,label:Text('3'))],selected:{floor},onSelectionChanged:(v)=>setState(()=>floor=v.first))])),Expanded(child:Row(children:[Expanded(flex:3,child:Padding(padding:const EdgeInsets.fromLTRB(16,6,8,16),child:_MapImage(floor:floor,selected:selected))),SizedBox(width:340,child:ListView(padding:const EdgeInsets.fromLTRB(8,6,16,16),children:[Card(child:ListTile(leading:const Icon(Icons.login_rounded),title:const Text('Точка старта',style:TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(startId==null?'Главный вход':'${SchoolData.title(SchoolData.room(startId!))}'),onTap:_start)),const SizedBox(height:6),Text('Кабинеты и места • ${floor} этаж',style:const TextStyle(fontWeight:FontWeight.w900)),const SizedBox(height:6),...rooms.map((r)=>Card(margin:const EdgeInsets.only(bottom:6),child:ListTile(leading:Icon(SchoolData.isPlace(r)?Icons.place_rounded:Icons.meeting_room_rounded),title:Text(SchoolData.title(r),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text('каб. ${r.id}'),trailing:const Icon(Icons.chevron_right_rounded),onTap:()=>_open(r))))]))]))]));}
+  @override Widget build(BuildContext context){
+    return Scaffold(
+      appBar:AppBar(leading:IconButton(onPressed:widget.onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Карта школы',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_start,tooltip:'Начало маршрута',icon:const Icon(Icons.my_location_rounded)),IconButton(onPressed:()=>setState((){query='';search.clear();}),tooltip:'Очистить поиск',icon:const Icon(Icons.clear_all_rounded))]),
+      body:Column(children:[
+        Padding(padding:const EdgeInsets.fromLTRB(16,8,16,6),child:Row(children:[
+          Expanded(child:TextField(controller:search,onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(prefixIcon:Icon(Icons.search_rounded),hintText:'Номер или название кабинета'))),
+          const SizedBox(width:10),
+          SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('1')),ButtonSegment(value:2,label:Text('2')),ButtonSegment(value:3,label:Text('3'))],selected:{floor},onSelectionChanged:(v)=>setState(()=>floor=v.first)),
+        ])),
+        Expanded(child:Row(children:[
+          Expanded(flex:3,child:Padding(padding:const EdgeInsets.fromLTRB(16,6,8,16),child:_MapImage(floor:floor,selected:selected))),
+          SizedBox(width:340,child:ListView(padding:const EdgeInsets.fromLTRB(8,6,16,16),children:[
+            Card(child:ListTile(leading:const Icon(Icons.login_rounded),title:const Text('Точка старта',style:TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(startId==null?'Главный вход':SchoolData.title(SchoolData.room(startId!))),onTap:_start)),
+            const SizedBox(height:6),
+            Text('Кабинеты и места • '+floor.toString()+' этаж',style:const TextStyle(fontWeight:FontWeight.w900)),
+            const SizedBox(height:6),
+            ...rooms.map((r)=>Card(margin:const EdgeInsets.only(bottom:6),child:ListTile(leading:Icon(SchoolData.isPlace(r)?Icons.place_rounded:Icons.meeting_room_rounded),title:Text(SchoolData.title(r),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text('каб. '+r.id),trailing:const Icon(Icons.chevron_right_rounded),onTap:()=>_open(r)))),
+          ])),
+        ])),
+      ]),
+    );
+  }
 }
 class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.room(selected!).point,Theme.of(context).colorScheme.primary)))]))));}
 class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
