@@ -126,40 +126,119 @@ class ScheduleEntry {
 
 class SchoolScheduleCatalog {
   static Map<String, dynamic>? _data;
+
   static Future<void> load() async {
     if (_data != null) return;
-    _data = Map<String, dynamic>.from(jsonDecode(await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json')) as Map);
+    final raw = await rootBundle.loadString(
+      'assets/data/school_schedule_2026-10-05.json',
+    );
+    _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
-  static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
-  static List<String> classesForGrade(String grade) => List<String>.from(((_data?['class_order'] as Map?)?[grade] as List?) ?? const []);
+
+  static List<String> grades() =>
+      List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
+
+  static List<String> classesForGrade(String grade) =>
+      List<String>.from(
+        ((_data?['class_order'] as Map?)?[grade] as List?) ?? const [],
+      );
+
   static List<Map<String, dynamic>> variants(String className) {
-    final raw = ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
-    return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
+    final raw =
+        ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
+    return raw is List
+        ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
   }
+
+  /// В исходном расписании учитель записан прямо в поле subject.
+  /// Для выбора группы нужен именно предмет без преподавателя.
+  static String baseSubject(String value) {
+    var subject = value.trim();
+    subject = subject.replaceFirst(
+      RegExp(
+        r'\s+[А-ЯЁ][а-яё-]+(?:\s+[А-ЯЁ]\.[А-ЯЁ]\.){2}(?:,\s*[А-ЯЁ][а-яё-]+(?:\s+[А-ЯЁ]\.[А-ЯЁ]\.){2})?,?$',
+      ),
+      '',
+    );
+    return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
+  }
+
   static Map<String, Set<int>> subjectGroups(String className) {
     final result = <String, Set<int>>{};
     for (final e in variants(className)) {
-      final subject = '${e['subject'] ?? ''}'.trim();
+      final subject = baseSubject('${e['subject'] ?? ''}');
       if (subject.isEmpty) continue;
-      (result[subject] ??= <int>{}).add(int.tryParse('${e['group']}') ?? 1);
+      (result[subject] ??= <int>{})
+          .add(int.tryParse('${e['group']}') ?? 1);
     }
     return result;
   }
 
-  static Set<String> splitSubjects(String className) => subjectGroups(className).entries.where((e) => e.value.length > 1).map((e) => e.key).toSet();
-  static List<ScheduleEntry> buildPersonal(String className, Map<String, int> selected) {
-    final all = variants(className), result = <ScheduleEntry>[]; final seen = <String>{};
+  static Set<String> splitSubjects(String className) => subjectGroups(className)
+      .entries
+      .where((e) => e.value.length > 1)
+      .map((e) => e.key)
+      .toSet();
+
+  static List<ScheduleEntry> buildPersonal(
+    String className,
+    Map<String, int> selected,
+  ) {
+    final all = variants(className);
+    final result = <ScheduleEntry>[];
+    final seen = <String>{};
+
     for (final e in all) {
-      final subject = '${e['subject'] ?? ''}'.trim(); final group = int.tryParse('${e['group']}') ?? 1; final wanted = selected[subject] ?? 1;
-      final slotGroups = all.where((x) => '${x['day']}' == '${e['day']}' && '${x['time']}' == '${e['time']}' && '${x['subject'] ?? ''}'.trim() == subject).map((x) => int.tryParse('${x['group']}') ?? 1).toSet();
+      final rawSubject = '${e['subject'] ?? ''}'.trim();
+      final subject = baseSubject(rawSubject);
+      if (subject.isEmpty) continue;
+
+      final group = int.tryParse('${e['group']}') ?? 1;
+      final wanted = selected[subject] ?? 1;
+      final slotGroups = all
+          .where(
+            (x) =>
+                '${x['day']}' == '${e['day']}' &&
+                '${x['time']}' == '${e['time']}' &&
+                baseSubject('${x['subject'] ?? ''}') == subject,
+          )
+          .map((x) => int.tryParse('${x['group']}') ?? 1)
+          .toSet();
+
       if (slotGroups.length > 1 && group != wanted) continue;
-      final key = '${e['day']}|${e['time']}|$subject|${e['room']}|${e['teacher']}'; if (!seen.add(key)) continue;
-      result.add(ScheduleEntry(id: '${className}_${e['day']}_${e['time']}_${subject.hashCode}_$group', day: int.tryParse('${e['day']}') ?? 1, time: '${e['time'] ?? ''}', subject: subject, room: '${e['room'] ?? ''}', teacher: '${e['teacher'] ?? ''}', group: group));
+
+      final day = int.tryParse('${e['day']}') ?? 1;
+      final time = '${e['time'] ?? ''}'.trim();
+      final room = '${e['room'] ?? ''}'.trim();
+      final teacher = '${e['teacher'] ?? ''}'.trim();
+      final key = '$day|$time|$subject|$room|$teacher';
+      if (!seen.add(key)) continue;
+
+      result.add(
+        ScheduleEntry(
+          id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(
+            RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'),
+            '_',
+          ),
+          day: day,
+          time: time,
+          subject: subject,
+          room: room,
+          teacher: teacher,
+          group: group,
+        ),
+      );
     }
-    result.sort((a,b) => a.day != b.day ? a.day.compareTo(b.day) : a.time.compareTo(b.time)); return result;
+
+    result.sort(
+      (a, b) => a.day != b.day
+          ? a.day.compareTo(b.day)
+          : a.time.compareTo(b.time),
+    );
+    return result;
   }
 }
-
 class _StudentClassDialog extends StatefulWidget { const _StudentClassDialog(); @override State<_StudentClassDialog> createState() => _StudentClassDialogState(); }
 class _StudentClassDialogState extends State<_StudentClassDialog> {
   String? grade;
