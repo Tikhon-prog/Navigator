@@ -550,15 +550,23 @@ class DopParser {
     List<DopProgram> programs,
     String name,
   ) {
-    final wanted = name.trim().toLowerCase();
+    final wanted = _normalizeName(name);
 
     for (final program in programs) {
-      if (program.name.trim().toLowerCase() == wanted) {
+      if (_normalizeName(program.name) == wanted) {
         return program;
       }
     }
 
     return null;
+  }
+
+  String _normalizeName(String value) {
+    return value
+        .replaceAll('\u00A0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
   }
 
   DopSubgroup? _findBestSubgroup(
@@ -610,9 +618,17 @@ class DopParser {
 
   String _attr(String tag, String name) {
     final match = RegExp(
-      r'\b' + RegExp.escape(name) + r'\s*=\s*"([^"]*)"',
+      r'\b' +
+          RegExp.escape(name) +
+          r'\s*=\s*["]([^"]*)["]',
       caseSensitive: false,
-    ).firstMatch(tag);
+    ).firstMatch(tag) ??
+        RegExp(
+          r"\b" +
+              RegExp.escape(name) +
+              r"\s*=\s*['"]([^'"]*)['"]",
+          caseSensitive: false,
+        ).firstMatch(tag);
 
     return _decode(match?.group(1) ?? '').trim();
   }
@@ -631,20 +647,32 @@ class DopParser {
     String className, {
     String? tag,
   }) {
-    final tagName = tag ?? r'\w+';
+    final tagName = tag ?? r'[A-Za-z][A-Za-z0-9-]*';
 
-    return _clean(
-      RegExp(
-        '<' +
-            tagName +
-            r'\b[^>]*class\s*=\s*"[^"]*\b' +
-            RegExp.escape(className) +
-            r'\b[^"]*"[^>]*>([\s\S]*?)</' +
-            tagName +
-            r'>',
-        caseSensitive: false,
-      ).firstMatch(html)?.group(1) ?? '',
-    );
+    final doubleQuote = RegExp(
+      '<' +
+          tagName +
+          r'\b[^>]*class\s*=\s*"[^"]*\b' +
+          RegExp.escape(className) +
+          r'\b[^"]*"[^>]*>([\s\S]*?)</' +
+          tagName +
+          r'>',
+      caseSensitive: false,
+    ).firstMatch(html);
+
+    final match = doubleQuote ??
+        RegExp(
+          "<" +
+              tagName +
+              r"\b[^>]*class\s*=\s*'[^']*\b" +
+              RegExp.escape(className) +
+              r"\b[^']*'[^>]*>([\s\S]*?)</" +
+              tagName +
+              r">",
+          caseSensitive: false,
+        ).firstMatch(html);
+
+    return _clean(match?.group(1) ?? '');
   }
 
   String _clean(String value) {
@@ -663,7 +691,7 @@ class DopParser {
   }
 
   String _decode(String value) {
-    return value
+    var result = value
         .replaceAll('&quot;', '"')
         .replaceAll('&#34;', '"')
         .replaceAll('&apos;', "'")
@@ -672,6 +700,22 @@ class DopParser {
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>');
+
+    result = result.replaceAllMapped(
+      RegExp(r'&#x([0-9a-fA-F]+);'),
+      (match) => String.fromCharCode(
+        int.tryParse(match.group(1)!, radix: 16) ?? 0,
+      ),
+    );
+
+    result = result.replaceAllMapped(
+      RegExp(r'&#([0-9]+);'),
+      (match) => String.fromCharCode(
+        int.tryParse(match.group(1)!) ?? 0,
+      ),
+    );
+
+    return result;
   }
 
   String _nullableString(String value) =>
@@ -765,10 +809,23 @@ class _DopSession {
     var currentData = data;
 
     for (var i = 0; i < 6; i++) {
-      final request =
-          await _client.openUrl(currentMethod, currentUri);
+      final request = await _client
+          .openUrl(currentMethod, currentUri)
+          .timeout(const Duration(seconds: 20));
 
       request.followRedirects = false;
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Navigator-Dop-Parser/1.0',
+      );
+      request.headers.set(
+        HttpHeaders.acceptHeader,
+        'text/html,application/xhtml+xml',
+      );
+      request.headers.set(
+        HttpHeaders.acceptLanguageHeader,
+        'ru-RU,ru;q=0.9',
+      );
 
       for (final cookie in _cookies.entries) {
         request.cookies.add(
@@ -806,8 +863,10 @@ class _DopSession {
         }
       }
 
-      final body =
-          await utf8.decoder.bind(response).join();
+      final body = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(const Duration(seconds: 20));
 
       if (response.isRedirect) {
         final location =
