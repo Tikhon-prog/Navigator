@@ -24,7 +24,7 @@ enum AppThemeType { yellow, turquoise, darkBlue }
 class AppPalette {
   static const yellow = [Color(0xFFFFC94D), Color(0xFFEADCC7)];
   static const turquoise = [Color(0xFF00BFAE), Color(0xFF79E2A0)];
-  static const darkBlue = [Color(0xFF102A66), Color(0xFF6A42D8)];
+  static const darkBlue = [Color(0xFF0B1633), Color(0xFF173A78), Color(0xFF3657B8)];
 
   static List<Color> gradient(AppThemeType type) => switch (type) {
     AppThemeType.yellow => yellow,
@@ -637,190 +637,58 @@ class _QueueItem {
 
 class NavigatorApp extends StatefulWidget {
   const NavigatorApp({super.key});
-  @override
-  State<NavigatorApp> createState() => _NavigatorAppState();
+  @override State<NavigatorApp> createState()=>_NavigatorAppState();
 }
-
-class _NavigatorAppState extends State<NavigatorApp> {
-  AppThemeType theme = AppThemeType.turquoise;
-  String userName = '';
-  bool ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    await SchoolScheduleCatalog.load();
-    classId = prefs.getString('student_class_name') ?? '';
-    if (classId.isEmpty && mounted) {
-      classId = await showDialog<String>(context: context, barrierDismissible: false, builder: (_) => const _StudentClassDialog()) ?? '';
-      if (classId.isNotEmpty) { await prefs.setString('student_class_name', classId); await prefs.setString('student_class_id', classId); }
-    }
-    if (classId.isNotEmpty) {
-      final groups = <String,int>{};
-      for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) groups[subject] = prefs.getInt('student_group_${classId}_$subject') ?? 1;
-      entries = SchoolScheduleCatalog.buildPersonal(classId, groups);
-    }
-    if (mounted) setState(() => loading = false);
-    await _scheduleNextReminder();
-  }
-
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('schedule_$classId', jsonEncode(entries.map((e) => e.toJson()).toList()));
-  }
-
-  Future<void> _scheduleNextReminder() async {
-    try {
-      await LocalNotificationService().scheduleUpcomingLessons(
-        entries: entries
-            .map((e) => (
-                  id: e.id,
-                  day: e.day,
-                  time: e.time,
-                  subject: e.subject,
-                  room: e.room,
-                ))
-            .toList(),
-      );
-    } catch (_) {
-      // Уведомления не должны ломать экран расписания.
-    }
-  }
-
-  List<ScheduleEntry> get today {
-    final list = entries.where((e) => e.day == day).toList();
-    list.sort((a, b) => a.time.compareTo(b.time));
-    return list;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 900;
-    return Scaffold(
-      appBar: AppBar(leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)), title: Text('Расписание • $classId', style: const TextStyle(fontWeight: FontWeight.w900)), actions: [IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)), IconButton(tooltip: 'Синхронизировать', onPressed: _syncOnline, icon: const Icon(Icons.cloud_sync_rounded)), IconButton(tooltip: 'Добавить урок', onPressed: _add, icon: const Icon(Icons.add_rounded))]),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Column(
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
-                      child: SegmentedButton<int>(
-                        segments: const [ButtonSegment(value: 1, label: Text('Пн')), ButtonSegment(value: 2, label: Text('Вт')), ButtonSegment(value: 3, label: Text('Ср')), ButtonSegment(value: 4, label: Text('Чт')), ButtonSegment(value: 5, label: Text('Пт')), ButtonSegment(value: 6, label: Text('Сб'))],
-                        selected: {day},
-                        onSelectionChanged: (v) => setState(() => day = v.first),
-                      ),
-                    ),
-                    Expanded(child: today.isEmpty ? _empty() : ListView.builder(padding: const EdgeInsets.fromLTRB(18, 8, 18, 30), itemCount: today.length, itemBuilder: (context, i) => _entryCard(today[i], wide))),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _empty() => Center(child: Padding(padding: const EdgeInsets.all(30), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.event_note_rounded, size: 60, color: Theme.of(context).colorScheme.primary), const SizedBox(height: 12), const Text('На этот день пока ничего нет', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 6), Text('Класс: $classId • базовое расписание можно менять в этом профиле.')])));
-
-  Widget _entryCard(ScheduleEntry e, bool wide) {
-    RoomInfo? room;
-    for (final candidate in SchoolData.rooms) {
-      if (candidate.id == e.room) {
-        room = candidate;
-        break;
-      }
-    }
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        isThreeLine: true,
-        leading: CircleAvatar(child: Text(e.time.isEmpty ? '•' : e.time.split(':').first)),
-        title: Text(e.subject.isEmpty ? 'Без названия' : e.subject, style: const TextStyle(fontWeight: FontWeight.w900)),
-        subtitle: Text(room == null ? (e.room.isEmpty ? 'Кабинет не указан' : 'Кабинет ${e.room}') : 'Кабинет ${room.id} • ${room.floor} этаж • ${room.name}'),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') _edit(e);
-            if (value == 'delete') _delete(e);
-            if (value == 'route' && room != null) {
-              final route = RouteEngine.build(room.id);
-              if (route != null) {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => RoutePage(room: room!, route: route)));
-              }
-            }
-          },
-          itemBuilder: (context) => [
-            if (room != null) const PopupMenuItem(value: 'route', child: Text('Как пройти')),
-            const PopupMenuItem(value: 'edit', child: Text('Изменить')),
-            const PopupMenuItem(value: 'delete', child: Text('Удалить')),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _syncOnline() async {
-    final prefs = await SharedPreferences.getInstance();
-    final baseUrl = prefs.getString('navigator_api_url') ?? '';
-    if (baseUrl.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала укажи URL API в админ-панели.'))); return; }
-    final service = OnlineDataService(NavigatorApiConfig(baseUrl: baseUrl));
-    final data = await service.get('health');
-    if (data == null) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сервер недоступен. Локальное базовое расписание сохранено.'))); return; }
-    final payload = await service.get('schedule?class_id=${Uri.encodeComponent(classId)}');
-    if (payload == null) return;
-    final rows = payload['rows'];
-    if (rows is List) {
-      final converted = <ScheduleEntry>[];
-      for (final raw in rows) {
-        if (raw is! Map<String, dynamic>) continue;
-        final row = raw['row'];
-        if (row is! List || row.length < 9) continue;
-        converted.add(ScheduleEntry(
-          id: '${row[0]}',
-          day: int.tryParse('${row[2]}') ?? 1,
-          time: '${row[4]}',
-          subject: '${row[6]}',
-          room: '${row[8]}',
-        ));
-      }
-      if (converted.isNotEmpty) { setState(() => entries = converted); await _save(); }
-    }
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Базовое расписание класса синхронизировано.')));
-  }
-
-  Future<void> _add() async {
-    final result = await showDialog<ScheduleEntry>(context: context, builder: (context) => ScheduleEditor(defaultDay: day));
-    if (result != null) {
-      setState(() => entries.add(result));
-      await _save();
-      await _scheduleNextReminder();
-    }
-  }
-
-  Future<void> _edit(ScheduleEntry old) async {
-    final result = await showDialog<ScheduleEntry>(context: context, builder: (context) => ScheduleEditor(initial: old));
-    if (result != null) {
-      final i = entries.indexWhere((e) => e.id == old.id);
-      if (i >= 0) {
-        setState(() => entries[i] = result);
-        await _save();
-        await _scheduleNextReminder();
-      }
-    }
-  }
-
-  Future<void> _delete(ScheduleEntry entry) async {
-    setState(() => entries.removeWhere((e) => e.id == entry.id));
-    await _save();
-  }
+class _NavigatorAppState extends State<NavigatorApp>{
+  AppThemeType theme=AppThemeType.turquoise; String userName=''; bool ready=false;
+  @override void initState(){super.initState();_load();}
+  Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();userName=p.getString('user_name')??'';final t=p.getString('theme');theme=AppThemeType.values.firstWhere((x)=>x.name==t,orElse:()=>AppThemeType.turquoise);if(mounted)setState(()=>ready=true);}
+  Future<void> setName(String v)async{v=v.trim();if(v.isEmpty)return;final p=await SharedPreferences.getInstance();await p.setString('user_name',v);if(mounted)setState(()=>userName=v);}
+  Future<void> setTheme(AppThemeType v)async{final p=await SharedPreferences.getInstance();await p.setString('theme',v.name);if(mounted)setState(()=>theme=v);}
+  @override Widget build(BuildContext context){if(!ready)return MaterialApp(debugShowCheckedModeBanner:false,home:Scaffold(body:Center(child:CircularProgressIndicator(color:AppPalette.gradient(theme).first))));return MaterialApp(debugShowCheckedModeBanner:false,title:'Navigator — школа «Поколение»',theme:_theme(theme),home:AppShell(userName:userName,theme:theme,onThemeChanged:setTheme,onNameChanged:setName));}
+  ThemeData _theme(AppThemeType type){final dark=type==AppThemeType.darkBlue;final colors=AppPalette.gradient(type);final cs=ColorScheme.fromSeed(seedColor:colors.first,brightness:dark?Brightness.dark:Brightness.light).copyWith(primary:dark?const Color(0xFF6F91FF):colors.first,secondary:dark?const Color(0xFF9EAEFF):colors.last,surface:dark?const Color(0xFF07101F):null,surfaceContainer:dark?const Color(0xFF0E1B2F):null,surfaceContainerHigh:dark?const Color(0xFF14243D):null,surfaceContainerHighest:dark?const Color(0xFF1A2C49):null,onSurface:dark?const Color(0xFFF3F6FF):null,onSurfaceVariant:dark?const Color(0xFFB8C5DE):null,outlineVariant:dark?const Color(0xFF263751):null);return ThemeData(useMaterial3:true,brightness:dark?Brightness.dark:Brightness.light,colorScheme:cs,scaffoldBackgroundColor:cs.surface,appBarTheme:AppBarTheme(backgroundColor:cs.surface,foregroundColor:cs.onSurface,elevation:0,surfaceTintColor:Colors.transparent),cardTheme:CardThemeData(color:dark?cs.surfaceContainer:null,elevation:dark?1:0,margin:EdgeInsets.zero,surfaceTintColor:Colors.transparent,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20))),inputDecorationTheme:InputDecorationTheme(filled:true,fillColor:cs.surfaceContainerHighest,border:OutlineInputBorder(borderRadius:BorderRadius.circular(16),borderSide:BorderSide.none)),filledButtonTheme:FilledButtonThemeData(style:FilledButton.styleFrom(backgroundColor:cs.primary,foregroundColor:cs.onPrimary,minimumSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16))));}
 }
-
+class AppShell extends StatefulWidget{
+  final String userName;final AppThemeType theme;final ValueChanged<AppThemeType> onThemeChanged;final ValueChanged<String> onNameChanged;
+  const AppShell({super.key,required this.userName,required this.theme,required this.onThemeChanged,required this.onNameChanged});
+  @override State<AppShell> createState()=>_AppShellState();
+}
+class _AppShellState extends State<AppShell>{
+  int index=0;String? selectedRoom;final key=GlobalKey<ScaffoldState>();
+  void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
+  @override Widget build(BuildContext context){final menu=()=>key.currentState?.openDrawer();return Scaffold(key:key,drawer:_drawer(context),body:IndexedStack(index:index,children:[HomePage(userName:widget.userName,theme:widget.theme,onMenu:menu,onMap:()=>go(1),onSchedule:()=>go(2),onDop:()=>go(3)),MapPage(initialRoom:selectedRoom,onMenu:menu),SchedulePage(onMenu:menu),SupplementsPage(onMenu:menu),SettingsPage(theme:widget.theme,userName:widget.userName,onThemeChanged:widget.onThemeChanged,onNameChanged:widget.onNameChanged,onMenu:menu)]));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и админ')];return Drawer(width:330,child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Navigator',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap:()=>go(x.$1)))]))])));}
+}
+class HomePage extends StatelessWidget{
+  final String userName;final AppThemeType theme;final VoidCallback onMenu,onMap,onSchedule,onDop;
+  const HomePage({super.key,required this.userName,required this.theme,required this.onMenu,required this.onMap,required this.onSchedule,required this.onDop});
+  @override Widget build(BuildContext context){final colors=AppPalette.gradient(theme);return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Navigator',style:TextStyle(fontWeight:FontWeight.w900))),body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1050),child:ListView(padding:const EdgeInsets.all(18),children:[Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(gradient:LinearGradient(colors:colors),borderRadius:BorderRadius.circular(28)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(userName.isEmpty?'Главное меню':'Привет, ${userName}!',style:const TextStyle(color:Colors.white,fontSize:27,fontWeight:FontWeight.w900)),const SizedBox(height:8),const Text('Карта школы, расписание и ДОПы — в одном приложении.',style:TextStyle(color:Colors.white)),const SizedBox(height:18),Wrap(spacing:10,runSpacing:10,children:[_HeroButton('Карта школы',Icons.map_rounded,onMap),_HeroButton('Расписание',Icons.calendar_month_rounded,onSchedule),_HeroButton('ДОПы',Icons.auto_awesome_rounded,onDop)])])),const SizedBox(height:16),Card(child:ListTile(leading:Icon(Icons.offline_bolt_rounded,color:Theme.of(context).colorScheme.primary),title:const Text('Офлайн-first',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Карта и базовые данные остаются доступными без интернета.')))]))));}
+}
+class _HeroButton extends StatelessWidget{final String text;final IconData icon;final VoidCallback onTap;const _HeroButton(this.text,this.icon,this.onTap);@override Widget build(BuildContext context)=>FilledButton.icon(onPressed:onTap,icon:Icon(icon),label:Text(text),style:FilledButton.styleFrom(backgroundColor:Colors.white24,foregroundColor:Colors.white));}
+class MapPage extends StatefulWidget{final String? initialRoom;final VoidCallback onMenu;const MapPage({super.key,this.initialRoom,required this.onMenu});@override State<MapPage> createState()=>_MapPageState();}
+class _MapPageState extends State<MapPage>{
+  int floor=1;String query='';String? selected;int startFloor=1;String? startId;final search=TextEditingController();
+  @override void initState(){super.initState();selected=widget.initialRoom;if(selected!=null)floor=SchoolData.room(selected!).floor;_load();}
+  Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
+  @override void dispose(){search.dispose();super.dispose();}
+  List<RoomInfo> get rooms=>SchoolData.rooms.where((r)=>r.floor==floor&&(query.isEmpty||r.id.toLowerCase().contains(query.toLowerCase())||SchoolData.title(r).toLowerCase().contains(query.toLowerCase()))).toList();
+  Future<void> _start()async{final r=await showDialog<_StartChoice>(context:context,builder:(_)=>_StartDialog(floor:startFloor,id:startId));if(r==null)return;final p=await SharedPreferences.getInstance();await p.setInt('map_start_floor',r.floor);if(r.id==null)await p.remove('map_start_location');else await p.setString('map_start_location',r.id!);if(mounted)setState((){startFloor=r.floor;startId=r.id;});}
+  void _open(RoomInfo r){setState(()=>selected=r.id);final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId);if(route==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Маршрут для этой точки недоступен.')));return;}Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));}
+  @override Widget build(BuildContext context){return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Карта школы',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_start,tooltip:'Начало маршрута',icon:const Icon(Icons.my_location_rounded)),IconButton(onPressed:()=>setState((){query='';search.clear();}),tooltip:'Очистить поиск',icon:const Icon(Icons.clear_all_rounded))]),body:Column(children:[Padding(padding:const EdgeInsets.fromLTRB(16,8,16,6),child:Row(children:[Expanded(child:TextField(controller:search,onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(prefixIcon:Icon(Icons.search_rounded),hintText:'Номер или название кабинета'))),const SizedBox(width:10),SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('1')),ButtonSegment(value:2,label:Text('2')),ButtonSegment(value:3,label:Text('3'))],selected:{floor},onSelectionChanged:(v)=>setState(()=>floor=v.first))])),Expanded(child:Row(children:[Expanded(flex:3,child:Padding(padding:const EdgeInsets.fromLTRB(16,6,8,16),child:_MapImage(floor:floor,selected:selected))),SizedBox(width:340,child:ListView(padding:const EdgeInsets.fromLTRB(8,6,16,16),children:[Card(child:ListTile(leading:const Icon(Icons.login_rounded),title:const Text('Точка старта',style:TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(startId==null?'Главный вход':'${SchoolData.title(SchoolData.room(startId!))}'),onTap:_start)),const SizedBox(height:6),Text('Кабинеты и места • ${floor} этаж',style:const TextStyle(fontWeight:FontWeight.w900)),const SizedBox(height:6),...rooms.map((r)=>Card(margin:const EdgeInsets.only(bottom:6),child:ListTile(leading:Icon(SchoolData.isPlace(r)?Icons.place_rounded:Icons.meeting_room_rounded),title:Text(SchoolData.title(r),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text('каб. ${r.id}'),trailing:const Icon(Icons.chevron_right_rounded),onTap:()=>_open(r))))]))]))]));}
+}
+class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.room(selected!).point,Theme.of(context).colorScheme.primary)))]))));}
+class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
+class SchedulePage extends StatefulWidget{final VoidCallback onMenu;const SchedulePage({super.key,required this.onMenu});@override State<SchedulePage> createState()=>_SchedulePageState();}
+class _SchedulePageState extends State<SchedulePage>{
+  String classId='';List<ScheduleEntry> entries=[];int day=DateTime.now().weekday.clamp(1,6);bool loading=true;
+  @override void initState(){super.initState();_load();}
+  Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();classId=p.getString('student_class_name')??'';final groups=<String,int>{for(final s in SchoolScheduleCatalog.splitSubjects(classId))s:p.getInt('student_group_${classId}_${s}')??1};entries=classId.isEmpty?[]:SchoolScheduleCatalog.buildPersonal(classId,groups);if(mounted)setState(()=>loading=false);try{await LocalNotificationService().scheduleUpcomingLessons(entries:entries.map((e)=>(id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList());}catch(_){}}
+  Future<void> _class()async{final r=await showDialog<String>(context:context,builder:(_)=>const _StudentClassDialog());if(r==null)return;final p=await SharedPreferences.getInstance();await p.setString('student_class_name',r);await p.setString('student_class_id',r);await showStudentGroupSelection(context,r,onlyIfNeeded:true);await _load();}
+  @override Widget build(BuildContext context){final c=Theme.of(context).colorScheme;final list=entries.where((e)=>e.day==day).toList()..sort((a,b)=>a.time.compareTo(b.time));return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:Text(classId.isEmpty?'Расписание':'Расписание • ${classId}',style:const TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_class,tooltip:'Выбрать класс',icon:const Icon(Icons.school_rounded))]),body:loading?const Center(child:CircularProgressIndicator()):Column(children:[if(classId.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Card(child:ListTile(title:const Text('Выбери класс',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Разделённые предметы поддерживают отдельный выбор группы.'),trailing:FilledButton(onPressed:_class,child:const Text('Выбрать'))))),SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.all(12),child:SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('Пн')),ButtonSegment(value:2,label:Text('Вт')),ButtonSegment(value:3,label:Text('Ср')),ButtonSegment(value:4,label:Text('Чт')),ButtonSegment(value:5,label:Text('Пт')),ButtonSegment(value:6,label:Text('Сб'))],selected:{day},onSelectionChanged:(v)=>setState(()=>day=v.first))),Expanded(child:list.isEmpty?Center(child:Text(classId.isEmpty?'Выбери класс':'На этот день уроков нет')):ListView.builder(padding:const EdgeInsets.all(16),itemCount:list.length,itemBuilder:(context,i){final e=list[i];return Card(margin:const EdgeInsets.only(bottom:8),child:ListTile(leading:CircleAvatar(backgroundColor:c.primaryContainer,child:Text(e.time.split(':').first,style:TextStyle(color:c.primary,fontWeight:FontWeight.w900))),title:Text(e.subject,style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text('${e.time} • каб. ${e.room.isEmpty?'—':e.room}'),trailing:IconButton(onPressed:e.room.isEmpty?null:(){final r=SchoolData.tryRoom(e.room);if(r==null)return;final route=RouteEngine.build(r.id);if(route!=null)Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));},tooltip:'Как пройти',icon:const Icon(Icons.route_rounded))));}))]);}
+}
+class RoutePage extends StatelessWidget{final RoomInfo room;final RouteResult route;const RoutePage({super.key,required this.room,required this.route});@override Widget build(BuildContext context){final steps=RouteEngine.instructions(route);return Scaffold(appBar:AppBar(title:Text('Маршрут → ${SchoolData.title(room)}',style:const TextStyle(fontWeight:FontWeight.w900))),body:ListView(padding:const EdgeInsets.all(16),children:[Card(clipBehavior:Clip.antiAlias,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${room.floor}.webp',fit:BoxFit.contain)),Positioned.fill(child:CustomPaint(painter:_RoutePainter(route.nodes.where((n)=>n.floor==room.floor).toList(),Theme.of(context).colorScheme.primary)))]))),...steps.asMap().entries.map((e)=>Card(child:ListTile(leading:CircleAvatar(child:Text('${e.key+1}')),title:Text(e.value.text),subtitle:Text('${e.value.floor} этаж'))))]));}}
+class _RoutePainter extends CustomPainter{final List<RouteNode> nodes;final Color color;_RoutePainter(this.nodes,this.color);@override void paint(Canvas c,Size s){if(nodes.length<2)return;final p=Paint()..color=color..strokeWidth=6..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;final path=Path();for(var i=0;i<nodes.length;i++){final o=Offset(nodes[i].point.dx*s.width,nodes[i].point.dy*s.height);if(i==0)path.moveTo(o.dx,o.dy);else path.lineTo(o.dx,o.dy);}c.drawPath(path,p);}@override bool shouldRepaint(covariant _RoutePainter o)=>o.nodes!=nodes||o.color!=color;}
+class FullscreenMapPage extends StatelessWidget{final int floor;final String? selectedRoom;final String? routeRoom;final int startFloor;final String? startLocationId;const FullscreenMapPage({super.key,required this.floor,required this.selectedRoom,required this.routeRoom,required this.startFloor,required this.startLocationId});@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('${floor} этаж')),body:InteractiveViewer(minScale:.5,maxScale:6,child:Center(child:AspectRatio(aspectRatio:7016/4960,child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)))));}
 class ScheduleEditor extends StatefulWidget {
   final ScheduleEntry? initial;
   final int defaultDay;
