@@ -618,17 +618,11 @@ class DopParser {
 
   String _attr(String tag, String name) {
     final match = RegExp(
-      r'\b' +
+      r'''(?:\b)''' +
           RegExp.escape(name) +
-          r'\s*=\s*["]([^"]*)["]',
+          r'''(?:\s*=\s*["'])(.*?)(?:["'])''',
       caseSensitive: false,
-    ).firstMatch(tag) ??
-        RegExp(
-          r"\b" +
-              RegExp.escape(name) +
-              r"\s*=\s*['"]([^'"]*)['"]",
-          caseSensitive: false,
-        ).firstMatch(tag);
+    ).firstMatch(tag);
 
     return _decode(match?.group(1) ?? '').trim();
   }
