@@ -793,9 +793,48 @@ class _SchedulePageState extends State<SchedulePage>{
     );
   }
 }
-class RoutePage extends StatelessWidget{final RoomInfo room;final RouteResult route;const RoutePage({super.key,required this.room,required this.route});@override Widget build(BuildContext context){final steps=RouteEngine.instructions(route);return Scaffold(appBar:AppBar(title:Text('Маршрут → ${SchoolData.title(room)}',style:const TextStyle(fontWeight:FontWeight.w900))),body:ListView(padding:const EdgeInsets.all(16),children:[Card(clipBehavior:Clip.antiAlias,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${room.floor}.webp',fit:BoxFit.contain)),Positioned.fill(child:CustomPaint(painter:_RoutePainter(route.nodes.where((n)=>n.floor==room.floor).toList(),Theme.of(context).colorScheme.primary)))]))),...steps.asMap().entries.map((e)=>Card(child:ListTile(leading:CircleAvatar(child:Text('${e.key+1}')),title:Text(e.value.text),subtitle:Text('${e.value.floor} этаж'))))]));}}
-class _RoutePainter extends CustomPainter{final List<RouteNode> nodes;final Color color;_RoutePainter(this.nodes,this.color);@override void paint(Canvas c,Size s){if(nodes.length<2)return;final p=Paint()..color=color..strokeWidth=6..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;final path=Path();for(var i=0;i<nodes.length;i++){final o=Offset(nodes[i].point.dx*s.width,nodes[i].point.dy*s.height);if(i==0)path.moveTo(o.dx,o.dy);else path.lineTo(o.dx,o.dy);}c.drawPath(path,p);}@override bool shouldRepaint(covariant _RoutePainter o)=>o.nodes!=nodes||o.color!=color;}
-class FullscreenMapPage extends StatelessWidget{final int floor;final String? selectedRoom;final String? routeRoom;final int startFloor;final String? startLocationId;const FullscreenMapPage({super.key,required this.floor,required this.selectedRoom,required this.routeRoom,required this.startFloor,required this.startLocationId});@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('${floor} этаж')),body:InteractiveViewer(minScale:.5,maxScale:6,child:Center(child:AspectRatio(aspectRatio:7016/4960,child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)))));}
+class RoutePage extends StatelessWidget {
+  final RoomInfo room; final RouteResult route;
+  const RoutePage({super.key,required this.room,required this.route});
+  @override Widget build(BuildContext context){
+    final steps=RouteEngine.instructions(route);
+    return Scaffold(
+      appBar:AppBar(title:Text('Маршрут → '+SchoolData.title(room),style:const TextStyle(fontWeight:FontWeight.w900))),
+      body:ListView(
+        padding:const EdgeInsets.all(16),
+        children:[
+          Card(clipBehavior:Clip.antiAlias,child:AspectRatio(
+            aspectRatio:7016/4960,
+            child:Stack(children:[
+              Positioned.fill(child:Image.asset('assets/maps/floor'+room.floor.toString()+'.webp',fit:BoxFit.contain)),
+              Positioned.fill(child:CustomPaint(painter:_RoutePainter(route.nodes.where((n)=>n.floor==room.floor).toList(),Theme.of(context).colorScheme.primary))),
+            ]),
+          )),
+          const SizedBox(height:12),
+          Card(child:ListTile(leading:const Icon(Icons.route_rounded),title:const Text('Маршрут построен',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:Text('Этаж старта: '+route.startFloor.toString()+' • этаж назначения: '+room.floor.toString()))),
+          for(final e in steps.asMap().entries)Card(child:ListTile(leading:CircleAvatar(child:Text((e.key+1).toString())),title:Text(e.value.text),subtitle:Text(e.value.floor.toString()+' этаж'))),
+        ],
+      ),
+    );
+  }
+}
+class _RoutePainter extends CustomPainter {
+  final List<RouteNode> nodes; final Color color;
+  _RoutePainter(this.nodes,this.color);
+  @override void paint(Canvas c,Size s){
+    if(nodes.length<2)return;
+    final p=Paint()..color=color..strokeWidth=6..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;
+    final path=Path();
+    for(var i=0;i<nodes.length;i++){final o=Offset(nodes[i].point.dx*s.width,nodes[i].point.dy*s.height);if(i==0)path.moveTo(o.dx,o.dy);else path.lineTo(o.dx,o.dy);}
+    c.drawPath(path,p);
+  }
+  @override bool shouldRepaint(covariant _RoutePainter old)=>old.nodes!=nodes||old.color!=color;
+}
+class FullscreenMapPage extends StatelessWidget {
+  final int floor; final String? selectedRoom; final String? routeRoom; final int startFloor; final String? startLocationId;
+  const FullscreenMapPage({super.key,required this.floor,required this.selectedRoom,required this.routeRoom,required this.startFloor,required this.startLocationId});
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(floor.toString()+' этаж')),body:InteractiveViewer(minScale:.5,maxScale:6,child:Center(child:AspectRatio(aspectRatio:7016/4960,child:Image.asset('assets/maps/floor'+floor.toString()+'.webp',fit:BoxFit.contain)))));
+}
 class ScheduleEditor extends StatefulWidget {
   final ScheduleEntry? initial;
   final int defaultDay;
