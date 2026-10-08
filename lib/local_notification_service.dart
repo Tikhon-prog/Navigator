@@ -106,9 +106,11 @@ class LocalNotificationService {
         ..sort((a, b) => a.time.compareTo(b.time));
 
       for (final e in dayEntries) {
-        final parts = e.time.split(':');
-        final hour = int.tryParse(parts.isNotEmpty ? parts[0] : '');
-        final minute = int.tryParse(parts.length > 1 ? parts[1] : '');
+        // Встроенное расписание хранит время как «08:30 - 09:10».
+        // Берём первое HH:mm — это фактическое начало урока.
+        final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(e.time);
+        final hour = int.tryParse(match?.group(1) ?? '');
+        final minute = int.tryParse(match?.group(2) ?? '');
         if (hour == null || minute == null || hour < 0 || hour > 23 ||
             minute < 0 || minute > 59) {
           continue;
