@@ -737,13 +737,61 @@ class _MapPageState extends State<MapPage>{
 }
 class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.room(selected!).point,Theme.of(context).colorScheme.primary)))]))));}
 class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
-class SchedulePage extends StatefulWidget{final VoidCallback onMenu;const SchedulePage({super.key,required this.onMenu});@override State<SchedulePage> createState()=>_SchedulePageState();}
+class SchedulePage extends StatefulWidget {
+  final VoidCallback onMenu;
+  const SchedulePage({super.key,required this.onMenu});
+  @override State<SchedulePage> createState()=>_SchedulePageState();
+}
 class _SchedulePageState extends State<SchedulePage>{
-  String classId='';List<ScheduleEntry> entries=[];int day=DateTime.now().weekday.clamp(1,6);bool loading=true;
+  String classId=''; List<ScheduleEntry> entries=[]; int day=DateTime.now().weekday.clamp(1,6); bool loading=true;
   @override void initState(){super.initState();_load();}
-  Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();classId=p.getString('student_class_name')??'';final groups=<String,int>{for(final s in SchoolScheduleCatalog.splitSubjects(classId))s:p.getInt('student_group_${classId}_${s}')??1};entries=classId.isEmpty?[]:SchoolScheduleCatalog.buildPersonal(classId,groups);if(mounted)setState(()=>loading=false);try{await LocalNotificationService().scheduleUpcomingLessons(entries:entries.map((e)=>(id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList());}catch(_){}}
-  Future<void> _class()async{final r=await showDialog<String>(context:context,builder:(_)=>const _StudentClassDialog());if(r==null)return;final p=await SharedPreferences.getInstance();await p.setString('student_class_name',r);await p.setString('student_class_id',r);await showStudentGroupSelection(context,r,onlyIfNeeded:true);await _load();}
-  @override Widget build(BuildContext context){final c=Theme.of(context).colorScheme;final list=entries.where((e)=>e.day==day).toList()..sort((a,b)=>a.time.compareTo(b.time));return Scaffold(appBar:AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:Text(classId.isEmpty?'Расписание':'Расписание • ${classId}',style:const TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_class,tooltip:'Выбрать класс',icon:const Icon(Icons.school_rounded))]),body:loading?const Center(child:CircularProgressIndicator()):Column(children:[if(classId.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Card(child:ListTile(title:const Text('Выбери класс',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Разделённые предметы поддерживают отдельный выбор группы.'),trailing:FilledButton(onPressed:_class,child:const Text('Выбрать'))))),SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.all(12),child:SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('Пн')),ButtonSegment(value:2,label:Text('Вт')),ButtonSegment(value:3,label:Text('Ср')),ButtonSegment(value:4,label:Text('Чт')),ButtonSegment(value:5,label:Text('Пт')),ButtonSegment(value:6,label:Text('Сб'))],selected:{day},onSelectionChanged:(v)=>setState(()=>day=v.first))),Expanded(child:list.isEmpty?Center(child:Text(classId.isEmpty?'Выбери класс':'На этот день уроков нет')):ListView.builder(padding:const EdgeInsets.all(16),itemCount:list.length,itemBuilder:(context,i){final e=list[i];return Card(margin:const EdgeInsets.only(bottom:8),child:ListTile(leading:CircleAvatar(backgroundColor:c.primaryContainer,child:Text(e.time.split(':').first,style:TextStyle(color:c.primary,fontWeight:FontWeight.w900))),title:Text(e.subject,style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text('${e.time} • каб. ${e.room.isEmpty?'—':e.room}'),trailing:IconButton(onPressed:e.room.isEmpty?null:(){final r=SchoolData.tryRoom(e.room);if(r==null)return;final route=RouteEngine.build(r.id);if(route!=null)Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));},tooltip:'Как пройти',icon:const Icon(Icons.route_rounded))));}))]);}
+  Future<void> _load()async{
+    final p=await SharedPreferences.getInstance();
+    await SchoolScheduleCatalog.load();
+    classId=p.getString('student_class_name')??'';
+    final groups=<String,int>{};
+    for(final s in SchoolScheduleCatalog.splitSubjects(classId)){groups[s]=p.getInt('student_group_'+classId+'_'+s)??1;}
+    entries=classId.isEmpty?[]:SchoolScheduleCatalog.buildPersonal(classId,groups);
+    if(mounted)setState(()=>loading=false);
+    try{await LocalNotificationService().scheduleUpcomingLessons(entries:entries.map((e)=>(id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList());}catch(_){}
+  }
+  Future<void> _class()async{
+    final r=await showDialog<String>(context:context,builder:(_)=>const _StudentClassDialog());
+    if(r==null)return;
+    final p=await SharedPreferences.getInstance();
+    await p.setString('student_class_name',r);
+    await p.setString('student_class_id',r);
+    await showStudentGroupSelection(context,r,onlyIfNeeded:true);
+    await _load();
+  }
+  @override Widget build(BuildContext context){
+    final c=Theme.of(context).colorScheme;
+    final list=entries.where((e)=>e.day==day).toList()..sort((a,b)=>a.time.compareTo(b.time));
+    return Scaffold(
+      appBar:AppBar(leading:IconButton(onPressed:widget.onMenu,icon:const Icon(Icons.menu_rounded)),title:Text(classId.isEmpty?'Расписание':'Расписание • '+classId,style:const TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_class,tooltip:'Выбрать класс',icon:const Icon(Icons.school_rounded))]),
+      body:loading?const Center(child:CircularProgressIndicator()):Column(children:[
+        if(classId.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Card(child:ListTile(title:const Text('Выбери класс',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Разделённые предметы поддерживают отдельный выбор группы.'),trailing:FilledButton(onPressed:_class,child:const Text('Выбрать'))))),
+        SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.all(12),child:SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('Пн')),ButtonSegment(value:2,label:Text('Вт')),ButtonSegment(value:3,label:Text('Ср')),ButtonSegment(value:4,label:Text('Чт')),ButtonSegment(value:5,label:Text('Пт')),ButtonSegment(value:6,label:Text('Сб'))],selected:{day},onSelectionChanged:(v)=>setState(()=>day=v.first))),
+        Expanded(child:list.isEmpty?Center(child:Text(classId.isEmpty?'Выбери класс':'На этот день уроков нет')):ListView.builder(padding:const EdgeInsets.all(16),itemCount:list.length,itemBuilder:(context,i){
+          final e=list[i];
+          return Card(margin:const EdgeInsets.only(bottom:8),child:ListTile(
+            leading:CircleAvatar(backgroundColor:c.primaryContainer,child:Text(e.time.split(':').first,style:TextStyle(color:c.primary,fontWeight:FontWeight.w900))),
+            title:Text(e.subject,style:const TextStyle(fontWeight:FontWeight.w900)),
+            subtitle:Text(e.time+' • каб. '+(e.room.isEmpty?'—':e.room)),
+            trailing:IconButton(
+              onPressed:e.room.isEmpty?null:(){
+                final r=SchoolData.tryRoom(e.room);
+                if(r==null)return;
+                final route=RouteEngine.build(r.id);
+                if(route!=null)Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));
+              },
+              tooltip:'Как пройти',icon:const Icon(Icons.route_rounded),
+            ),
+          );
+        })),
+      ]),
+    );
+  }
 }
 class RoutePage extends StatelessWidget{final RoomInfo room;final RouteResult route;const RoutePage({super.key,required this.room,required this.route});@override Widget build(BuildContext context){final steps=RouteEngine.instructions(route);return Scaffold(appBar:AppBar(title:Text('Маршрут → ${SchoolData.title(room)}',style:const TextStyle(fontWeight:FontWeight.w900))),body:ListView(padding:const EdgeInsets.all(16),children:[Card(clipBehavior:Clip.antiAlias,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${room.floor}.webp',fit:BoxFit.contain)),Positioned.fill(child:CustomPaint(painter:_RoutePainter(route.nodes.where((n)=>n.floor==room.floor).toList(),Theme.of(context).colorScheme.primary)))]))),...steps.asMap().entries.map((e)=>Card(child:ListTile(leading:CircleAvatar(child:Text('${e.key+1}')),title:Text(e.value.text),subtitle:Text('${e.value.floor} этаж'))))]));}}
 class _RoutePainter extends CustomPainter{final List<RouteNode> nodes;final Color color;_RoutePainter(this.nodes,this.color);@override void paint(Canvas c,Size s){if(nodes.length<2)return;final p=Paint()..color=color..strokeWidth=6..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;final path=Path();for(var i=0;i<nodes.length;i++){final o=Offset(nodes[i].point.dx*s.width,nodes[i].point.dy*s.height);if(i==0)path.moveTo(o.dx,o.dy);else path.lineTo(o.dx,o.dy);}c.drawPath(path,p);}@override bool shouldRepaint(covariant _RoutePainter o)=>o.nodes!=nodes||o.color!=color;}
