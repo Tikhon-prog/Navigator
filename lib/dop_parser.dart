@@ -267,16 +267,15 @@ class DopParser {
 
   List<DopProgram> _parseCatalog(String html) {
     final result = <DopProgram>[];
-
     final cards = RegExp(
-      r'<article\b[^>]*\bdata-program-card\s*=\s*"(\d+)"[^>]*>([\s\S]*?)</article>',
+      r'<article\b([^>]*)>([\s\S]*?)</article>',
       caseSensitive: false,
     ).allMatches(html);
 
     for (final card in cards) {
-      final programId = int.tryParse(card.group(1) ?? '');
+      final attributes = card.group(1) ?? '';
+      final programId = int.tryParse(_attr(attributes, 'data-program-card'));
       if (programId == null) continue;
-
       final body = card.group(2) ?? '';
       final name = _textTag(body, 'h2');
       if (name.isEmpty) continue;
@@ -284,12 +283,8 @@ class DopParser {
       final direction = _textClass(body, 'direction-badge');
       final hours = _number(_textClass(body, 'hours-badge'));
       final classes = _textClass(body, 'program-class-badge');
-      final startDate = _nullable(
-        _textClass(body, 'start-date-badge'),
-      );
-
+      final startDate = _nullable(_textClass(body, 'start-date-badge'));
       final subgroups = <DopSubgroup>[];
-
       final subgroupMatches = RegExp(
         r'<section\b[^>]*\bdata-subgroup-card\b[^>]*>([\s\S]*?)</section>',
         caseSensitive: false,
@@ -297,68 +292,48 @@ class DopParser {
 
       for (final match in subgroupMatches) {
         final subgroupHtml = match.group(1) ?? '';
-
-        final input = RegExp(
-          r'<input\b[^>]*\bclass\s*=\s*"[^"]*\bdiscipline-checkbox\b[^"]*"[^>]*>',
-          caseSensitive: false,
-        ).firstMatch(subgroupHtml)?.group(0);
-
+        String? input;
+        for (final inputMatch in RegExp(r'<input\b[^>]*>', caseSensitive: false).allMatches(subgroupHtml)) {
+          final candidate = inputMatch.group(0) ?? '';
+          if (_attr(candidate, 'class').split(RegExp(r'\s+')).contains('discipline-checkbox')) {
+            input = candidate;
+            break;
+          }
+        }
         if (input == null) continue;
 
-        final subgroupId =
-            int.tryParse(_attr(input, 'data-subgroup-id'));
+        final subgroupId = int.tryParse(_attr(input, 'data-subgroup-id'));
         if (subgroupId == null) continue;
-
-        final inputProgramId =
-            int.tryParse(_attr(input, 'data-program-id')) ?? programId;
-
+        final inputProgramId = int.tryParse(_attr(input, 'data-program-id')) ?? programId;
         final dataName = _attr(input, 'data-name');
+        final subgroupHours = int.tryParse(_attr(input, 'data-hours')) ?? hours;
+        final limitHours = int.tryParse(_attr(input, 'data-limit-hours')) ?? subgroupHours;
+        final schedule = _parseJsonSchedule(_decode(_attr(input, 'data-schedule')));
+        final teacher = _teacherFromSubgroup(subgroupHtml);
+        final supplies = _nullable(_textClass(subgroupHtml, 'supplies-inline-text'));
 
-        final subgroupHours =
-            int.tryParse(_attr(input, 'data-hours')) ?? hours;
-
-        final limitHours =
-            int.tryParse(_attr(input, 'data-limit-hours')) ??
-                subgroupHours;
-
-        final schedule = _parseJsonSchedule(
-          _decode(_attr(input, 'data-schedule')),
-        );
-
-        final teacher =
-            _teacherFromSubgroup(subgroupHtml);
-
-        final supplies = _nullable(
-          _textClass(subgroupHtml, 'supplies-inline-text'),
-        );
-
-        subgroups.add(
-          DopSubgroup(
-            programId: inputProgramId,
-            subgroupId: subgroupId,
-            name: dataName.isNotEmpty ? dataName : name,
-            hours: subgroupHours,
-            limitHours: limitHours,
-            teacher: teacher,
-            schedule: schedule,
-            supplies: supplies,
-          ),
-        );
+        subgroups.add(DopSubgroup(
+          programId: inputProgramId,
+          subgroupId: subgroupId,
+          name: dataName.isNotEmpty ? dataName : name,
+          hours: subgroupHours,
+          limitHours: limitHours,
+          teacher: teacher,
+          schedule: schedule,
+          supplies: supplies,
+        ));
       }
 
-      result.add(
-        DopProgram(
-          programId: programId,
-          name: name,
-          direction: direction,
-          hours: hours,
-          classes: classes,
-          startDate: startDate,
-          subgroups: subgroups,
-        ),
-      );
+      result.add(DopProgram(
+        programId: programId,
+        name: name,
+        direction: direction,
+        hours: hours,
+        classes: classes,
+        startDate: startDate,
+        subgroups: subgroups,
+      ));
     }
-
     return result;
   }
 
