@@ -1416,7 +1416,7 @@ class RoutePage extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Center(child: Text('${item.key + 1}', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w900, fontSize: 15))),
+                        Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Center(child: Text('${item.key + 1}', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w900, fontSize: 15)))),
                         const SizedBox(width: 13),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(item.value.text, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.35)),
