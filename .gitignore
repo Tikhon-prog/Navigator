@@ -14,5 +14,14 @@ android/key.properties
 android/app/*.jks
 android/app/*.keystore
 
-# Local backend secrets
+# Environment files and private backend credentials
+.env
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Python generated files
+__pycache__/
+*.py[cod]
