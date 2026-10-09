@@ -14,6 +14,11 @@ TOKEN_PATTERNS = [
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{30,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(
+        r"(?im)\b(?:YANDEX_OAUTH_TOKEN|WIKI_TOKEN|CLIENT_SECRET|API_SECRET)\b"
+        r"\s*[:=]\s*['\"]?[A-Za-z0-9._-]{24,}"
+    ),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 ]
 FORBIDDEN_FILENAMES = {"key.properties"}
