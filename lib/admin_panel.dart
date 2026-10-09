@@ -110,11 +110,12 @@ class AdminRepository {
   Future<List<AdminAccount>> list() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key) ?? prefs.getString(_legacyKey);
-    if (raw == null) return [const AdminAccount(id: 'root', login: AdminAuthStore.bootstrapLogin, passwordHash: AdminAuthStore.bootstrapPasswordSha256, role: 'superadmin')];
+    if (raw == null) return [];
     try {
       return (jsonDecode(raw) as List).map((e) => AdminAccount.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (_) {
-      return [const AdminAccount(id: 'root', login: AdminAuthStore.bootstrapLogin, passwordHash: AdminAuthStore.bootstrapPasswordSha256, role: 'superadmin')];
+      // Повреждённое хранилище не должно восстанавливать известный пароль.
+      return [];
     }
   }
 
