@@ -264,7 +264,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     if (!can(AdminPermissions.manageSync)) return;
     final raw = apiController.text.trim();
     if (apiEnabled && raw.isNotEmpty && !isSecureApiBaseUrl(raw)) {
-      setState(() => apiStatus = 'Для внешнего сервера нужен HTTPS. HTTP разрешён только для localhost.');
+      setState(() => apiStatus = 'Адрес API должен использовать HTTPS и не содержать логин, пароль, query или fragment.');
       return;
     }
     setState(() => saving = true);
@@ -286,7 +286,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     final raw = apiController.text.trim();
     final uri = Uri.tryParse(raw);
     if (uri == null || !isSecureApiBaseUrl(raw)) {
-      setState(() => apiStatus = 'Для внешнего сервера нужен HTTPS. HTTP разрешён только для localhost.');
+      setState(() => apiStatus = 'Адрес API должен использовать HTTPS и не содержать логин, пароль, query или fragment.');
       return;
     }
     setState(() => apiStatus = 'Проверяю соединение…');
