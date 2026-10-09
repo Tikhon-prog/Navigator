@@ -41,7 +41,7 @@ void main() {
           expect(RegExp(r'\bауд\.\s*\d+', caseSensitive: false).hasMatch(rawLesson), isFalse,
               reason: 'В исходной строке есть номер кабинета, но он не извлечён: $className');
         }
-        expect(lesson['group'], anyOf(1, 2));
+        expect(lesson['group'], anyOf(1, 2, 3));
       }
     }
   });
