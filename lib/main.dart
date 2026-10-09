@@ -1482,10 +1482,6 @@ class _FullscreenMapPageState extends State<FullscreenMapPage> {
   void _changeZoom(double delta, Size size) {
     final current = _zoom.value.getMaxScaleOnAxis();
     final next = (current + delta).clamp(.6, 6.0).toDouble();
-    if (next <= .61 && delta < 0) {
-      _zoom.value = Matrix4.identity();
-      return;
-    }
     _zoom.value = Matrix4.identity()
       ..translate(size.width * (1 - next) / 2, size.height * (1 - next) / 2)
       ..scale(next);
