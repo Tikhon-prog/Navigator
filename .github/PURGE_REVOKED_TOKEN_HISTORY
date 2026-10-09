@@ -1,3 +1,0 @@
-This temporary trigger requests removal of backend/.env from all Git branches and tags after token revocation.
-Retry trigger after workflow syntax correction.
-Retry trigger after YAML fix.
