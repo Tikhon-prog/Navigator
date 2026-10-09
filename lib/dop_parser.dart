@@ -371,13 +371,13 @@ class DopParser {
   List<_DopCurrentChoice> _parseCurrentApplication(String html) {
     final result = <_DopCurrentChoice>[];
     final cards = RegExp(
-      r'<article\\b([^>]*)>([\\s\\S]*?)</article>',
+      r'<article\b([^>]*)>([\s\S]*?)</article>',
       caseSensitive: false,
     ).allMatches(html);
 
     for (final card in cards) {
       final attributes = card.group(1) ?? '';
-      final classes = _attr(attributes, 'class').split(RegExp(r'\\s+'));
+      final classes = _attr(attributes, 'class').split(RegExp(r'\s+'));
       if (!classes.contains('success-program-card')) continue;
       final body = card.group(2) ?? '';
 
@@ -620,7 +620,7 @@ class DopParser {
 
   String _decode(String value) {
     var result = value
-        .replaceAll('&nbsp;', '\\u00A0')
+        .replaceAll('&nbsp;', '\u00A0')
         .replaceAll('&ndash;', '–')
         .replaceAll('&mdash;', '—')
         .replaceAll('&hellip;', '…')
@@ -673,7 +673,7 @@ class DopParser {
   }
 
   String _inputValue(String html, String name) {
-    for (final match in RegExp(r'<input\\b[^>]*>', caseSensitive: false).allMatches(html)) {
+    for (final match in RegExp(r'<input\b[^>]*>', caseSensitive: false).allMatches(html)) {
       final tag = match.group(0) ?? '';
       if (_attr(tag, 'name') == name) return _attr(tag, 'value');
     }
@@ -682,8 +682,8 @@ class DopParser {
 
   String _normalizeRoom(String value) => value
       .toLowerCase()
-      .replaceAll(RegExp(r'^\\s*кабинет\\s*'), '')
-      .replaceAll(RegExp(r'\\s+'), ' ')
+      .replaceAll(RegExp(r'^\s*кабинет\s*'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
 }
