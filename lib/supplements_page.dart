@@ -129,7 +129,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       for (final d in result.application.disciplines) {
         for (final slot in d.schedule) {
           imported.add(Supplement(
-            id: 'intranet_' + d.programId.toString() + '_' + d.subgroupId.toString() + '_' + slot.day.toString() + '_' + slot.start.toString(),
+            id: 'intranet_' + d.programId.toString() + '_' + d.subgroupId.toString() + '_' + Uri.encodeComponent(d.name) + '_' + slot.day.toString() + '_' + slot.start.toString() + '_' + slot.end.toString(),
             title: d.name,
             weekday: slot.day,
             start: 'урок ' + slot.start.toString(),
@@ -142,7 +142,11 @@ class _SupplementsPageState extends State<SupplementsPage> {
           ));
         }
       }
-      final manual = items.where((e) => e.id.startsWith('manual_')).toList();
+      if (imported.isEmpty) {
+        throw const DopParserException('Страница intranet открылась, но расписание занятий не удалось извлечь. Сохранённые данные не изменены.');
+      }
+      // Preserve new manual IDs and older local entries created before the prefix existed.
+      final manual = items.where((e) => !e.id.startsWith('intranet_')).toList();
       items = [...manual, ...imported];
       await _save();
       final prefs = await SharedPreferences.getInstance();
@@ -159,53 +163,140 @@ class _SupplementsPageState extends State<SupplementsPage> {
   @override
   Widget build(BuildContext context) {
     final current = items.where((e) => e.weekday == day).toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
+      ..sort((a, b) {
+        int sortKey(String value) => int.tryParse(RegExp(r'\d+').firstMatch(value)?.group(0) ?? '') ?? 999;
+        return sortKey(a.start).compareTo(sortKey(b.start));
+      });
+    final scheme = Theme.of(context).colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
 
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
-        title: const Text('ДОПы', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('Дополнительные занятия'),
         actions: [
           IconButton(tooltip: 'Профиль ученика', onPressed: _editStudent, icon: const Icon(Icons.person_rounded)),
-          IconButton(tooltip: syncing ? 'Обновление…' : 'Обновить с intranet', onPressed: syncing ? null : _syncFromIntranet, icon: syncing ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync_rounded)),
+          IconButton(
+            tooltip: syncing ? 'Обновление…' : 'Обновить с intranet',
+            onPressed: syncing ? null : _syncFromIntranet,
+            icon: syncing
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.sync_rounded),
+          ),
           IconButton(tooltip: 'Добавить ДОП', onPressed: _add, icon: const Icon(Icons.add_rounded)),
+          const SizedBox(width: 4),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Column(
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
-                      child: SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 1, label: Text('Пн')),
-                          ButtonSegment(value: 2, label: Text('Вт')),
-                          ButtonSegment(value: 3, label: Text('Ср')),
-                          ButtonSegment(value: 4, label: Text('Чт')),
-                          ButtonSegment(value: 5, label: Text('Пт')),
-                          ButtonSegment(value: 6, label: Text('Сб')),
-                        ],
-                        selected: {day},
-                        onSelectionChanged: (value) {
-                          setState(() => day = value.first);
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: current.isEmpty
-                          ? const Center(child: Text('На этот день ДОПов нет'))
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(18),
-                              itemCount: current.length,
-                              itemBuilder: (context, index) => _card(current[index]),
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(width < 600 ? 12 : 24, 12, width < 600 ? 12 : 24, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(17),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [scheme.primaryContainer, scheme.surfaceContainerHigh],
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Row(children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .13), borderRadius: BorderRadius.circular(16)),
+                            child: Icon(Icons.auto_awesome_rounded, color: scheme.primary, size: 26),
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              student == null ? 'Профиль не заполнен' : '${student!.lastName} ${student!.firstName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                             ),
-                    ),
-                  ],
+                            const SizedBox(height: 4),
+                            Text(
+                              student == null ? 'Укажи ученика для загрузки занятий' : 'Класс ${student!.className} • мои занятия',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                            ),
+                            if (lastSync.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text('Обновлено: $lastSync', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11)),
+                            ],
+                          ])),
+                          if (syncing)
+                            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                          else
+                            IconButton(onPressed: _editStudent, tooltip: 'Изменить профиль', icon: const Icon(Icons.edit_outlined)),
+                        ]),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(children: [
+                        Expanded(child: Text('Расписание ДОПов', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -.3))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(30)),
+                          child: Text('${items.length} записей', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: scheme.onSurfaceVariant)),
+                        ),
+                      ]),
+                      const SizedBox(height: 10),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SegmentedButton<int>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(value: 1, label: Text('Пн')),
+                            ButtonSegment(value: 2, label: Text('Вт')),
+                            ButtonSegment(value: 3, label: Text('Ср')),
+                            ButtonSegment(value: 4, label: Text('Чт')),
+                            ButtonSegment(value: 5, label: Text('Пт')),
+                            ButtonSegment(value: 6, label: Text('Сб')),
+                          ],
+                          selected: {day},
+                          onSelectionChanged: (value) => setState(() => day = value.first),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: current.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                    Container(
+                                      width: 72, height: 72,
+                                      decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(24)),
+                                      child: Icon(Icons.event_available_rounded, size: 34, color: scheme.primary),
+                                    ),
+                                    const SizedBox(height: 15),
+                                    const Text('На этот день занятий нет', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                                    const SizedBox(height: 6),
+                                    Text('Обнови список с intranet или добавь занятие вручную.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
+                                    const SizedBox(height: 16),
+                                    Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
+                                      OutlinedButton.icon(onPressed: syncing ? null : _syncFromIntranet, icon: const Icon(Icons.sync_rounded), label: const Text('Обновить')),
+                                      FilledButton.icon(onPressed: _add, icon: const Icon(Icons.add_rounded), label: const Text('Добавить')),
+                                    ]),
+                                  ]),
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.only(bottom: 20),
+                                itemCount: current.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                itemBuilder: (context, index) => _card(current[index]),
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -213,9 +304,14 @@ class _SupplementsPageState extends State<SupplementsPage> {
   }
 
   Widget _card(Supplement supplement) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLessonNumber = supplement.start.startsWith('урок ');
+    final startNumber = isLessonNumber ? supplement.start.replaceFirst('урок ', '') : '';
+    final endNumber = isLessonNumber ? supplement.end.replaceFirst('урок ', '') : '';
+    final timeLabel = isLessonNumber
+        ? (endNumber.isEmpty ? 'Урок $startNumber' : 'Уроки $startNumber–$endNumber')
+        : (supplement.start.isEmpty ? '' : '${supplement.start}${supplement.end.isNotEmpty ? '–${supplement.end}' : ''}');
     final details = <String>[
-      if (supplement.start.isNotEmpty)
-        '${supplement.start}${supplement.end.isNotEmpty ? '–${supplement.end}' : ''}',
       if (supplement.teacher.isNotEmpty) supplement.teacher,
       if (supplement.room.isNotEmpty) 'каб. ${supplement.room}',
       if (supplement.place.isNotEmpty) supplement.place,
@@ -223,46 +319,58 @@ class _SupplementsPageState extends State<SupplementsPage> {
     ].join(' • ');
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        isThreeLine: true,
-        leading: CircleAvatar(
-          child: Text(supplement.start.isEmpty ? '•' : supplement.start.split(':').first),
-        ),
-        title: Text(
-          supplement.title,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        subtitle: Text(
-          details.isEmpty ? supplement.description : details,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') _edit(supplement);
-            if (value == 'delete') _delete(supplement);
-            if (value == 'route' && supplement.room.isNotEmpty) {
-              final route = RouteEngine.build(supplement.room);
-              if (route != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RoutePage(
-                      room: SchoolData.room(supplement.room),
-                      route: route,
-                    ),
-                  ),
-                );
-              }
-            }
-          },
-          itemBuilder: (_) => [
-            if (supplement.room.isNotEmpty)
-              const PopupMenuItem(value: 'route', child: Text('Как пройти')),
-            const PopupMenuItem(value: 'edit', child: Text('Изменить')),
-            const PopupMenuItem(value: 'delete', child: Text('Удалить')),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _edit(supplement),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(width: 5, height: 70, decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(8))),
+            const SizedBox(width: 12),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(15)),
+              child: Icon(Icons.school_rounded, color: scheme.primary),
+            ),
+            const SizedBox(width: 13),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(supplement.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+              if (timeLabel.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(timeLabel, style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 12)),
+              ],
+              if (details.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(details, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35)),
+              ],
+              if (supplement.description.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(supplement.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+              ],
+            ])),
+            PopupMenuButton<String>(
+              tooltip: 'Действия',
+              onSelected: (value) {
+                if (value == 'edit') _edit(supplement);
+                if (value == 'delete') _delete(supplement);
+                if (value == 'route' && supplement.room.isNotEmpty) {
+                  final route = RouteEngine.build(supplement.room);
+                  final room = SchoolData.tryRoom(supplement.room);
+                  if (route != null && room != null) {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: room, route: route)));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Для этого кабинета пока нет маршрута.')));
+                  }
+                }
+              },
+              itemBuilder: (_) => [
+                if (supplement.room.isNotEmpty) const PopupMenuItem(value: 'route', child: Text('Как пройти')),
+                const PopupMenuItem(value: 'edit', child: Text('Изменить')),
+                const PopupMenuItem(value: 'delete', child: Text('Удалить')),
+              ],
+            ),
+          ]),
         ),
       ),
     );
@@ -389,7 +497,7 @@ class _SupplementEditorState extends State<_SupplementEditor> {
             Navigator.pop(
               context,
               Supplement(
-                id: widget.initial?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+                id: widget.initial?.id ?? 'manual_${DateTime.now().microsecondsSinceEpoch}',
                 title: title.text.trim(),
                 weekday: day,
                 start: start.text.trim(),
