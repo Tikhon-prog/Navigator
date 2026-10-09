@@ -14,7 +14,8 @@ jobs:
     steps:
       - name: Install git-filter-repo
         run: |
-          python -m pip install git-filter-repo
+          python -m pip install --user git-filter-repo
+          echo "$(python -m site --user-base)/bin" >> "$GITHUB_PATH"
 
       - name: Remove the revoked environment file from every branch and tag
         env:
