@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'api_security.dart';
 import 'security_service.dart';
 
 class AdminLoginDialog extends StatefulWidget {
@@ -262,8 +263,8 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   Future<void> _saveApi() async {
     if (!can(AdminPermissions.manageSync)) return;
     final raw = apiController.text.trim();
-    if (apiEnabled && raw.isNotEmpty && Uri.tryParse(raw)?.hasScheme != true) {
-      setState(() => apiStatus = 'Укажи полный адрес, например https://example.ru/api');
+    if (apiEnabled && raw.isNotEmpty && !isSecureApiBaseUrl(raw)) {
+      setState(() => apiStatus = 'Для внешнего сервера нужен HTTPS. HTTP разрешён только для localhost.');
       return;
     }
     setState(() => saving = true);
@@ -284,8 +285,8 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     if (!can(AdminPermissions.manageSync)) return;
     final raw = apiController.text.trim();
     final uri = Uri.tryParse(raw);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      setState(() => apiStatus = 'Сначала укажи корректный URL сервера.');
+    if (uri == null || !isSecureApiBaseUrl(raw)) {
+      setState(() => apiStatus = 'Для внешнего сервера нужен HTTPS. HTTP разрешён только для localhost.');
       return;
     }
     setState(() => apiStatus = 'Проверяю соединение…');
