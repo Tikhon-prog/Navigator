@@ -25,6 +25,13 @@ class BackendAccessTests(unittest.TestCase):
             self.assertEqual(raised.exception.status_code, 404)
             load_workbook.assert_not_called()
 
+    def test_low_level_reader_rejects_private_sheets_before_upstream_access(self):
+        with patch.object(main, "load_workbook") as load_workbook:
+            with self.assertRaises(HTTPException) as raised:
+                main.read_sheet("Admins")
+            self.assertEqual(raised.exception.status_code, 404)
+            load_workbook.assert_not_called()
+
     def test_public_generic_endpoint_still_returns_allowed_data(self):
         expected = [{"id": "8a", "name": "8A"}]
         with patch.object(main, "read_sheet", return_value=expected) as read_sheet:
