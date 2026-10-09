@@ -493,7 +493,7 @@ class _AdminEditorState extends State<_AdminEditor> {
     content: SizedBox(width: 520, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(controller: login, autofocus: true, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Логин')),
       const SizedBox(height: 10),
-      TextField(controller: password, obscureText: true, textInputAction: TextInputAction.next, decoration: InputDecoration(labelText: widget.existing == null ? 'Пароль' : 'Новый пароль (необязательно)', helperText: 'Не короче 8 символов')),
+      TextField(controller: password, obscureText: true, textInputAction: TextInputAction.next, decoration: InputDecoration(labelText: widget.existing == null ? 'Пароль' : 'Новый пароль (необязательно)', helperText: 'Новый пароль — не короче 12 символов')),
       const SizedBox(height: 10),
       DropdownButtonFormField<String>(
         initialValue: role,
@@ -523,7 +523,7 @@ class _AdminEditorState extends State<_AdminEditor> {
       FilledButton(onPressed: () {
         final l = login.text.trim();
         if (l.length < 3) return;
-        if (widget.existing == null && password.text.length < 8) return;
+        if ((widget.existing == null || password.text.isNotEmpty) && password.text.length < 12) return;
         final hash = password.text.isEmpty && widget.existing != null
             ? widget.existing!.passwordHash
             : PasswordHasher.secureDigest(password.text);
