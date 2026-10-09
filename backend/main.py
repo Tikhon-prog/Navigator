@@ -64,8 +64,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # This backend currently exposes read-only endpoints only.
+    allow_methods=["GET", "HEAD", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type"],
 )
 
 
