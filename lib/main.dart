@@ -1010,7 +1010,7 @@ class _StartDialogState extends State<_StartDialog> {
   late int floor = widget.floor;
   late String choice = widget.id ?? '__entrance__';
   @override Widget build(BuildContext context) {
-    final rooms = SchoolData.rooms.where((r) => r.floor == floor).toList();
+    final rooms = SchoolData.locations.where((r) => r.floor == floor).toList();
     final values = <String>['__entrance__', ...rooms.map((r) => r.id)];
     if (!values.contains(choice)) choice = '__entrance__';
     return AlertDialog(
@@ -1018,7 +1018,7 @@ class _StartDialogState extends State<_StartDialog> {
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
         SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v){setState((){floor=v.first;choice='__entrance__';});}),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')), ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text('${r.id} — ${SchoolData.title(r)}')))], onChanged:(v)=>setState(()=>choice=v??'__entrance__')),
+        DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')), ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text(SchoolData.isPlace(r) ? SchoolData.title(r) : '${r.id} — ${r.name}')))], onChanged:(v)=>setState(()=>choice=v??'__entrance__')),
       ])),
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:()=>Navigator.pop(context,_StartChoice(floor:floor,id:choice=='__entrance__'?null:choice)),child:const Text('Сохранить'))],
     );
@@ -1171,6 +1171,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final list = entries.where((e) => e.day == day).toList()..sort((a, b) => a.time.compareTo(b.time));
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
+    final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
     return Scaffold(
@@ -1295,7 +1296,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                                 _ScheduleTag(icon: Icons.meeting_room_outlined, label: 'Каб. ${e.room}'),
                                               if (e.teacher.isNotEmpty)
                                                 _ScheduleTag(icon: Icons.person_outline_rounded, label: e.teacher),
-                                              if (e.group > 0)
+                                              if (splitSubjects.contains(e.subject) && e.group > 0)
                                                 _ScheduleTag(icon: Icons.groups_2_outlined, label: 'Группа ${e.group}'),
                                             ]),
                                           ])),
@@ -1449,10 +1450,49 @@ class _RoutePainter extends CustomPainter {
   @override bool shouldRepaint(covariant _RoutePainter old)=>old.nodes!=nodes||old.color!=color;
 }
 class FullscreenMapPage extends StatelessWidget {
-  final int floor; final String? selectedRoom; final String? routeRoom; final int startFloor; final String? startLocationId;
-  const FullscreenMapPage({super.key,required this.floor,required this.selectedRoom,required this.routeRoom,required this.startFloor,required this.startLocationId});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(floor.toString()+' этаж')),body:InteractiveViewer(minScale:.5,maxScale:6,child:Center(child:AspectRatio(aspectRatio:7016/4960,child:Image.asset('assets/maps/floor'+floor.toString()+'.webp',fit:BoxFit.contain)))));
+  final int floor;
+  final String? selectedRoom;
+  final String? routeRoom;
+  final int startFloor;
+  final String? startLocationId;
+  const FullscreenMapPage({super.key, required this.floor, required this.selectedRoom, required this.routeRoom, required this.startFloor, required this.startLocationId});
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = selectedRoom == null ? null : SchoolData.tryRoom(selectedRoom!);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('$floor этаж • полноэкранная карта'),
+        actions: [
+          if (selected != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(child: Text(SchoolData.title(selected), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+            ),
+        ],
+      ),
+      body: InteractiveViewer(
+        minScale: .5,
+        maxScale: 6,
+        boundaryMargin: const EdgeInsets.all(80),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1600),
+            child: AspectRatio(
+              aspectRatio: 7016 / 4960,
+              child: Stack(children: [
+                Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
+                if (selected != null && selected.floor == floor)
+                  Positioned.fill(child: CustomPaint(painter: _PointPainter(SchoolData.point(selected), Theme.of(context).colorScheme.primary))),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
+
 class ScheduleEditor extends StatefulWidget {
   final ScheduleEntry? initial;
   final int defaultDay;
