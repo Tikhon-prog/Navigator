@@ -38,7 +38,7 @@ void main() {
         // Do not invent a cabinet; verify that the original source row is retained.
         if (room.isEmpty) {
           expect(rawLesson, isNotEmpty, reason: 'У урока без кабинета потеряна исходная строка: $className');
-          expect(RegExp(r'\\bауд\\.\\s*\\d+', caseSensitive: false).hasMatch(rawLesson), isFalse,
+          expect(RegExp(r'\bауд\.\s*\d+', caseSensitive: false).hasMatch(rawLesson), isFalse,
               reason: 'В исходной строке есть номер кабинета, но он не извлечён: $className');
         }
         expect(lesson['group'], anyOf(1, 2));
