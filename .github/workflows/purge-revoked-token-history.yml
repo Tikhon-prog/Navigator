@@ -1,0 +1,29 @@
+name: Purge revoked token from Git history
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  purge-history:
+    if: github.event.head_commit.message == 'security: purge revoked OAuth token from history'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install git-filter-repo
+        run: |
+          python -m pip install git-filter-repo
+
+      - name: Remove the revoked environment file from every branch and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git clone --mirror "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" navigator-mirror.git
+          cd navigator-mirror.git
+          git filter-repo --path backend/.env --invert-paths --force
+          AUTH="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${AUTH}" push --force "https://github.com/${REPOSITORY}.git" 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
