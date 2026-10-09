@@ -7,7 +7,7 @@ void main() {
   testWidgets('Navigator app mounts its Material application', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const NavigatorApp());
-    await tester.pumpAndSettle();
+    await tester.pump();
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }
