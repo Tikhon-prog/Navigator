@@ -8,9 +8,9 @@ void main() {
       expect(isSecureApiBaseUrl('https://api.example.org/navigator'), isTrue);
     });
 
-    test('allows HTTP only for loopback development hosts', () {
-      expect(isSecureApiBaseUrl('http://localhost:8000/api'), isTrue);
-      expect(isSecureApiBaseUrl('http://127.0.0.1:8000/api'), isTrue);
+    test('rejects all cleartext HTTP endpoints', () {
+      expect(isSecureApiBaseUrl('http://localhost:8000/api'), isFalse);
+      expect(isSecureApiBaseUrl('http://127.0.0.1:8000/api'), isFalse);
       expect(isSecureApiBaseUrl('http://api.example.org/api'), isFalse);
     });
 
