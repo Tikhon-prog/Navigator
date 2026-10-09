@@ -707,7 +707,78 @@ class _NavigatorAppState extends State<NavigatorApp>{
   Future<void> setName(String v)async{v=v.trim();if(v.isEmpty)return;final p=await SharedPreferences.getInstance();await p.setString('user_name',v);if(mounted)setState(()=>userName=v);}
   Future<void> setTheme(AppThemeType v)async{final p=await SharedPreferences.getInstance();await p.setString('theme',v.name);if(mounted)setState(()=>theme=v);}
   @override Widget build(BuildContext context){if(!ready)return MaterialApp(debugShowCheckedModeBanner:false,home:Scaffold(body:Center(child:CircularProgressIndicator(color:AppPalette.gradient(theme).first))));return MaterialApp(debugShowCheckedModeBanner:false,title:'Navigator — школа «Поколение»',theme:_theme(theme),home:AppShell(userName:userName,theme:theme,onThemeChanged:setTheme,onNameChanged:setName));}
-  ThemeData _theme(AppThemeType type){final dark=type==AppThemeType.darkBlue;final colors=AppPalette.gradient(type);final cs=ColorScheme.fromSeed(seedColor:colors.first,brightness:dark?Brightness.dark:Brightness.light).copyWith(primary:dark?const Color(0xFF6F91FF):colors.first,secondary:dark?const Color(0xFF9EAEFF):colors.last,surface:dark?const Color(0xFF07101F):null,surfaceContainer:dark?const Color(0xFF0E1B2F):null,surfaceContainerHigh:dark?const Color(0xFF14243D):null,surfaceContainerHighest:dark?const Color(0xFF1A2C49):null,onSurface:dark?const Color(0xFFF3F6FF):null,onSurfaceVariant:dark?const Color(0xFFB8C5DE):null,outlineVariant:dark?const Color(0xFF263751):null);return ThemeData(useMaterial3:true,brightness:dark?Brightness.dark:Brightness.light,colorScheme:cs,scaffoldBackgroundColor:cs.surface,appBarTheme:AppBarTheme(backgroundColor:cs.surface,foregroundColor:cs.onSurface,elevation:0,surfaceTintColor:Colors.transparent),cardTheme:CardThemeData(color:dark?cs.surfaceContainer:null,elevation:dark?1:0,margin:EdgeInsets.zero,surfaceTintColor:Colors.transparent,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20))),inputDecorationTheme:InputDecorationTheme(filled:true,fillColor:cs.surfaceContainerHighest,border:OutlineInputBorder(borderRadius:BorderRadius.circular(16),borderSide:BorderSide.none)),filledButtonTheme:FilledButtonThemeData(style:FilledButton.styleFrom(backgroundColor:cs.primary,foregroundColor:cs.onPrimary,minimumSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)))));}
+  ThemeData _theme(AppThemeType type) {
+    final dark = type == AppThemeType.darkBlue;
+    final seed = AppPalette.gradient(type).first;
+    final colors = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: dark ? Brightness.dark : Brightness.light,
+    ).copyWith(
+      primary: dark ? const Color(0xFF8CA7FF) : seed,
+      secondary: dark ? const Color(0xFFB0C0FF) : AppPalette.gradient(type).last,
+      surface: dark ? const Color(0xFF0B1220) : const Color(0xFFF6F8FC),
+      surfaceContainer: dark ? const Color(0xFF111D30) : Colors.white,
+      surfaceContainerHigh: dark ? const Color(0xFF17253B) : const Color(0xFFEEF2F8),
+      surfaceContainerHighest: dark ? const Color(0xFF1D2E48) : const Color(0xFFE8EDF5),
+      onSurface: dark ? const Color(0xFFF2F5FC) : const Color(0xFF172033),
+      onSurfaceVariant: dark ? const Color(0xFFB5C2D8) : const Color(0xFF647087),
+      outlineVariant: dark ? const Color(0xFF2A3A53) : const Color(0xFFDDE4EE),
+    );
+    final border = BorderSide(color: colors.outlineVariant.withValues(alpha: .8));
+    return ThemeData(
+      useMaterial3: true,
+      brightness: dark ? Brightness.dark : Brightness.light,
+      colorScheme: colors,
+      scaffoldBackgroundColor: colors.surface,
+      dividerColor: colors.outlineVariant,
+      visualDensity: VisualDensity.standard,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        toolbarHeight: 64,
+        titleTextStyle: TextStyle(color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.35),
+      ),
+      cardTheme: CardThemeData(
+        color: colors.surfaceContainer,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: border),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colors.surfaceContainerHigh,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        hintStyle: TextStyle(color: colors.onSurfaceVariant),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide(color: colors.primary, width: 1.6)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: colors.primary,
+          foregroundColor: colors.onPrimary,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(minimumSize: const Size(46, 46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)), side: border),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 72,
+        backgroundColor: colors.surfaceContainer,
+        indicatorColor: colors.primary.withValues(alpha: dark ? .24 : .13),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w500)),
+      ),
+      snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+    );
+  }
 }
 class AppShell extends StatefulWidget{
   final String userName;final AppThemeType theme;final ValueChanged<AppThemeType> onThemeChanged;final ValueChanged<String> onNameChanged;
@@ -717,49 +788,211 @@ class AppShell extends StatefulWidget{
 class _AppShellState extends State<AppShell>{
   int index=0;String? selectedRoom;final key=GlobalKey<ScaffoldState>();
   void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
-  @override Widget build(BuildContext context){final menu=()=>key.currentState?.openDrawer();return Scaffold(key:key,drawer:_drawer(context),body:IndexedStack(index:index,children:[HomePage(userName:widget.userName,theme:widget.theme,onMenu:menu,onMap:()=>go(1),onSchedule:()=>go(2),onDop:()=>go(3)),MapPage(initialRoom:selectedRoom,onMenu:menu),SchedulePage(onMenu:menu),SupplementsPage(onMenu:menu),SettingsPage(theme:widget.theme,userName:widget.userName,onThemeChanged:widget.onThemeChanged,onNameChanged:widget.onNameChanged,onMenu:menu)]));}
+  @override
+  Widget build(BuildContext context) {
+    final menu = () => key.currentState?.openDrawer();
+    final pages = <Widget>[
+      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3)),
+      MapPage(initialRoom: selectedRoom, onMenu: menu),
+      SchedulePage(onMenu: menu),
+      SupplementsPage(onMenu: menu),
+      SettingsPage(theme: widget.theme, userName: widget.userName, onThemeChanged: widget.onThemeChanged, onNameChanged: widget.onNameChanged, onMenu: menu),
+    ];
+    const destinations = <NavigationDestination>[
+      NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Главная'),
+      NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Карта'),
+      NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: 'Расписание'),
+      NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: 'ДОПы'),
+      NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'Настройки'),
+    ];
+    return Scaffold(
+      key: key,
+      drawer: _drawer(context),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 900;
+          return Row(children: [
+            if (wide) ...[
+              NavigationRail(
+                selectedIndex: index,
+                labelType: NavigationRailLabelType.all,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                onDestinationSelected: go,
+                destinations: const [
+                  NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: Text('Главная')),
+                  NavigationRailDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: Text('Карта')),
+                  NavigationRailDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: Text('Расписание')),
+                  NavigationRailDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: Text('ДОПы')),
+                  NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: Text('Настройки')),
+                ],
+              ),
+              VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
+            ],
+            Expanded(child: IndexedStack(index: index, children: pages)),
+          ]);
+        },
+      ),
+      bottomNavigationBar: MediaQuery.sizeOf(context).width < 900
+          ? NavigationBar(selectedIndex: index, onDestinationSelected: go, destinations: destinations)
+          : null,
+    );
+  }
+
   Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и админ')];return Drawer(width:330,child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Navigator',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap:()=>go(x.$1)))]))])));}
 }
 class HomePage extends StatelessWidget {
   final String userName;
   final AppThemeType theme;
   final VoidCallback onMenu, onMap, onSchedule, onDop;
-  const HomePage({super.key,required this.userName,required this.theme,required this.onMenu,required this.onMap,required this.onSchedule,required this.onDop});
+  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop});
+
   @override
   Widget build(BuildContext context) {
-    final colors=AppPalette.gradient(theme);
+    final colors = AppPalette.gradient(theme);
+    final textColor = theme == AppThemeType.yellow ? const Color(0xFF202638) : Colors.white;
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = width >= 980 ? 3 : width >= 640 ? 2 : 1;
     return Scaffold(
-      appBar: AppBar(leading:IconButton(onPressed:onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Navigator',style:TextStyle(fontWeight:FontWeight.w900))),
-      body: Center(child:ConstrainedBox(
-        constraints:const BoxConstraints(maxWidth:1050),
-        child:ListView(padding:const EdgeInsets.all(18),children:[
-          Container(
-            padding:const EdgeInsets.all(24),
-            decoration:BoxDecoration(gradient:LinearGradient(colors:colors),borderRadius:BorderRadius.circular(28)),
-            child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-              Text(userName.isEmpty?'Главное меню':'Привет, '+userName+'!',style:const TextStyle(color:Colors.white,fontSize:27,fontWeight:FontWeight.w900)),
-              const SizedBox(height:8),
-              const Text('Карта школы, расписание и ДОПы — в одном приложении.',style:TextStyle(color:Colors.white)),
-              const SizedBox(height:18),
-              Wrap(spacing:10,runSpacing:10,children:[
-                _HeroButton('Карта школы',Icons.map_rounded,onMap),
-                _HeroButton('Расписание',Icons.calendar_month_rounded,onSchedule),
-                _HeroButton('ДОПы',Icons.auto_awesome_rounded,onDop),
-              ]),
-            ]),
+      appBar: AppBar(
+        leading: IconButton(onPressed: onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
+        title: const Text('Navigator'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(30)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.offline_bolt_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 6),
+                  const Text('Офлайн', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
           ),
-          const SizedBox(height:16),
-          Card(child:ListTile(
-            leading:Icon(Icons.offline_bolt_rounded,color:Theme.of(context).colorScheme.primary),
-            title:const Text('Офлайн-first',style:TextStyle(fontWeight:FontWeight.w900)),
-            subtitle:const Text('Карта и базовые данные остаются доступными без интернета.'),
-          )),
-        ]),
-      )),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(width < 600 ? 16 : 28, 16, width < 600 ? 16 : 28, 32),
+            children: [
+              Container(
+                padding: EdgeInsets.all(width < 600 ? 22 : 30),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: colors.first.withValues(alpha: .18), blurRadius: 28, offset: const Offset(0, 12))],
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    decoration: BoxDecoration(color: textColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(30)),
+                    child: Text('ШКОЛА «ПОКОЛЕНИЕ»', style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(userName.trim().isEmpty ? 'Твой школьный\nнавигатор' : 'Привет, $userName!', style: TextStyle(color: textColor, fontSize: width < 600 ? 30 : 38, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                  const SizedBox(height: 12),
+                  Text('Карта здания, расписание уроков и дополнительные занятия — всё в одном месте.', style: TextStyle(color: textColor.withValues(alpha: .9), fontSize: 15, height: 1.45)),
+                  const SizedBox(height: 22),
+                  Wrap(spacing: 10, runSpacing: 10, children: [
+                    _HeroButton('Открыть карту', Icons.explore_rounded, onMap, foreground: textColor),
+                    _HeroButton('Моё расписание', Icons.calendar_month_rounded, onSchedule, foreground: textColor),
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 28),
+              Row(children: [
+                Expanded(child: Text('Быстрый доступ', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -.4))),
+                Text('3 раздела', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 14),
+              GridView.count(
+                crossAxisCount: columns,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: columns == 1 ? 3.0 : 1.55,
+                children: [
+                  _DashboardCard(icon: Icons.map_rounded, title: 'Карта школы', subtitle: 'Найди кабинет и построй маршрут', accent: const Color(0xFF3284F5), onTap: onMap),
+                  _DashboardCard(icon: Icons.calendar_month_rounded, title: 'Расписание', subtitle: 'Уроки, группы и кабинеты', accent: const Color(0xFF13A88A), onTap: onSchedule),
+                  _DashboardCard(icon: Icons.auto_awesome_rounded, title: 'Дополнительные занятия', subtitle: 'ДОПы, время и преподаватели', accent: const Color(0xFF9667E8), onTap: onDop),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(width: 46, height: 46, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.offline_pin_rounded, color: Theme.of(context).colorScheme.primary, size: 25)),
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Работает и без интернета', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                      const SizedBox(height: 5),
+                      Text('Карта и встроенное расписание доступны офлайн. Для обновления ДОПов требуется доступ к школьному intranet.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4, fontSize: 13)),
+                    ])),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
-class _HeroButton extends StatelessWidget{final String text;final IconData icon;final VoidCallback onTap;const _HeroButton(this.text,this.icon,this.onTap);@override Widget build(BuildContext context)=>FilledButton.icon(onPressed:onTap,icon:Icon(icon),label:Text(text),style:FilledButton.styleFrom(backgroundColor:Colors.white24,foregroundColor:Colors.white));}
+
+class _HeroButton extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color foreground;
+  const _HeroButton(this.text, this.icon, this.onTap, {required this.foreground});
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+    onPressed: onTap,
+    icon: Icon(icon),
+    label: Text(text),
+    style: FilledButton.styleFrom(backgroundColor: foreground.withValues(alpha: .13), foregroundColor: foreground, side: BorderSide(color: foreground.withValues(alpha: .24))),
+  );
+}
+
+class _DashboardCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final VoidCallback onTap;
+  const _DashboardCard({required this.icon, required this.title, required this.subtitle, required this.accent, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(children: [
+            Container(width: 50, height: 50, decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: accent, size: 26)),
+            const SizedBox(width: 14),
+            Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+              const SizedBox(height: 5),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12, height: 1.3)),
+            ])),
+            const SizedBox(width: 6),
+            Icon(Icons.arrow_outward_rounded, size: 18, color: colors.onSurfaceVariant),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class _StartChoice {
   final int floor;
   final String? id;
@@ -801,33 +1034,112 @@ class _MapPageState extends State<MapPage>{
   @override void initState(){super.initState();selected=widget.initialRoom;if(selected!=null)floor=SchoolData.room(selected!).floor;_load();}
   Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
   @override void dispose(){search.dispose();super.dispose();}
-  List<RoomInfo> get rooms=>SchoolData.rooms.where((r)=>r.floor==floor&&(query.isEmpty||r.id.toLowerCase().contains(query.toLowerCase())||SchoolData.title(r).toLowerCase().contains(query.toLowerCase()))).toList();
+  List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) => query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) || SchoolData.title(r).toLowerCase().contains(query.toLowerCase())).toList();
   Future<void> _start()async{final r=await showDialog<_StartChoice>(context:context,builder:(_)=>_StartDialog(floor:startFloor,id:startId));if(r==null)return;final p=await SharedPreferences.getInstance();await p.setInt('map_start_floor',r.floor);if(r.id==null)await p.remove('map_start_location');else await p.setString('map_start_location',r.id!);if(mounted)setState((){startFloor=r.floor;startId=r.id;});}
   void _open(RoomInfo r){setState(()=>selected=r.id);final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId);if(route==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Маршрут для этой точки недоступен.')));return;}Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));}
-  @override Widget build(BuildContext context){
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final wideScreen = MediaQuery.sizeOf(context).width >= 900;
+    Widget locationsPanel() => Container(
+      decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: scheme.outlineVariant.withValues(alpha: .8))),
+      child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Card(
+            color: scheme.surfaceContainerHigh,
+            child: ListTile(
+              leading: Icon(Icons.my_location_rounded, color: scheme.primary),
+              title: const Text('Откуда идём?', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(startId == null ? 'Главный вход' : SchoolData.title(SchoolData.room(startId!))),
+              trailing: const Icon(Icons.tune_rounded),
+              onTap: _start,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(5, 17, 5, 9),
+            child: Row(children: [
+              Expanded(child: Text('Этаж $floor', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))),
+              Text('${rooms.length} мест', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+          if (rooms.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(children: [
+                Icon(Icons.search_off_rounded, size: 34, color: scheme.onSurfaceVariant),
+                const SizedBox(height: 8),
+                const Text('Ничего не найдено', style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('Попробуй другой номер или название.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+              ]),
+            )
+          else
+            ...rooms.map((r) => Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Card(
+                color: selected == r.id ? scheme.primaryContainer.withValues(alpha: .55) : scheme.surfaceContainer,
+                child: ListTile(
+                  dense: true,
+                  leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(13)), child: Icon(SchoolData.isPlace(r) ? Icons.place_rounded : Icons.meeting_room_rounded, color: scheme.primary)),
+                  title: Text(SchoolData.title(r), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                  subtitle: Text(SchoolData.isPlace(r) ? 'Специальное место' : 'Кабинет ${r.id}', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                  trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                  onTap: () => _open(r),
+                ),
+              ),
+            )),
+        ],
+      ),
+    );
     return Scaffold(
-      appBar:AppBar(leading:IconButton(onPressed:widget.onMenu,icon:const Icon(Icons.menu_rounded)),title:const Text('Карта школы',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:_start,tooltip:'Начало маршрута',icon:const Icon(Icons.my_location_rounded)),IconButton(onPressed:()=>setState((){query='';search.clear();}),tooltip:'Очистить поиск',icon:const Icon(Icons.clear_all_rounded))]),
-      body:Column(children:[
-        Padding(padding:const EdgeInsets.fromLTRB(16,8,16,6),child:Row(children:[
-          Expanded(child:TextField(controller:search,onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(prefixIcon:Icon(Icons.search_rounded),hintText:'Номер или название кабинета'))),
-          const SizedBox(width:10),
-          SegmentedButton<int>(segments:const [ButtonSegment(value:1,label:Text('1')),ButtonSegment(value:2,label:Text('2')),ButtonSegment(value:3,label:Text('3'))],selected:{floor},onSelectionChanged:(v)=>setState(()=>floor=v.first)),
-        ])),
-        Expanded(child:Row(children:[
-          Expanded(flex:3,child:Padding(padding:const EdgeInsets.fromLTRB(16,6,8,16),child:_MapImage(floor:floor,selected:selected))),
-          SizedBox(width:340,child:ListView(padding:const EdgeInsets.fromLTRB(8,6,16,16),children:[
-            Card(child:ListTile(leading:const Icon(Icons.login_rounded),title:const Text('Точка старта',style:TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(startId==null?'Главный вход':SchoolData.title(SchoolData.room(startId!))),onTap:_start)),
-            const SizedBox(height:6),
-            Text('Кабинеты и места • '+floor.toString()+' этаж',style:const TextStyle(fontWeight:FontWeight.w900)),
-            const SizedBox(height:6),
-            ...rooms.map((r)=>Card(margin:const EdgeInsets.only(bottom:6),child:ListTile(leading:Icon(SchoolData.isPlace(r)?Icons.place_rounded:Icons.meeting_room_rounded),title:Text(SchoolData.title(r),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text('каб. '+r.id),trailing:const Icon(Icons.chevron_right_rounded),onTap:()=>_open(r)))),
-          ])),
-        ])),
-      ]),
+      appBar: AppBar(
+        leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
+        title: const Text('Карта школы'),
+        actions: [
+          IconButton(onPressed: _start, tooltip: 'Начало маршрута', icon: const Icon(Icons.my_location_rounded)),
+          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenMapPage(floor: floor, selectedRoom: selected, routeRoom: null, startFloor: startFloor, startLocationId: startId))), tooltip: 'Полноэкранная карта', icon: const Icon(Icons.fullscreen_rounded)),
+          IconButton(onPressed: () => setState(() { query = ''; search.clear(); }), tooltip: 'Очистить поиск', icon: const Icon(Icons.clear_all_rounded)),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(children: [
+                Expanded(child: TextField(controller: search, onChanged: (v) => setState(() => query = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Кабинет, бассейн, библиотека…'))),
+                const SizedBox(width: 10),
+                SegmentedButton<int>(
+                  segments: const [ButtonSegment(value: 1, label: Text('1')), ButtonSegment(value: 2, label: Text('2')), ButtonSegment(value: 3, label: Text('3'))],
+                  selected: {floor},
+                  onSelectionChanged: (v) => setState(() => floor = v.first),
+                ),
+              ]),
+            ),
+            Expanded(
+              child: wideScreen
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      child: Row(children: [
+                        Expanded(flex: 3, child: _MapImage(floor: floor, selected: selected)),
+                        const SizedBox(width: 14),
+                        SizedBox(width: 350, child: locationsPanel()),
+                      ]),
+                    )
+                  : Column(children: [
+                      SizedBox(height: math.min(320.0, constraints.maxHeight * .40), child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: _MapImage(floor: floor, selected: selected))),
+                      Expanded(child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: locationsPanel())),
+                    ]),
+            ),
+          ],
+        ),
+      ),
     );
   }
+
 }
-class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.room(selected!).point,Theme.of(context).colorScheme.primary)))]))));}
+class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.point(SchoolData.room(selected!)),Theme.of(context).colorScheme.primary)))]))));}
 class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
 class SchedulePage extends StatefulWidget {
   final VoidCallback onMenu;
