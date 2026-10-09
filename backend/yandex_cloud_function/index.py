@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import requests
@@ -26,9 +25,6 @@ def read_grid(name):
     return r.json()
 
 
-def sha256(value):
-    return hashlib.sha256(value.encode('utf-8')).hexdigest()
-
 
 def response(status, body):
     return {'statusCode': status, 'headers': {'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*'}, 'body': json.dumps(body, ensure_ascii=False)}
@@ -51,16 +47,11 @@ def handler(event, context):
         if path == '/announcements':
             data = read_grid('Announcements')
             return response(200, {'revision': data.get('revision'), 'rows': data.get('rows', [])})
-        if path == '/admin/login' and event.get('httpMethod') == 'POST':
-            body = json.loads(event.get('body') or '{}')
-            login = str(body.get('login', ''))
-            password = str(body.get('password', ''))
-            data = read_grid('Admins')
-            for row in data.get('rows', []):
-                values = row.get('row', [])
-                if len(values) >= 5 and values[1] == login and values[2] == sha256(password) and values[4] is not False:
-                    return response(200, {'ok': True, 'role': values[3], 'admin_id': row.get('id')})
-            return response(401, {'ok': False})
+        if path == '/admin/login':
+            # Do not claim to authenticate admins until password KDF, rate limiting,
+            # session issuance, and authorization checks are implemented server-side.
+            return response(503, {'ok': False, 'error': 'admin_auth_not_configured'})
         return response(404, {'ok': False, 'error': 'not_found'})
-    except Exception as exc:
-        return response(500, {'ok': False, 'error': str(exc)})
+    except Exception:
+        # Keep credentials, provider URLs, and internal exception details out of responses.
+        return response(500, {'ok': False, 'error': 'internal_error'})
