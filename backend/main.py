@@ -270,12 +270,14 @@ def get_sheets():
 
 @app.get("/api/schema/{sheet_name}")
 def get_schema(sheet_name: str):
+    # Reject private sheet names before making any upstream request.
+    if sheet_name not in PUBLIC_READ_SHEETS:
+        raise HTTPException(status_code=404, detail="Sheet not found")
 
     workbook = load_workbook()
 
     try:
-
-        if sheet_name not in PUBLIC_READ_SHEETS or sheet_name not in workbook.sheetnames:
+        if sheet_name not in workbook.sheetnames:
             raise HTTPException(status_code=404, detail="Sheet not found")
 
         sheet = workbook[sheet_name]
