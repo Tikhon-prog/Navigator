@@ -141,35 +141,78 @@ class SchoolScheduleCatalog {
     subject = subject.replaceFirst(RegExp(r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'), '');
     return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
   }
+  static RegExp get _teacherSuffix => RegExp(
+        r'\s+([А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?)\s*$',
+      );
+  static String teacherFromSubject(String value) =>
+      _teacherSuffix.firstMatch(value.trim())?.group(1)?.trim() ?? '';
+
+  /// Возвращает варианты групп только для предметов, у которых в одном
+  /// и том же временном слоте реально присутствуют разные группы.
   static Map<String, Set<int>> subjectGroups(String className) {
     final result = <String, Set<int>>{};
+    final slots = <String, Map<String, Set<int>>>{};
     for (final e in variants(className)) {
       final subject = baseSubject('${e['subject'] ?? ''}');
       if (subject.isEmpty) continue;
-      (result[subject] ??= <int>{}).add(int.tryParse('${e['group']}') ?? 1);
+      final slot = '${e['day']}|${e['time']}|$subject';
+      (slots[slot] ??= <String, Set<int>>{})
+          .putIfAbsent(subject, () => <int>{})
+          .add(int.tryParse('${e['group']}') ?? 1);
+    }
+    for (final slot in slots.values) {
+      for (final entry in slot.entries) {
+        if (entry.value.length > 1) {
+          (result[entry.key] ??= <int>{}).addAll(entry.value);
+        }
+      }
     }
     return result;
   }
-  static Set<String> splitSubjects(String className) => subjectGroups(className).entries.where((e) => e.value.length > 1).map((e) => e.key).toSet();
-  static List<ScheduleEntry> buildPersonal(String className, Map<String, int> selected) {
+
+  static Set<String> splitSubjects(String className) =>
+      subjectGroups(className).keys.toSet();
+
+  static List<ScheduleEntry> buildPersonal(
+    String className,
+    Map<String, int> selected,
+  ) {
     final all = variants(className);
     final result = <ScheduleEntry>[];
     final seen = <String>{};
     for (final e in all) {
-      final subject = baseSubject('${e['subject'] ?? ''}');
+      final rawSubject = '${e['subject'] ?? ''}'.trim();
+      final subject = baseSubject(rawSubject);
       if (subject.isEmpty) continue;
       final group = int.tryParse('${e['group']}') ?? 1;
       final wanted = selected[subject] ?? 1;
-      final slotGroups = all.where((x) => '${x['day']}' == '${e['day']}' && '${x['time']}' == '${e['time']}' && baseSubject('${x['subject'] ?? ''}') == subject).map((x) => int.tryParse('${x['group']}') ?? 1).toSet();
+      final slotGroups = all
+          .where((x) =>
+              '${x['day']}' == '${e['day']}' &&
+              '${x['time']}' == '${e['time']}' &&
+              baseSubject('${x['subject'] ?? ''}') == subject)
+          .map((x) => int.tryParse('${x['group']}') ?? 1)
+          .toSet();
       if (slotGroups.length > 1 && group != wanted) continue;
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
       final room = '${e['room'] ?? ''}'.trim();
-      final key = '$day|$time|$subject|$room';
+      final storedTeacher = '${e['teacher'] ?? ''}'.trim();
+      final teacher = storedTeacher.isNotEmpty
+          ? storedTeacher
+          : teacherFromSubject(rawSubject);
+      final key = '$day|$time|$subject|$room|$teacher';
       if (!seen.add(key)) continue;
-      result.add(ScheduleEntry(id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'), day: day, time: time, subject: subject, room: room, group: group));
+      result.add(ScheduleEntry(
+        id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(
+          RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'),
+        day: day, time: time, subject: subject, room: room,
+        teacher: teacher, group: group,
+      ));
     }
-    result.sort((a,b) => a.day != b.day ? a.day.compareTo(b.day) : a.time.compareTo(b.time));
+    result.sort((a, b) => a.day != b.day
+        ? a.day.compareTo(b.day)
+        : a.time.compareTo(b.time));
     return result;
   }
 }
