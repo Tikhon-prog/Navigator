@@ -4,7 +4,7 @@
 - The Flutter app has no built-in default administrator credentials. First-run setup creates the first local administrator only when the local account store is empty.
 - Local admin passwords are stored as salted, repeated SHA-256 hashes and compared in constant time. This is a prototype measure, not a substitute for a server-side Argon2id, scrypt, or bcrypt password KDF.
 - Local login attempts are temporarily locked after repeated failures. The lockout and audit log live on the same device and can be altered by someone who controls that device.
-- The optional online API accepts HTTPS for remote hosts. Plain HTTP is allowed only for loopback development addresses. Requests have a 10-second timeout.
+- The optional online API accepts HTTPS only; HTTP, URL-embedded credentials, query strings, and fragments are rejected. Requests have a 10-second timeout.
 - The FastAPI read API exposes only the intended school-data sheets. Generic sheet and schema routes reject Admins, AuditLog, Devices, and Settings; the Settings and Devices endpoints are disabled.
 - The Yandex Cloud Function admin-login route returns HTTP 503 until real server-side authentication, rate limiting, session issuance, and authorization checks exist. Do not treat its current login route as production authentication.
 - Backend errors returned to clients do not include raw provider exceptions.
