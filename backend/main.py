@@ -162,10 +162,14 @@ def normalize_value(value: Any):
 
 
 def read_sheet(sheet_name: str):
+    # Enforce the allowlist here too, so future callers cannot bypass route guards.
+    if sheet_name not in PUBLIC_READ_SHEETS:
+        raise HTTPException(status_code=404, detail="Sheet not found")
+
     workbook = load_workbook()
 
     try:
-        if sheet_name not in PUBLIC_READ_SHEETS or sheet_name not in workbook.sheetnames:
+        if sheet_name not in workbook.sheetnames:
             raise HTTPException(status_code=404, detail="Sheet not found")
 
         sheet = workbook[sheet_name]
