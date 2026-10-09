@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime, time
 from typing import Any
+from time import monotonic
 
 import io
 import os
@@ -30,6 +31,12 @@ YANDEX_FILE_PATH = os.getenv(
     "YANDEX_FILE_PATH",
     "app:/Navigator_Master.xlsx",
 )
+
+# Cache the workbook briefly so unauthenticated read traffic cannot trigger a
+# Yandex Disk download for every single API request.
+_WORKBOOK_CACHE_TTL_SECONDS = 30
+_cached_workbook_bytes: bytes | None = None
+_cached_workbook_at = 0.0
 
 
 # ============================================================
@@ -89,6 +96,13 @@ def download_master_file():
     Получает Navigator_Master.xlsx непосредственно
     с Яндекс Диска через OAuth.
     """
+    global _cached_workbook_bytes, _cached_workbook_at
+    now = monotonic()
+    if (
+        _cached_workbook_bytes is not None
+        and now - _cached_workbook_at < _WORKBOOK_CACHE_TTL_SECONDS
+    ):
+        return _cached_workbook_bytes
 
     response = requests.get(
         f"{YANDEX_API}/resources/download",
@@ -125,7 +139,9 @@ def download_master_file():
                    f"{file_response.status_code}",
         )
 
-    return file_response.content
+    _cached_workbook_bytes = file_response.content
+    _cached_workbook_at = monotonic()
+    return _cached_workbook_bytes
 
 
 def load_workbook():
