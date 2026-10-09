@@ -849,7 +849,7 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppPalette.gradient(theme);
-    final textColor = theme == AppThemeType.yellow ? const Color(0xFF202638) : Colors.white;
+    final textColor = theme == AppThemeType.darkBlue ? Colors.white : const Color(0xFF142238);
     final width = MediaQuery.sizeOf(context).width;
     final columns = width >= 980 ? 3 : width >= 640 ? 2 : 1;
     return Scaffold(
@@ -1449,45 +1449,157 @@ class _RoutePainter extends CustomPainter {
   }
   @override bool shouldRepaint(covariant _RoutePainter old)=>old.nodes!=nodes||old.color!=color;
 }
-class FullscreenMapPage extends StatelessWidget {
+class FullscreenMapPage extends StatefulWidget {
   final int floor;
   final String? selectedRoom;
   final String? routeRoom;
   final int startFloor;
   final String? startLocationId;
-  const FullscreenMapPage({super.key, required this.floor, required this.selectedRoom, required this.routeRoom, required this.startFloor, required this.startLocationId});
+
+  const FullscreenMapPage({
+    super.key,
+    required this.floor,
+    required this.selectedRoom,
+    required this.routeRoom,
+    required this.startFloor,
+    required this.startLocationId,
+  });
+
+  @override
+  State<FullscreenMapPage> createState() => _FullscreenMapPageState();
+}
+
+class _FullscreenMapPageState extends State<FullscreenMapPage> {
+  late int floor = widget.floor;
+  final TransformationController _zoom = TransformationController();
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    super.dispose();
+  }
+
+  void _changeZoom(double delta, Size size) {
+    final current = _zoom.value.getMaxScaleOnAxis();
+    final next = (current + delta).clamp(.6, 6.0).toDouble();
+    if (next <= .61 && delta < 0) {
+      _zoom.value = Matrix4.identity();
+      return;
+    }
+    _zoom.value = Matrix4.identity()
+      ..translate(size.width * (1 - next) / 2, size.height * (1 - next) / 2)
+      ..scale(next);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final selected = selectedRoom == null ? null : SchoolData.tryRoom(selectedRoom!);
+    final selected = widget.selectedRoom == null ? null : SchoolData.tryRoom(widget.selectedRoom!);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text('$floor этаж • полноэкранная карта'),
         actions: [
-          if (selected != null)
+          if (selected != null && selected.floor == floor)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Center(child: Text(SchoolData.title(selected), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Text(SchoolData.title(selected), maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+              ),
             ),
         ],
       ),
-      body: InteractiveViewer(
-        minScale: .5,
-        maxScale: 6,
-        boundaryMargin: const EdgeInsets.all(80),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1600),
-            child: AspectRatio(
-              aspectRatio: 7016 / 4960,
-              child: Stack(children: [
-                Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
-                if (selected != null && selected.floor == floor)
-                  Positioned.fill(child: CustomPaint(painter: _PointPainter(SchoolData.point(selected), Theme.of(context).colorScheme.primary))),
-              ]),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 1, label: Text('1 этаж')),
+                      ButtonSegment(value: 2, label: Text('2 этаж')),
+                      ButtonSegment(value: 3, label: Text('3 этаж')),
+                    ],
+                    selected: {floor},
+                    onSelectionChanged: (value) {
+                      setState(() {
+                        floor = value.first;
+                        _zoom.value = Matrix4.identity();
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Сбросить масштаб',
+                  onPressed: () => setState(() => _zoom.value = Matrix4.identity()),
+                  icon: const Icon(Icons.fit_screen_rounded),
+                ),
+              ],
             ),
           ),
-        ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                children: [
+                  Positioned.fill(
+                    child: InteractiveViewer(
+                      transformationController: _zoom,
+                      minScale: .6,
+                      maxScale: 6,
+                      boundaryMargin: const EdgeInsets.all(100),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1600),
+                          child: AspectRatio(
+                            aspectRatio: 7016 / 4960,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
+                                if (selected != null && selected.floor == floor)
+                                  Positioned.fill(
+                                    child: CustomPaint(
+                                      painter: _PointPainter(SchoolData.point(selected), scheme.primary),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: Column(
+                      children: [
+                        FloatingActionButton.small(
+                          heroTag: 'map_zoom_in',
+                          tooltip: 'Увеличить',
+                          onPressed: () => _changeZoom(.35, Size(constraints.maxWidth, constraints.maxHeight)),
+                          child: const Icon(Icons.add_rounded),
+                        ),
+                        const SizedBox(height: 8),
+                        FloatingActionButton.small(
+                          heroTag: 'map_zoom_out',
+                          tooltip: 'Уменьшить',
+                          onPressed: () => _changeZoom(-.35, Size(constraints.maxWidth, constraints.maxHeight)),
+                          child: const Icon(Icons.remove_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
