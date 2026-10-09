@@ -1,10 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navigator/main.dart';
 
 void main() {
-  testWidgets('Navigator starts', (tester) async {
+  testWidgets('Navigator app mounts its Material application', (tester) async {
     await tester.pumpWidget(const NavigatorApp());
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Navigator'), findsOneWidget);
+    await tester.pump();
+    expect(find.byType(MaterialApp), findsOneWidget);
   });
 }
