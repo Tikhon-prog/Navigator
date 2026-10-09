@@ -236,8 +236,24 @@ class DopParser {
         for(final choice in currentChoices){
           final program=_findProgram(programs,choice.name);
           if(program==null){disciplines.add(DopSubgroup(programId:0,subgroupId:0,name:choice.name,hours:choice.hours,limitHours:choice.hours,teacher:choice.teacher,schedule:choice.schedule,supplies:null));continue;}
-          final subgroup=_findBestSubgroup(program,choice) ?? (program.subgroups.isNotEmpty?program.subgroups.first:null);
-          if(subgroup!=null){disciplines.add(subgroup);}else{disciplines.add(DopSubgroup(programId:program.programId,subgroupId:0,name:program.name,hours:choice.hours>0?choice.hours:program.hours,limitHours:choice.hours>0?choice.hours:program.hours,teacher:choice.teacher,schedule:choice.schedule,supplies:null));}
+          final subgroup = _findBestSubgroup(program, choice);
+          if (subgroup != null) {
+            disciplines.add(subgroup);
+          } else {
+            // Never silently substitute an arbitrary subgroup: current_application.php
+            // is the source of truth for the student's actual selection.
+            final hours = choice.hours > 0 ? choice.hours : program.hours;
+            disciplines.add(DopSubgroup(
+              programId: program.programId,
+              subgroupId: 0,
+              name: choice.name,
+              hours: hours,
+              limitHours: hours,
+              teacher: choice.teacher,
+              schedule: choice.schedule,
+              supplies: null,
+            ));
+          }
         }
         if(disciplines.isNotEmpty){
           return DopParseResult(application:DopApplication(student:candidate,updatedAt:DateTime.now(),disciplines:disciplines),availablePrograms:programs.length);
@@ -354,45 +370,31 @@ class DopParser {
   ///   span внутри .program-subgroup-schedule
   List<_DopCurrentChoice> _parseCurrentApplication(String html) {
     final result = <_DopCurrentChoice>[];
-
     final cards = RegExp(
-      r'<article\b[^>]*class\s*=\s*"[^"]*\bsuccess-program-card\b[^"]*"[^>]*>([\s\S]*?)</article>',
+      r'<article\\b([^>]*)>([\\s\\S]*?)</article>',
       caseSensitive: false,
     ).allMatches(html);
 
     for (final card in cards) {
-      final body = card.group(1) ?? '';
+      final attributes = card.group(1) ?? '';
+      final classes = _attr(attributes, 'class').split(RegExp(r'\\s+'));
+      if (!classes.contains('success-program-card')) continue;
+      final body = card.group(2) ?? '';
 
-      final name = _textClass(
-        body,
-        'success-program-name',
-        tag: 'strong',
-      );
-
+      final name = _textClass(body, 'success-program-name', tag: 'strong');
       if (name.isEmpty) continue;
 
-      final hours = _number(
-        _textClass(body, 'hours-badge'),
-      );
+      final hours = _number(_textClass(body, 'hours-badge'));
+      final teacher = _teacherFromSubgroup(body);
+      final scheduleText = _textClass(body, 'program-subgroup-schedule');
 
-      final teacher =
-          _teacherFromSubgroup(body);
-
-      final scheduleText = _textClass(
-        body,
-        'program-subgroup-schedule',
-      );
-
-      result.add(
-        _DopCurrentChoice(
-          name: name,
-          hours: hours,
-          teacher: teacher,
-          schedule: _parseDisplayedSchedule(scheduleText),
-        ),
-      );
+      result.add(_DopCurrentChoice(
+        name: name,
+        hours: hours,
+        teacher: teacher,
+        schedule: _parseDisplayedSchedule(scheduleText),
+      ));
     }
-
     return result;
   }
 
@@ -529,8 +531,7 @@ class DopParser {
             x.day == y.day &&
             x.start == y.start &&
             x.end == y.end &&
-            x.room.trim().toLowerCase() ==
-                y.room.trim().toLowerCase(),
+            _normalizeRoom(x.room) == _normalizeRoom(y.room),
       );
 
       if (!found) return false;
@@ -619,29 +620,35 @@ class DopParser {
 
   String _decode(String value) {
     var result = value
+        .replaceAll('&nbsp;', '\\u00A0')
+        .replaceAll('&ndash;', '–')
+        .replaceAll('&mdash;', '—')
+        .replaceAll('&hellip;', '…')
+        .replaceAll('&laquo;', '«')
+        .replaceAll('&raquo;', '»')
+        .replaceAll('&rsquo;', '’')
+        .replaceAll('&lsquo;', '‘')
+        .replaceAll('&ldquo;', '“')
+        .replaceAll('&rdquo;', '”')
+        .replaceAll('&bull;', '•')
+        .replaceAll('&deg;', '°')
         .replaceAll('&quot;', '"')
         .replaceAll('&#34;', '"')
         .replaceAll('&apos;', "'")
         .replaceAll('&#39;', "'")
         .replaceAll('&#039;', "'")
-        .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&');
 
     result = result.replaceAllMapped(
       RegExp(r'&#x([0-9a-fA-F]+);'),
-      (match) => String.fromCharCode(
-        int.tryParse(match.group(1)!, radix: 16) ?? 0,
-      ),
+      (match) => String.fromCharCode(int.tryParse(match.group(1)!, radix: 16) ?? 0),
     );
-
     result = result.replaceAllMapped(
       RegExp(r'&#([0-9]+);'),
-      (match) => String.fromCharCode(
-        int.tryParse(match.group(1)!) ?? 0,
-      ),
+      (match) => String.fromCharCode(int.tryParse(match.group(1)!) ?? 0),
     );
-
     return result;
   }
 
@@ -666,17 +673,19 @@ class DopParser {
   }
 
   String _inputValue(String html, String name) {
-    final tag = RegExp(
-      r'<input\b[^>]*\bname\s*=\s*"' +
-          RegExp.escape(name) +
-          r'"[^>]*>',
-      caseSensitive: false,
-    ).firstMatch(html)?.group(0);
-
-    if (tag == null) return '';
-
-    return _attr(tag, 'value');
+    for (final match in RegExp(r'<input\\b[^>]*>', caseSensitive: false).allMatches(html)) {
+      final tag = match.group(0) ?? '';
+      if (_attr(tag, 'name') == name) return _attr(tag, 'value');
+    }
+    return '';
   }
+
+  String _normalizeRoom(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'^\\s*кабинет\\s*'), '')
+      .replaceAll(RegExp(r'\\s+'), ' ')
+      .trim();
+
 }
 
 class _DopCurrentChoice {
@@ -779,7 +788,7 @@ class _DopSession {
         );
       }
 
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 20));
 
       for (final cookie in response.cookies) {
         if (cookie.expires != null &&
