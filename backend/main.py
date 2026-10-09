@@ -36,6 +36,17 @@ YANDEX_FILE_PATH = os.getenv(
 # APP
 # ============================================================
 
+# Only these sheets are intended for unauthenticated, read-only school app access.
+# Never expose Admins, Devices, AuditLog, or Settings through generic endpoints.
+PUBLIC_READ_SHEETS = frozenset({
+    "Classes",
+    "BaseSchedule",
+    "Supplements",
+    "Rooms",
+    "Places",
+    "Announcements",
+})
+
 app = FastAPI(
     title="Navigator Backend",
     description="Backend школьного навигатора",
@@ -91,8 +102,7 @@ def download_master_file():
     if response.status_code != 200:
         raise HTTPException(
             status_code=502,
-            detail=f"Yandex Disk download URL error: "
-                   f"{response.status_code} {response.text}",
+            detail="Yandex Disk download failed",
         )
 
     href = response.json().get("href")
@@ -136,7 +146,7 @@ def load_workbook():
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Cannot read Navigator_Master.xlsx: {e}",
+            detail="Cannot read the configured school data workbook",
         )
 
 
@@ -155,11 +165,8 @@ def read_sheet(sheet_name: str):
     workbook = load_workbook()
 
     try:
-        if sheet_name not in workbook.sheetnames:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Sheet '{sheet_name}' not found",
-            )
+        if sheet_name not in PUBLIC_READ_SHEETS or sheet_name not in workbook.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet not found")
 
         sheet = workbook[sheet_name]
 
@@ -236,10 +243,10 @@ def health():
     except HTTPException:
         raise
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=502,
-            detail=str(e),
+            detail="School data source is temporarily unavailable",
         )
 
 
@@ -254,7 +261,7 @@ def get_sheets():
 
     try:
         return {
-            "sheets": workbook.sheetnames
+            "sheets": [name for name in workbook.sheetnames if name in PUBLIC_READ_SHEETS]
         }
 
     finally:
@@ -268,11 +275,8 @@ def get_schema(sheet_name: str):
 
     try:
 
-        if sheet_name not in workbook.sheetnames:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Sheet '{sheet_name}' not found",
-            )
+        if sheet_name not in PUBLIC_READ_SHEETS or sheet_name not in workbook.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet not found")
 
         sheet = workbook[sheet_name]
 
@@ -543,10 +547,8 @@ def get_announcements(
 
 @app.get("/api/settings")
 def get_settings():
-
-    return {
-        "data": read_sheet("Settings")
-    }
+    # Settings may contain internal configuration and are not public API data.
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 # ============================================================
@@ -555,10 +557,8 @@ def get_settings():
 
 @app.get("/api/devices")
 def get_devices():
-
-    return {
-        "data": read_sheet("Devices")
-    }
+    # Device inventory is internal and must not be exposed without authentication.
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 # ============================================================
@@ -567,6 +567,9 @@ def get_devices():
 
 @app.get("/api/data/{sheet_name}")
 def get_sheet_data(sheet_name: str):
+    # Prevent arbitrary reads such as /api/data/Admins or /api/data/AuditLog.
+    if sheet_name not in PUBLIC_READ_SHEETS:
+        raise HTTPException(status_code=404, detail="Sheet not found")
 
     return {
         "sheet": sheet_name,
