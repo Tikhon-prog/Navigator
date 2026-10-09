@@ -12,34 +12,73 @@ class AdminLoginDialog extends StatefulWidget {
 class _AdminLoginDialogState extends State<AdminLoginDialog> {
   final login = TextEditingController();
   final password = TextEditingController();
+  final confirmPassword = TextEditingController();
   bool hidden = true;
   bool busy = false;
+  bool setupMode = false;
   String? error;
 
-  @override void dispose() { login.dispose(); password.dispose(); super.dispose(); }
+  @override void initState() { super.initState(); _checkSetup(); }
+
+  Future<void> _checkSetup() async {
+    final needed = !await AdminRepository().hasConfiguredAccounts();
+    if (mounted) setState(() => setupMode = needed);
+  }
+
+  @override void dispose() {
+    login.dispose();
+    password.dispose();
+    confirmPassword.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     if (busy) return;
-    setState(() => busy = true);
-    final result = await AdminRepository().authenticate(login.text.trim(), password.text);
+    if (setupMode) {
+      if (login.text.trim().length < 3) {
+        setState(() => error = 'Логин должен содержать минимум 3 символа');
+        return;
+      }
+      if (password.text.length < 12) {
+        setState(() => error = 'Придумай пароль минимум из 12 символов');
+        return;
+      }
+      if (password.text != confirmPassword.text) {
+        setState(() => error = 'Пароли не совпадают');
+        return;
+      }
+    }
+    setState(() { busy = true; error = null; });
+    final repository = AdminRepository();
+    final result = setupMode
+        ? await repository.createFirstAdmin(login.text.trim(), password.text)
+        : await repository.authenticate(login.text.trim(), password.text);
     if (!mounted) return;
     setState(() => busy = false);
     if (result == null) {
-      setState(() => error = 'Неверный логин, пароль или аккаунт временно заблокирован');
+      setState(() => error = setupMode
+          ? 'Не удалось создать администратора. Проверь логин и пароль.'
+          : 'Неверный логин, пароль или аккаунт временно заблокирован');
       return;
     }
     Navigator.pop(context, result);
   }
 
   @override Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Вход для администраторов'),
+    title: Text(setupMode ? 'Создание главного администратора' : 'Вход для администраторов'),
     content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      TextField(controller: login, autofocus: true, decoration: const InputDecoration(labelText: 'Логин')),
+      if (setupMode)
+        const Text('Первый запуск: создай уникальный логин и пароль не короче 12 символов. Пароль по умолчанию не используется.'),
+      TextField(controller: login, autofocus: true, decoration: InputDecoration(labelText: setupMode ? 'Новый логин' : 'Логин')),
       const SizedBox(height: 10),
-      TextField(controller: password, obscureText: hidden, onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: 'Пароль', suffixIcon: IconButton(onPressed: () => setState(() => hidden = !hidden), icon: Icon(hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded)))),
+      TextField(controller: password, obscureText: hidden, onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: setupMode ? 'Новый пароль (от 12 символов)' : 'Пароль', suffixIcon: IconButton(onPressed: () => setState(() => hidden = !hidden), icon: Icon(hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded)))),
+      if (setupMode) ...[
+        const SizedBox(height: 10),
+        TextField(controller: confirmPassword, obscureText: hidden, onSubmitted: (_) => _submit(), decoration: const InputDecoration(labelText: 'Повтори пароль')),
+      ],
       if (error != null) ...[const SizedBox(height: 10), Align(alignment: Alignment.centerLeft, child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)))],
     ])),
-    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')), FilledButton(onPressed: busy ? null : _submit, child: Text(busy ? 'Проверка…' : 'Войти'))],
+    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')), FilledButton(onPressed: busy ? null : _submit, child: Text(busy ? 'Подожди…' : setupMode ? 'Создать администратора' : 'Войти'))],
   );
 }
 
@@ -48,6 +87,25 @@ class AdminRepository {
   static const _legacyKey = 'navigator_admins_v1';
   static const _lockKey = 'navigator_admin_lock_v1';
   static const _auditKey = 'navigator_admin_audit_v1';
+
+  Future<bool> hasConfiguredAccounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_key) || prefs.containsKey(_legacyKey);
+  }
+
+  Future<AdminAccount?> createFirstAdmin(String login, String password) async {
+    if (login.trim().length < 3 || password.length < 12 ||
+        await hasConfiguredAccounts()) return null;
+    final account = AdminAccount(
+      id: 'root',
+      login: login.trim(),
+      passwordHash: PasswordHasher.secureDigest(password),
+      role: 'superadmin',
+    );
+    await save([account]);
+    await audit(account, 'Создан главный администратор при первом запуске');
+    return account;
+  }
 
   Future<List<AdminAccount>> list() async {
     final prefs = await SharedPreferences.getInstance();
