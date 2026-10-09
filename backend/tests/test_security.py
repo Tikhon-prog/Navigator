@@ -1,5 +1,7 @@
 import json
+import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -45,6 +47,26 @@ class BackendAccessTests(unittest.TestCase):
                 with self.assertRaises(HTTPException) as raised:
                     endpoint()
                 self.assertEqual(raised.exception.status_code, 404)
+
+    def test_workbook_cache_avoids_repeated_provider_downloads(self):
+        main._cached_workbook_bytes = None
+        main._cached_workbook_at = 0.0
+        responses = [
+            SimpleNamespace(status_code=200, json=lambda: {"href": "https://download.example/file"}),
+            SimpleNamespace(status_code=200, content=b"workbook-bytes"),
+        ]
+        try:
+            with patch.dict(os.environ, {"YANDEX_OAUTH_TOKEN": "test-token"}):
+                with patch.object(main.requests, "get", side_effect=responses) as get:
+                    with patch.object(main, "monotonic", side_effect=[100.0, 101.0, 102.0]):
+                        first = main.download_master_file()
+                        second = main.download_master_file()
+            self.assertEqual(first, b"workbook-bytes")
+            self.assertEqual(second, b"workbook-bytes")
+            self.assertEqual(get.call_count, 2)
+        finally:
+            main._cached_workbook_bytes = None
+            main._cached_workbook_at = 0.0
 
 
 class CloudFunctionSecurityTests(unittest.TestCase):
