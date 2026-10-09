@@ -29,7 +29,9 @@ class PasswordHasher {
 
   static bool verify(String password, String stored) {
     if (!stored.startsWith('v2\$')) {
-      return stored == sha256Digest(password);
+      // Legacy hashes are migrated after successful login; compare without
+      // leaking the first differing character through ordinary string equality.
+      return _constantTimeEquals(stored, sha256Digest(password));
     }
     final parts = stored.split('\$');
     if (parts.length != 4) return false;
