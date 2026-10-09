@@ -1339,30 +1339,103 @@ class _ScheduleTag extends StatelessWidget {
 }
 
 class RoutePage extends StatelessWidget {
-  final RoomInfo room; final RouteResult route;
-  const RoutePage({super.key,required this.room,required this.route});
-  @override Widget build(BuildContext context){
-    final steps=RouteEngine.instructions(route);
+  final RoomInfo room;
+  final RouteResult route;
+  const RoutePage({super.key, required this.room, required this.route});
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = RouteEngine.instructions(route);
+    final floors = route.nodes.map((n) => n.floor).toSet().toList()..sort();
+    final scheme = Theme.of(context).colorScheme;
+    final origin = route.startLocationId == null ? 'Главный вход' : SchoolData.title(SchoolData.room(route.startLocationId!));
+    final width = MediaQuery.sizeOf(context).width;
     return Scaffold(
-      appBar:AppBar(title:Text('Маршрут → '+SchoolData.title(room),style:const TextStyle(fontWeight:FontWeight.w900))),
-      body:ListView(
-        padding:const EdgeInsets.all(16),
-        children:[
-          Card(clipBehavior:Clip.antiAlias,child:AspectRatio(
-            aspectRatio:7016/4960,
-            child:Stack(children:[
-              Positioned.fill(child:Image.asset('assets/maps/floor'+room.floor.toString()+'.webp',fit:BoxFit.contain)),
-              Positioned.fill(child:CustomPaint(painter:_RoutePainter(route.nodes.where((n)=>n.floor==room.floor).toList(),Theme.of(context).colorScheme.primary))),
-            ]),
-          )),
-          const SizedBox(height:12),
-          Card(child:ListTile(leading:const Icon(Icons.route_rounded),title:const Text('Маршрут построен',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:Text('Этаж старта: '+route.startFloor.toString()+' • этаж назначения: '+room.floor.toString()))),
-          for(final e in steps.asMap().entries)Card(child:ListTile(leading:CircleAvatar(child:Text((e.key+1).toString())),title:Text(e.value.text),subtitle:Text(e.value.floor.toString()+' этаж'))),
-        ],
+      appBar: AppBar(title: const Text('Маршрут')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1050),
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(width < 600 ? 12 : 24, 12, width < 600 ? 12 : 24, 30),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [scheme.primaryContainer, scheme.surfaceContainerHigh]),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(children: [
+                  Container(width: 52, height: 52, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .13), borderRadius: BorderRadius.circular(16)), child: Icon(Icons.directions_rounded, color: scheme.primary, size: 28)),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(SchoolData.title(room), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
+                    const SizedBox(height: 5),
+                    Text('Откуда: $origin', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                    const SizedBox(height: 3),
+                    Text('Этаж назначения: ${room.floor} • ${floors.length} ${floors.length == 1 ? 'этаж' : 'этажа'} на маршруте', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                  ])),
+                  Icon(Icons.flag_rounded, color: scheme.primary, size: 24),
+                ]),
+              ),
+              const SizedBox(height: 22),
+              Text('План маршрута', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 12),
+              for (final floor in floors)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 13, 16, 11),
+                        child: Row(children: [
+                          Icon(Icons.layers_rounded, color: scheme.primary),
+                          const SizedBox(width: 9),
+                          Expanded(child: Text('$floor этаж', style: const TextStyle(fontWeight: FontWeight.w900))),
+                          if (floor == room.floor)
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)), child: Text('Назначение', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 11))),
+                        ]),
+                      ),
+                      AspectRatio(
+                        aspectRatio: 7016 / 4960,
+                        child: Stack(children: [
+                          Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
+                          Positioned.fill(child: CustomPaint(painter: _RoutePainter(route.nodes.where((n) => n.floor == floor).toList(), scheme.primary))),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Text('Пошаговые инструкции', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 12),
+              for (final item in steps.asMap().entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(width: 42, height: 42, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Center(child: Text('${item.key + 1}', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w900, fontSize: 15))),
+                        const SizedBox(width: 13),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(item.value.text, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.35)),
+                          const SizedBox(height: 5),
+                          Text('${item.value.floor} этаж', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                        ])),
+                        Icon(item.value.icon, color: scheme.primary),
+                      ]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
+
 class _RoutePainter extends CustomPainter {
   final List<RouteNode> nodes; final Color color;
   _RoutePainter(this.nodes,this.color);
