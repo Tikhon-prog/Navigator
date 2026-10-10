@@ -1527,7 +1527,7 @@ class RoutePage extends StatelessWidget {
                         aspectRatio: 7016 / 4960,
                         child: Stack(children: [
                           Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
-                          Positioned.fill(child: CustomPaint(painter: _RoutePainter(route.nodes.where((n) => n.floor == floor).toList(), scheme.primary))),
+                          Positioned.fill(child: CustomPaint(painter: _RoutePainter(route.nodes, floor, scheme.primary))),
                         ]),
                       ),
                     ]),
@@ -1564,16 +1564,49 @@ class RoutePage extends StatelessWidget {
 }
 
 class _RoutePainter extends CustomPainter {
-  final List<RouteNode> nodes; final Color color;
-  _RoutePainter(this.nodes,this.color);
-  @override void paint(Canvas c,Size s){
-    if(nodes.length<2)return;
-    final p=Paint()..color=color..strokeWidth=6..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;
-    final path=Path();
-    for(var i=0;i<nodes.length;i++){final o=Offset(nodes[i].point.dx*s.width,nodes[i].point.dy*s.height);if(i==0)path.moveTo(o.dx,o.dy);else path.lineTo(o.dx,o.dy);}
-    c.drawPath(path,p);
+  final List<RouteNode> nodes;
+  final int floor;
+  final Color color;
+  _RoutePainter(this.nodes, this.floor, this.color);
+
+  @override
+  void paint(Canvas c, Size s) {
+    if (nodes.length < 2) return;
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path();
+    var drawing = false;
+    for (var i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      if (node.floor != floor) {
+        drawing = false;
+        continue;
+      }
+      final point = Offset(node.point.dx * s.width, node.point.dy * s.height);
+      if (!drawing) {
+        path.moveTo(point.dx, point.dy);
+        drawing = true;
+      } else {
+        final previous = nodes[i - 1];
+        // Never bridge a floor transition: that would draw a false straight
+        // line between two physically separate staircases on this floor.
+        if (previous.floor == floor) {
+          path.lineTo(point.dx, point.dy);
+        } else {
+          path.moveTo(point.dx, point.dy);
+        }
+      }
+    }
+    c.drawPath(path, p);
   }
-  @override bool shouldRepaint(covariant _RoutePainter old)=>old.nodes!=nodes||old.color!=color;
+
+  @override
+  bool shouldRepaint(covariant _RoutePainter old) =>
+      old.nodes != nodes || old.floor != floor || old.color != color;
 }
 class FullscreenMapPage extends StatefulWidget {
   final int floor;
