@@ -1242,7 +1242,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
       FilledButton(onPressed: () async {
         final p = await SharedPreferences.getInstance();
         for (var d = 1; d <= 6; d++) {
-          for (var slot = 0; slot < 4; slot++) {
+          for (var slot = 0; slot < 6; slot++) {
             await p.setString('math_subject_${widget.className}_${d}_$slot', selected['$d|$slot'] ?? '');
           }
         }
@@ -1272,7 +1272,7 @@ class _SchedulePageState extends State<SchedulePage> {
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
-        for (var slot = 0; slot < 4; slot++) {
+        for (var slot = 0; slot < 6; slot++) {
           dayNames.add(p.getString('math_subject_${classId}_${d}_$slot') ?? '');
         }
         mathNames[d] = dayNames;
