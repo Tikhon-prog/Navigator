@@ -1289,7 +1289,7 @@ class _SchedulePageState extends State<SchedulePage> {
     if (day != DateTime.now().weekday || day > 6) return null;
     final upcoming = <({ScheduleEntry entry, DateTime start})>[];
     for (final entry in dayEntries) {
-      final match = RegExp(r'\\d{1,2}:\\d{2}').firstMatch(entry.time);
+      final match = RegExp(r'\d{1,2}:\d{2}').firstMatch(entry.time);
       if (match == null) continue;
       final parts = match.group(0)!.split(':');
       final start = DateTime(_now.year, _now.month, _now.day, int.parse(parts[0]), int.parse(parts[1]));
@@ -1305,7 +1305,6 @@ class _SchedulePageState extends State<SchedulePage> {
     final countdown = hours > 0 ? '${hours} ч ${minutes.toString().padLeft(2, '0')} мин' : '${minutes} мин ${seconds.toString().padLeft(2, '0')} сек';
     return 'До следующего урока: $countdown • ${next.entry.subject} (${next.entry.time.split(RegExp(r'[-–—]')).first.trim()})';
   }
-  @override void initState() { super.initState(); _load(); }
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
     classId = p.getString('student_class_name') ?? '';
