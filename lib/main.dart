@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -18,23 +19,32 @@ Future<void> main() async {
   runApp(const NavigatorApp());
 }
 
-enum AppThemeType { yellow, turquoise, darkBlue }
+enum AppThemeType { yellow, turquoise, darkBlue, violet, coral, green }
 
 class AppPalette {
   static const yellow = [Color(0xFFFFC94D), Color(0xFFEADCC7)];
   static const turquoise = [Color(0xFF00BFAE), Color(0xFF79E2A0)];
   static const darkBlue = [Color(0xFF0B1633), Color(0xFF173A78), Color(0xFF3657B8)];
+  static const violet = [Color(0xFF6D28D9), Color(0xFF9333EA), Color(0xFFC084FC)];
+  static const coral = [Color(0xFFFF5B5B), Color(0xFFFF8A65), Color(0xFFFFC371)];
+  static const green = [Color(0xFF087F5B), Color(0xFF12B886), Color(0xFF96F2D7)];
 
   static List<Color> gradient(AppThemeType type) => switch (type) {
     AppThemeType.yellow => yellow,
     AppThemeType.turquoise => turquoise,
     AppThemeType.darkBlue => darkBlue,
+    AppThemeType.violet => violet,
+    AppThemeType.coral => coral,
+    AppThemeType.green => green,
   };
 
   static String name(AppThemeType type) => switch (type) {
     AppThemeType.yellow => 'Жёлтая',
     AppThemeType.turquoise => 'Бирюзовая',
     AppThemeType.darkBlue => 'Тёмно-синяя',
+    AppThemeType.violet => 'Фиолетовая',
+    AppThemeType.coral => 'Коралловая',
+    AppThemeType.green => 'Зелёная',
   };
 }
 
@@ -1269,8 +1279,32 @@ class SchedulePage extends StatefulWidget {
   @override State<SchedulePage> createState() => _SchedulePageState();
 }
 class _SchedulePageState extends State<SchedulePage> {
-  int day = math.min(DateTime.now().weekday, 6);
+  int day = DateTime.now().weekday > 6 ? 1 : DateTime.now().weekday;
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
+  @override void initState() { super.initState(); _load(); _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) setState(() => _now = DateTime.now()); }); }
+  @override void dispose() { _clockTimer?.cancel(); super.dispose(); }
+  String? _nextLessonCountdown(List<ScheduleEntry> dayEntries) {
+    if (day != DateTime.now().weekday || day > 6) return null;
+    final upcoming = <({ScheduleEntry entry, DateTime start})>[];
+    for (final entry in dayEntries) {
+      final match = RegExp(r'\\d{1,2}:\\d{2}').firstMatch(entry.time);
+      if (match == null) continue;
+      final parts = match.group(0)!.split(':');
+      final start = DateTime(_now.year, _now.month, _now.day, int.parse(parts[0]), int.parse(parts[1]));
+      if (start.isAfter(_now)) upcoming.add((entry: entry, start: start));
+    }
+    upcoming.sort((a, b) => a.start.compareTo(b.start));
+    if (upcoming.isEmpty) return dayEntries.isEmpty ? null : 'Уроки на сегодня закончились';
+    final next = upcoming.first;
+    final remaining = next.start.difference(_now);
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    final seconds = remaining.inSeconds.remainder(60);
+    final countdown = hours > 0 ? '${hours} ч ${minutes.toString().padLeft(2, '0')} мин' : '${minutes} мин ${seconds.toString().padLeft(2, '0')} сек';
+    return 'До следующего урока: $countdown • ${next.entry.subject} (${next.entry.time.split(RegExp(r'[-–—]')).first.trim()})';
+  }
   @override void initState() { super.initState(); _load(); }
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
@@ -1300,7 +1334,27 @@ class _SchedulePageState extends State<SchedulePage> {
     final p = await SharedPreferences.getInstance(); await p.setString('student_class_name', selected); await p.setString('student_class_id', selected);
     if (!mounted) return; await showStudentGroupSelection(context, selected); await _load();
   }
-  void _route(ScheduleEntry e) { if (e.room.isEmpty) return; final r = SchoolData.tryRoom(e.room); if (r == null) return; final route = RouteEngine.build(r.id); if (route != null) Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room:r,route:route))); }
+  void _route(ScheduleEntry e) {
+    if (e.room.isEmpty) return;
+    final destination = SchoolData.tryRoom(e.room);
+    if (destination == null) return;
+    final sameDay = entries.where((x) => x.day == e.day).toList()..sort((a, b) => a.time.compareTo(b.time));
+    final currentIndex = sameDay.indexWhere((x) => x.id == e.id);
+    RoomInfo? previousRoom;
+    if (currentIndex > 0) {
+      for (var i = currentIndex - 1; i >= 0; i--) {
+        final candidate = sameDay[i];
+        if (candidate.room.isEmpty) continue;
+        previousRoom = SchoolData.tryRoom(candidate.room);
+        if (previousRoom != null) break;
+      }
+    }
+    final route = RouteEngine.build(destination.id,
+      startFloor: previousRoom?.floor ?? 1,
+      startLocationId: previousRoom?.id,
+    );
+    if (route != null) Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: destination, route: route)));
+  }
   @override
   Widget build(BuildContext context) {
     final list = entries.where((e) => e.day == day).toList()..sort((a, b) => a.time.compareTo(b.time));
@@ -1373,6 +1427,22 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (!loading && classId.isNotEmpty && _nextLessonCountdown(list) != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: scheme.tertiary.withValues(alpha: .25)),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.hourglass_bottom_rounded, color: scheme.onTertiaryContainer),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_nextLessonCountdown(list)!, style: TextStyle(color: scheme.onTertiaryContainer, fontWeight: FontWeight.w800, fontSize: 13))),
+                    ]),
+                  ),
+                ],
                 Expanded(
                   child: loading
                       ? const Center(child: CircularProgressIndicator())
@@ -1538,7 +1608,7 @@ class RoutePage extends StatelessWidget {
                         aspectRatio: 7016 / 4960,
                         child: Stack(children: [
                           Positioned.fill(child: Image.asset('assets/maps/floor$floor.webp', fit: BoxFit.contain)),
-                          Positioned.fill(child: CustomPaint(painter: _RoutePainter(route.nodes, floor, scheme.primary))),
+                          Positioned.fill(child: CustomPaint(painter: _RoutePainter(route.nodes, floor, const Color(0xFFFF2D95)))),
                         ]),
                       ),
                     ]),
@@ -1583,12 +1653,6 @@ class _RoutePainter extends CustomPainter {
   @override
   void paint(Canvas c, Size s) {
     if (nodes.length < 2) return;
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
     final path = Path();
     var drawing = false;
     for (var i = 0; i < nodes.length; i++) {
@@ -1612,7 +1676,19 @@ class _RoutePainter extends CustomPainter {
         }
       }
     }
-    c.drawPath(path, p);
+    // White halo keeps the route readable over every department/map color.
+    c.drawPath(path, Paint()
+      ..color = Colors.white.withValues(alpha: .95)
+      ..strokeWidth = 11
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round);
+    c.drawPath(path, Paint()
+      ..color = color
+      ..strokeWidth = 6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round);
   }
 
   @override
@@ -1915,7 +1991,7 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted || result == null || result.isEmpty) return;
     onNameChanged(result);
   }
-  void _pickTheme(BuildContext context) => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(18, 4, 18, 28), children: [const Text('Цветовая тема', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 12), _ThemeTile(title: 'Жёлтая', description: 'Жёлтый → бежевый', colors: AppPalette.yellow, selected: theme == AppThemeType.yellow, onTap: () { onThemeChanged(AppThemeType.yellow); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Бирюзовая', description: 'Насыщенный бирюзовый → светло-зелёный', colors: AppPalette.turquoise, selected: theme == AppThemeType.turquoise, onTap: () { onThemeChanged(AppThemeType.turquoise); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Тёмно-синяя', description: 'Тёмно-синий → фиолетовый', colors: AppPalette.darkBlue, selected: theme == AppThemeType.darkBlue, onTap: () { onThemeChanged(AppThemeType.darkBlue); Navigator.pop(sheetContext); })])));
+  void _pickTheme(BuildContext context) => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(18, 4, 18, 28), children: [const Text('Цветовая тема', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 12), _ThemeTile(title: 'Жёлтая', description: 'Жёлтый → бежевый', colors: AppPalette.yellow, selected: theme == AppThemeType.yellow, onTap: () { onThemeChanged(AppThemeType.yellow); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Бирюзовая', description: 'Насыщенный бирюзовый → светло-зелёный', colors: AppPalette.turquoise, selected: theme == AppThemeType.turquoise, onTap: () { onThemeChanged(AppThemeType.turquoise); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Тёмно-синяя', description: 'Тёмно-синий → синий', colors: AppPalette.darkBlue, selected: theme == AppThemeType.darkBlue, onTap: () { onThemeChanged(AppThemeType.darkBlue); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Фиолетовая', description: 'Фиолетовый → сиреневый', colors: AppPalette.violet, selected: theme == AppThemeType.violet, onTap: () { onThemeChanged(AppThemeType.violet); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Коралловая', description: 'Коралловый → тёплый персиковый', colors: AppPalette.coral, selected: theme == AppThemeType.coral, onTap: () { onThemeChanged(AppThemeType.coral); Navigator.pop(sheetContext); }), _ThemeTile(title: 'Зелёная', description: 'Изумрудный → мятный', colors: AppPalette.green, selected: theme == AppThemeType.green, onTap: () { onThemeChanged(AppThemeType.green); Navigator.pop(sheetContext); })])));
 }
 
 class _EditValueDialog extends StatefulWidget {
