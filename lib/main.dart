@@ -294,18 +294,29 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
             .where((name) => name.isNotEmpty).toSet();
         return teacherNames.isEmpty ? 'Группа $group' : teacherNames.join(' / ');
       }
-      return ListTile(
-        title: Text(s),
-        subtitle: const Text('Выбор сохраняется отдельно для предмета.'),
-        trailing: SizedBox(
-          width: 190,
-          child: DropdownButtonFormField<int>(
-            isExpanded: true,
-            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-            value: values[s] ?? groups.first,
-            items: groups.map((g) => DropdownMenuItem(value: g, child: Text(groupLabel(g), maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
-            onChanged: (value) { if (value != null) setState(() => values[s] = value); },
-          ),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(s, softWrap: true, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 5),
+            DropdownButtonFormField<int>(
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Группа / преподаватель',
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+              value: values[s] ?? groups.first,
+              items: groups.map((g) => DropdownMenuItem(
+                value: g,
+                child: Text(groupLabel(g), maxLines: 1, overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: (value) { if (value != null) setState(() => values[s] = value); },
+            ),
+          ],
         ),
       );
     }).toList())),
