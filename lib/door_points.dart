@@ -93,7 +93,7 @@ class DoorPoints {
     'place_drone': Offset(0.593928, 0.707056),
     'place_gym': Offset(0.540906, 0.808065),
     'place_choreo': Offset(0.539766, 0.834879),
-    'place_bio_lab': Offset(0.125, 0.470),
+    'place_bio_lab': Offset(0.061, 0.181), // рядом с кабинетом 129, а не около 130
 
     // First-floor points supplied from the original 7016x4960 map.
     'place_entrance': Offset(0.235604, 0.458669),
