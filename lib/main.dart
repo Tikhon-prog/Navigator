@@ -1502,7 +1502,7 @@ class RoutePage extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 13, 16, 11),
                         child: Row(children: [
-                          Icon(Icons.layers_rounded, color: scheme.primary),
+                          Tooltip(message: 'Этаж, по которому проходит маршрут', child: Icon(Icons.layers_rounded, color: scheme.primary)),
                           const SizedBox(width: 9),
                           Expanded(child: Text('$floor этаж', style: const TextStyle(fontWeight: FontWeight.w900))),
                           if (floor == room.floor)
