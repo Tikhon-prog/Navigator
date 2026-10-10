@@ -30,14 +30,20 @@ jobs:
         run: flutter pub get
       - name: Build iOS without signing
         run: flutter build ios --release --no-codesign
-      - name: Package unsigned app for inspection
+      - name: Package unsigned app and IPA container
         run: |
           cd build/ios/iphoneos
           ditto -c -k --sequesterRsrc --keepParent Runner.app Navigator-iOS-unsigned.zip
+          mkdir -p ipa/Payload
+          ditto Runner.app ipa/Payload/Runner.app
+          cd ipa
+          zip -qry ../Navigator-unsigned.ipa Payload
       - name: Upload unsigned iOS app
         uses: actions/upload-artifact@v4
         with:
           name: Navigator-iOS-unsigned
-          path: build/ios/iphoneos/Navigator-iOS-unsigned.zip
+          path: |
+            build/ios/iphoneos/Navigator-iOS-unsigned.zip
+            build/ios/iphoneos/Navigator-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
