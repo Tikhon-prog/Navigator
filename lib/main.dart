@@ -173,6 +173,16 @@ class SchoolScheduleCatalog {
   static Set<String> splitSubjects(String className) =>
       subjectGroups(className).keys.toSet();
 
+  static bool isMathSubject(String subject) {
+    final value = subject.toLowerCase();
+    return value.contains('математик') || value.contains('алгебр') || value.contains('геометр') || value.contains('вероятност') || value.contains('статистик');
+  }
+
+  static int mathLessonCount(String className, int day) {
+    final times = variants(className).where((e) => (int.tryParse('${e['day']}') ?? 1) == day && isMathSubject(baseSubject('${e['subject'] ?? ''}'))).map((e) => '${e['time'] ?? ''}'.trim()).where((t) => t.isNotEmpty).toSet();
+    return times.length;
+  }
+
   static List<ScheduleEntry> buildPersonal(
     String className,
     Map<String, int> selected, {
@@ -184,7 +194,7 @@ class SchoolScheduleCatalog {
     final mathSlots = <int, List<String>>{};
     for (final e in all) {
       final raw = baseSubject('${e['subject'] ?? ''}');
-      if (raw.toLowerCase().contains('математик')) {
+      if (isMathSubject(raw)) {
         final day = int.tryParse('${e['day']}') ?? 1;
         final time = '${e['time'] ?? ''}';
         final slots = mathSlots.putIfAbsent(day, () => <String>[]);
@@ -209,7 +219,7 @@ class SchoolScheduleCatalog {
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
       var displaySubject = subject;
-      if (subject.toLowerCase().contains('математик')) {
+      if (isMathSubject(subject)) {
         final slots = mathSlots[day] ?? const <String>[];
         final ordinal = slots.indexOf(time);
         final names = mathNamesByDay[day] ?? const <String>[];
@@ -275,7 +285,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
   late final available = SchoolScheduleCatalog.subjectGroups(widget.className);
   @override Widget build(BuildContext context) => AlertDialog(
     title: Text('Группы • ${widget.className}'),
-    content: SizedBox(width: 560, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
+    content: SizedBox(width: MediaQuery.sizeOf(context).width * .82, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
       final groups = (available[s] ?? <int>{1}).toList()..sort();
       String groupLabel(int group) {
         final teacherNames = SchoolScheduleCatalog.variants(widget.className)
@@ -1199,7 +1209,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
       if (!mounted) return;
       setState(() {
         for (var d = 1; d <= 6; d++) {
-          for (var slot = 0; slot < 4; slot++) {
+          for (var slot = 0; slot < 6; slot++) {
             selected['$d|$slot'] = p.getString('math_subject_${widget.className}_${d}_$slot') ?? '';
           }
         }
@@ -1208,12 +1218,12 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
   }
   @override Widget build(BuildContext context) => AlertDialog(
     title: const Text('Раздельная математика'),
-    content: SizedBox(width: 520, child: ListView(shrinkWrap: true, children: [
+    content: SizedBox(width: MediaQuery.sizeOf(context).width * .82, child: ListView(shrinkWrap: true, children: [
       const Text('Настрой названия математических уроков отдельно для каждого дня. Если уроков несколько, они идут по времени: первый, второй и далее.'),
       const SizedBox(height: 10),
       for (var d = 1; d <= 6; d++) ...[
         Padding(padding: const EdgeInsets.only(top: 10, bottom: 4), child: Text(days[d - 1], style: const TextStyle(fontWeight: FontWeight.w800))),
-        for (var slot = 0; slot < 3; slot++)
+        for (var slot = 0; slot < SchoolScheduleCatalog.mathLessonCount(widget.className, d); slot++)
           DropdownButtonFormField<String>(
             isExpanded: true,
             decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
