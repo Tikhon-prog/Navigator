@@ -61,7 +61,7 @@ class SchoolPlaces {
     RoomInfo('place_drone', 1, 'Трасса для дрон-рейсинга', Offset(.570, .625), 'f1_lower'),
     RoomInfo('place_gym', 1, 'Тренажёрный зал', Offset(.570, .705), 'f1_lower'),
     RoomInfo('place_choreo', 1, 'Зал хореографии', Offset(.570, .825), 'f1_lower'),
-    RoomInfo('place_bio_lab', 1, 'Лаборатория бактериальных экспериментов', Offset(.115, .455), 'f1_left'),
+    RoomInfo('place_bio_lab', 1, 'Лаборатория бактериальных экспериментов', Offset(.061, .181), 'f1_left'),
     RoomInfo('place_auditorium', 2, 'Актовый зал', Offset(.285, .600), 'f2_lower'),
     RoomInfo('place_stage', 2, 'Сцена', Offset(.335, .535), 'f2_lower'),
     RoomInfo('place_dressing', 2, 'Гримерная', Offset(.250, .620), 'f2_lower'),
@@ -256,7 +256,27 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     title: Text('Группы • ${widget.className}'),
     content: SizedBox(width: 560, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
       final groups = (available[s] ?? <int>{1}).toList()..sort();
-      return ListTile(title: Text(s), subtitle: const Text('Выбор сохраняется отдельно для предмета.'), trailing: SegmentedButton<int>(segments: groups.map((g) => ButtonSegment(value: g, label: Text('Группа $g'))).toList(), selected: {values[s] ?? groups.first}, onSelectionChanged: (v) => setState(() => values[s] = v.first)));
+      String groupLabel(int group) {
+        final teacherNames = SchoolScheduleCatalog.variants(widget.className)
+            .where((e) => SchoolScheduleCatalog.baseSubject('${e['subject'] ?? ''}') == s && (int.tryParse('${e['group']}') ?? 1) == group)
+            .map((e) => SchoolScheduleCatalog.teacherFromSubject('${e['subject'] ?? ''}').split(' ').first)
+            .where((name) => name.isNotEmpty).toSet();
+        return teacherNames.isEmpty ? 'Группа $group' : teacherNames.join(' / ');
+      }
+      return ListTile(
+        title: Text(s),
+        subtitle: const Text('Выбор сохраняется отдельно для предмета.'),
+        trailing: SizedBox(
+          width: 190,
+          child: DropdownButtonFormField<int>(
+            isExpanded: true,
+            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+            value: values[s] ?? groups.first,
+            items: groups.map((g) => DropdownMenuItem(value: g, child: Text(groupLabel(g), maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
+            onChanged: (value) { if (value != null) setState(() => values[s] = value); },
+          ),
+        ),
+      );
     }).toList())),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
@@ -565,7 +585,9 @@ class RouteEngine {
         if (aId == null || bId == null) continue;
         final a = nodes[aId]!;
         final b = nodes[bId]!;
-        connect(a.id, b.id, .28);
+        // Смена этажа должна стоить заметно дороже обычного участка коридора,
+      // иначе алгоритм выбирает лестницу даже для маршрута на том же этаже.
+      connect(a.id, b.id, 1.25);
       }
     }
 
