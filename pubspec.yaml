@@ -1,7 +1,7 @@
 name: navigator
 description: Navigator for Generation school with offline navigation, class schedules, supplements, admin tools and online sync.
 publish_to: 'none'
-version: 1.0.0-debug
+version: 0.1.0-test
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
