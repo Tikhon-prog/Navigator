@@ -1,40 +1,45 @@
 #!/usr/bin/env python3
-"""Generate a school-first launcher icon for Navigator in Android density buckets."""
+"""Generate Navigator's Android launcher icon in all density buckets."""
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
-SIZE, SCALE = 512, 3
+SIZE = 512
+SCALE = 3
 N = SIZE * SCALE
-im = Image.new("RGBA", (N, N), (8, 23, 64, 255))
+im = Image.new("RGBA", (N, N), (8, 24, 64, 255))
 d = ImageDraw.Draw(im)
 
-def p(points):
+def pts(points):
     return [(int(x*SCALE), int(y*SCALE)) for x, y in points]
 
-navy = (8, 23, 64, 255)
-white = (248, 250, 255, 255)
-cyan = (41, 218, 205, 255)
-gold = (255, 198, 48, 255)
-d.rounded_rectangle((0, 0, N-1, N-1), radius=96*SCALE, fill=(8, 23, 64, 255))
-d.rounded_rectangle((12*SCALE, 12*SCALE, N-12*SCALE, N-12*SCALE), radius=84*SCALE, outline=(35, 71, 143, 255), width=2*SCALE)
+# Rounded navy tile, with a subtle blue inset glow.
+d.rounded_rectangle((0, 0, N-1, N-1), radius=92*SCALE, fill=(9, 25, 67, 255))
+d.rounded_rectangle((12*SCALE, 12*SCALE, N-12*SCALE, N-12*SCALE), radius=82*SCALE, outline=(35, 66, 129, 255), width=2*SCALE)
 
-# A bold, architectural Cyrillic П silhouette: central portal with two wings.
-# The overall silhouette reads as both the school's initial and a school building.
-d.polygon(p([(92, 366), (92, 184), (150, 184), (150, 126), (362, 126), (362, 184), (420, 184), (420, 366), (350, 366), (350, 216), (310, 216), (310, 366)]), fill=white)
-d.rectangle((202*SCALE, 210*SCALE, 310*SCALE, 366*SCALE), fill=navy)
-# Cyan entrance panels, simple and legible at small icon sizes.
-d.rounded_rectangle((219*SCALE, 235*SCALE, 246*SCALE, 320*SCALE), radius=5*SCALE, fill=cyan)
-d.rounded_rectangle((260*SCALE, 235*SCALE, 287*SCALE, 320*SCALE), radius=5*SCALE, fill=cyan)
-# Symmetric windows in the wings.
-for x in (112, 154, 354, 396):
-    d.rounded_rectangle((x*SCALE, 238*SCALE, (x+18)*SCALE, 286*SCALE), radius=4*SCALE, fill=navy)
-    d.rounded_rectangle((x*SCALE, 300*SCALE, (x+18)*SCALE, 334*SCALE), radius=4*SCALE, fill=navy)
-# Restrained golden roof accent, not a navigation pin.
-d.polygon(p([(222, 126), (256, 92), (290, 126)]), fill=gold)
-# A few clean entry steps anchor the school motif.
-d.rounded_rectangle((190*SCALE, 378*SCALE, 322*SCALE, 390*SCALE), radius=5*SCALE, fill=white)
-d.rounded_rectangle((208*SCALE, 398*SCALE, 304*SCALE, 409*SCALE), radius=5*SCALE, fill=(78, 111, 178, 255))
+# School silhouette.
+white = (246, 249, 255, 255)
+navy = (10, 27, 70, 255)
+d.polygon(pts([(92, 228), (256, 139), (420, 228), (420, 360), (92, 360)]), fill=white)
+d.polygon(pts([(66, 232), (256, 126), (446, 232), (423, 252), (256, 160), (89, 252)]), fill=white)
+# Main entrance and windows.
+d.rectangle((221*SCALE, 253*SCALE, 291*SCALE, 360*SCALE), fill=navy)
+d.rectangle((233*SCALE, 265*SCALE, 254*SCALE, 310*SCALE), fill=white)
+d.rectangle((260*SCALE, 265*SCALE, 280*SCALE, 310*SCALE), fill=white)
+for x, y in [(123, 258), (161, 258), (326, 258), (364, 258)]:
+    d.rounded_rectangle((x*SCALE, y*SCALE, (x+24)*SCALE, (y+34)*SCALE), radius=4*SCALE, fill=navy)
+# Flag.
+d.line(pts([(256, 128), (256, 76)]), fill=(255, 202, 50, 255), width=6*SCALE)
+d.polygon(pts([(258, 78), (305, 90), (258, 105)]), fill=(255, 202, 50, 255))
+# Navigation route.
+teal = (32, 219, 199, 255)
+d.line(pts([(184, 391), (234, 391), (274, 407), (317, 407), (347, 424), (392, 424)]), fill=teal, width=13*SCALE, joint="curve")
+d.ellipse((374*SCALE, 406*SCALE, 410*SCALE, 442*SCALE), fill=teal)
+# Location pin on the left.
+yellow = (255, 197, 43, 255)
+d.ellipse((98*SCALE, 350*SCALE, 154*SCALE, 406*SCALE), fill=yellow)
+d.polygon(pts([(105, 391), (147, 391), (126, 431)]), fill=yellow)
+d.ellipse((113*SCALE, 365*SCALE, 139*SCALE, 391*SCALE), fill=navy)
 
 im = im.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
 assets = ROOT / "assets"
@@ -48,4 +53,4 @@ for density, size in sizes.items():
     icon = im.resize((size, size), Image.Resampling.LANCZOS)
     icon.save(folder / "ic_launcher.png", optimize=True)
     icon.save(folder / "ic_launcher_round.png", optimize=True)
-print("Generated school-first П icon: assets/navigator_icon.png and Android launcher images.")
+print("Generated Navigator icon: assets/navigator_icon.png and 10 Android launcher images.")
