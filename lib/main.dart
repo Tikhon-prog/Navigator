@@ -175,11 +175,23 @@ class SchoolScheduleCatalog {
 
   static List<ScheduleEntry> buildPersonal(
     String className,
-    Map<String, int> selected,
-  ) {
+    Map<String, int> selected, {
+    Map<int, List<String>> mathNamesByDay = const {},
+  }) {
     final all = variants(className);
     final result = <ScheduleEntry>[];
     final seen = <String>{};
+    final mathSlots = <int, List<String>>{};
+    for (final e in all) {
+      final raw = baseSubject('${e['subject'] ?? ''}');
+      if (raw.toLowerCase().contains('математик')) {
+        final day = int.tryParse('${e['day']}') ?? 1;
+        final time = '${e['time'] ?? ''}';
+        final slots = mathSlots.putIfAbsent(day, () => <String>[]);
+        if (!slots.contains(time)) slots.add(time);
+      }
+    }
+    for (final slots in mathSlots.values) { slots.sort(); }
     for (final e in all) {
       final rawSubject = '${e['subject'] ?? ''}'.trim();
       final subject = baseSubject(rawSubject);
@@ -196,17 +208,26 @@ class SchoolScheduleCatalog {
       if (slotGroups.length > 1 && group != wanted) continue;
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
+      var displaySubject = subject;
+      if (subject.toLowerCase().contains('математик')) {
+        final slots = mathSlots[day] ?? const <String>[];
+        final ordinal = slots.indexOf(time);
+        final names = mathNamesByDay[day] ?? const <String>[];
+        if (ordinal >= 0 && ordinal < names.length && names[ordinal].isNotEmpty) {
+          displaySubject = names[ordinal];
+        }
+      }
       final room = '${e['room'] ?? ''}'.trim();
       final storedTeacher = '${e['teacher'] ?? ''}'.trim();
       final teacher = storedTeacher.isNotEmpty
           ? storedTeacher
           : teacherFromSubject(rawSubject);
-      final key = '$day|$time|$subject|$room|$teacher';
+      final key = '$day|$time|$displaySubject|$room|$teacher';
       if (!seen.add(key)) continue;
       result.add(ScheduleEntry(
-        id: '${className}_${day}_${time}_${subject}_${group}'.replaceAll(
+        id: '${className}_${day}_${time}_${displaySubject}_${group}'.replaceAll(
           RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'),
-        day: day, time: time, subject: subject, room: room,
+        day: day, time: time, subject: displaySubject, room: room,
         teacher: teacher, group: group,
       ));
     }
@@ -1163,6 +1184,60 @@ class _MapPageState extends State<MapPage>{
 }
 class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.point(SchoolData.room(selected!)),Theme.of(context).colorScheme.primary)))]))));}
 class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
+class _MathByDayDialog extends StatefulWidget {
+  final String className;
+  const _MathByDayDialog({required this.className});
+  @override State<_MathByDayDialog> createState() => _MathByDayDialogState();
+}
+class _MathByDayDialogState extends State<_MathByDayDialog> {
+  static const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+  static const subjects = ['', 'Алгебра', 'Геометрия', 'Вероятность и статистика'];
+  final selected = <String, String>{};
+  @override void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      setState(() {
+        for (var d = 1; d <= 6; d++) {
+          for (var slot = 0; slot < 4; slot++) {
+            selected['$d|$slot'] = p.getString('math_subject_${widget.className}_${d}_$slot') ?? '';
+          }
+        }
+      });
+    });
+  }
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Раздельная математика'),
+    content: SizedBox(width: 520, child: ListView(shrinkWrap: true, children: [
+      const Text('Настрой названия математических уроков отдельно для каждого дня. Если уроков несколько, они идут по времени: первый, второй и далее.'),
+      const SizedBox(height: 10),
+      for (var d = 1; d <= 6; d++) ...[
+        Padding(padding: const EdgeInsets.only(top: 10, bottom: 4), child: Text(days[d - 1], style: const TextStyle(fontWeight: FontWeight.w800))),
+        for (var slot = 0; slot < 3; slot++)
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
+            value: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
+            items: subjects.map((x) => DropdownMenuItem(value: x, child: Text(x.isEmpty ? 'Не переименовывать' : x))).toList(),
+            onChanged: (v) => setState(() => selected['$d|$slot'] = v ?? ''),
+          ),
+      ],
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+      FilledButton(onPressed: () async {
+        final p = await SharedPreferences.getInstance();
+        for (var d = 1; d <= 6; d++) {
+          for (var slot = 0; slot < 4; slot++) {
+            await p.setString('math_subject_${widget.className}_${d}_$slot', selected['$d|$slot'] ?? '');
+          }
+        }
+        if (context.mounted) Navigator.pop(context);
+      }, child: const Text('Сохранить')),
+    ],
+  );
+}
+
 class SchedulePage extends StatefulWidget {
   final VoidCallback onMenu;
   const SchedulePage({super.key, required this.onMenu});
@@ -1176,7 +1251,20 @@ class _SchedulePageState extends State<SchedulePage> {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
     classId = p.getString('student_class_name') ?? '';
     final groups = <String,int>{};
-    if (classId.isNotEmpty) { for (final s in SchoolScheduleCatalog.splitSubjects(classId)) groups[s] = p.getInt('student_group_${classId}_$s') ?? 1; entries = SchoolScheduleCatalog.buildPersonal(classId, groups); } else { entries = []; }
+    if (classId.isNotEmpty) {
+      for (final s in SchoolScheduleCatalog.splitSubjects(classId)) {
+        groups[s] = p.getInt('student_group_${classId}_$s') ?? 1;
+      }
+      final mathNames = <int, List<String>>{};
+      for (var d = 1; d <= 6; d++) {
+        final dayNames = <String>[];
+        for (var slot = 0; slot < 4; slot++) {
+          dayNames.add(p.getString('math_subject_${classId}_${d}_$slot') ?? '');
+        }
+        mathNames[d] = dayNames;
+      }
+      entries = SchoolScheduleCatalog.buildPersonal(classId, groups, mathNamesByDay: mathNames);
+    } else { entries = []; }
     if (mounted) setState(() => loading = false);
     try { await LocalNotificationService().scheduleUpcomingLessons(entries: entries.map((e) => (id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList()); } catch (_) {}
     if (classId.isEmpty && mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
@@ -1202,8 +1290,10 @@ class _SchedulePageState extends State<SchedulePage> {
         title: const Text('Расписание'),
         actions: [
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
-          if (classId.isNotEmpty)
+          if (classId.isNotEmpty) ...[
             IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
+            IconButton(tooltip: 'Раздельная математика по дням', onPressed: () async { await showDialog<void>(context: context, builder: (_) => _MathByDayDialog(className: classId)); await _load(); }, icon: const Icon(Icons.functions_rounded)),
+          ],
           const SizedBox(width: 4),
         ],
       ),
