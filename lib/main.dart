@@ -432,6 +432,10 @@ class RouteEngine {
   static const double _mapW = 7016.0;
   static const double _mapH = 4960.0;
   static const double _snapPx = 25.0;
+  // A stair transition is intentionally more expensive than any plausible
+  // horizontal route across a school floor. This minimizes floor changes first;
+  // within the same number of transitions, A* minimizes real map-pixel distance.
+  static const double _stairTransitionPenaltyPx = 100000.0;
 
   // Переводим нормализованные координаты обратно в пиксели исходной карты.
   // Важно учитывать обе оси: карта 7016x4960, поэтому умножать
@@ -594,7 +598,7 @@ class RouteEngine {
       for (var k = 1; k < ids.length; k++) {
         final a = nodes[ids[k - 1]]!;
         final b = nodes[ids[k]]!;
-        connect(a.id, b.id, (a.point - b.point).distance);
+        connect(a.id, b.id, _pxDistance(a.point, b.point));
       }
     }
 
@@ -605,7 +609,7 @@ class RouteEngine {
       if (roadId == null || anchorId == roadId) continue;
       final anchorPoint = nodes[anchorId]!.point;
       final roadPoint = nodes[roadId]!.point;
-      connect(anchorId, roadId, (anchorPoint - roadPoint).distance);
+      connect(anchorId, roadId, _pxDistance(anchorPoint, roadPoint));
     }
 
     // Vertical stair links. The closed turquoise stair is deliberately omitted from 2↔3.
@@ -618,7 +622,7 @@ class RouteEngine {
         final b = nodes[bId]!;
         // Смена этажа должна стоить заметно дороже обычного участка коридора,
       // иначе алгоритм выбирает лестницу даже для маршрута на том же этаже.
-      connect(a.id, b.id, 1.25);
+      connect(a.id, b.id, _stairTransitionPenaltyPx + _pxDistance(a.point, b.point));
       }
     }
 
@@ -643,7 +647,7 @@ class RouteEngine {
       final a = nodes[id];
       final b = nodes[target];
       if (a == null || b == null) return 0;
-      return (a.point - b.point).distance + (a.floor - b.floor).abs() * .25;
+      return _pxDistance(a.point, b.point) + (a.floor - b.floor).abs() * _stairTransitionPenaltyPx;
     }
 
     while (open.isNotEmpty) {
