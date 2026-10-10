@@ -14,15 +14,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Generate Android launcher icon
         run: |
           python -m pip install Pillow
           python scripts/generate_android_icon.py
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
 
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
