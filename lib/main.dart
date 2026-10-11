@@ -452,7 +452,7 @@ class RouteEngine {
   // Близкие концы отрезков (< 25 px исходной карты) считаются одним узлом.
   static const double _mapW = 7016.0;
   static const double _mapH = 4960.0;
-  static const double _snapPx = 25.0;
+  static const double _snapPx = 32.0;
   // A room/stair anchor must be close to a mapped corridor. Without this limit,
   // an incorrectly placed door can be connected through a wall to a distant wing.
   static const double _maxAnchorConnectorPx = 450.0;
