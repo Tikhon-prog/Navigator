@@ -1,10 +1,24 @@
 {
-  "algorithm": "Dijkstra",
+  "algorithm": "A*",
+  "graphSource": "lib/corridor_roads.dart",
+  "doorAnchorSource": "lib/door_points.dart",
+  "roomCatalogSource": "assets/data/rooms.json",
+  "verticalTransitionsSource": "RouteEngine._verticalStairs in lib/main.dart",
+  "coordinateSystem": {
+    "type": "normalized_0_1",
+    "sourceMapWidthPx": 7016,
+    "sourceMapHeightPx": 4960
+  },
   "startPoints": [
     "Главный вход",
     "1 этаж",
     "2 этаж",
     "3 этаж"
   ],
-  "note": "Граф коридоров и лестниц встроен в lib/main.dart"
+  "notes": [
+    "The current route graph is assembled in Dart from manually mapped corridor segments and door anchors; this file documents the implementation and is not yet the graph data source.",
+    "Stair transitions are explicitly configured in RouteEngine._verticalStairs.",
+    "Hidden corridor segments remain routable; hidden controls map rendering only.",
+    "Any changes to floor plans, corridor segments, door anchors, or stair links should be checked with navigation route tests."
+  ]
 }
