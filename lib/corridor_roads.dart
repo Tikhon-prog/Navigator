@@ -48,6 +48,9 @@ class CorridorRoads {
     CorridorSegment(2, Offset(2713 / 7016, 3431 / 4960), Offset(3557 / 7016, 3431 / 4960), 'Длинное бирюзовое крыло'),
     // Удалён ложный проход вдоль спортзала: от кабинета 215 маршрут идёт только через коридор к кампусу.
     CorridorSegment(2, Offset(3213 / 7016, 3463 / 4960), Offset(3073 / 7016, 4099 / 4960), 'Среднее бирюзовое крыло'),
+    // Join the campus-side branch to the main turquoise corridor; the endpoints
+    // are 32 source-map pixels apart, outside the graph's 25 px snap tolerance.
+    CorridorSegment(2, Offset(3213 / 7016, 3463 / 4960), Offset(3557 / 7016, 3431 / 4960), 'Соединение основного коридора с кампусным проходом', hidden: true),
     CorridorSegment(2, Offset(3073 / 7016, 4099 / 4960), Offset(3177 / 7016, 3939 / 4960), 'Соединение бирюзовых коридоров', hidden: true),
     CorridorSegment(2, Offset(3177 / 7016, 3939 / 4960), Offset(3537 / 7016, 4079 / 4960), 'Коридор к спальному корпусу'),
     CorridorSegment(2, Offset(3537 / 7016, 4079 / 4960), Offset(3500 / 7016, 4297 / 4960), 'Подход к кабинету 215', hidden: true),
