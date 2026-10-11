@@ -25,3 +25,8 @@ backend/.env.*
 # Python generated files
 __pycache__/
 *.py[cod]
+
+# JVM/Android crash logs and generated diagnostics
+*.log
+hs_err_pid*
+replay_pid*
