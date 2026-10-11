@@ -13,6 +13,24 @@ void main() {
       expect(result.destination.id, '317');
     });
 
+    test('311 to 316 stays on the third floor', () {
+      final result = RouteEngine.build('316', startFloor: 3, startLocationId: '311');
+
+      expect(result, isNotNull);
+      expect(result!.changesFloor, isFalse);
+      expect(result.nodes.every((node) => node.floor == 3), isTrue);
+      expect(result.destination.id, '316');
+    });
+
+    test('311 to 318 stays on the third floor', () {
+      final result = RouteEngine.build('318', startFloor: 3, startLocationId: '311');
+
+      expect(result, isNotNull);
+      expect(result!.changesFloor, isFalse);
+      expect(result.nodes.every((node) => node.floor == 3), isTrue);
+      expect(result.destination.id, '318');
+    });
+
     test('311 to 201 changes from third to second floor', () {
       final result = RouteEngine.build('201', startFloor: 3, startLocationId: '311');
 
