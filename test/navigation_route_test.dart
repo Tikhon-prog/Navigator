@@ -74,4 +74,24 @@ void main() {
       expect(result.changesFloor, isFalse);
     });
   });
+
+  group('SchoolData room catalog regression tests', () {
+    const firstFloorRooms = <String>[
+      '101', '101.1', '102', '103', '104',
+      '105', '106', '107', '108', '109',
+      '110', '111', '112', '113', '114',
+      '115', '116', '117', '118', '119',
+    ];
+
+    for (final roomId in firstFloorRooms) {
+      test('room $roomId exists in the catalog on floor 1', () {
+        final room = SchoolData.tryRoom(roomId);
+
+        expect(room, isNotNull, reason: 'Room $roomId should be searchable');
+        expect(room!.id, roomId);
+        expect(room.floor, 1);
+        expect(SchoolData.locations.contains(room), isTrue);
+      });
+    }
+  });
 }
