@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Navigator's Android launcher icon in all density buckets."""
+"""Generate the community-approved school-building icon for Navigator."""
 from pathlib import Path
 from PIL import Image, ImageDraw
 
@@ -7,39 +7,49 @@ ROOT = Path(__file__).resolve().parents[1]
 SIZE = 512
 SCALE = 3
 N = SIZE * SCALE
-im = Image.new("RGBA", (N, N), (8, 24, 64, 255))
+im = Image.new("RGBA", (N, N), (5, 28, 94, 255))
 d = ImageDraw.Draw(im)
 
-def pts(points):
-    return [(int(x*SCALE), int(y*SCALE)) for x, y in points]
+def p(points):
+    return [(round(x * SCALE), round(y * SCALE)) for x, y in points]
 
-# Rounded navy tile, with a subtle blue inset glow.
-d.rounded_rectangle((0, 0, N-1, N-1), radius=92*SCALE, fill=(9, 25, 67, 255))
-d.rounded_rectangle((12*SCALE, 12*SCALE, N-12*SCALE, N-12*SCALE), radius=82*SCALE, outline=(35, 66, 129, 255), width=2*SCALE)
+navy = (5, 28, 94, 255)
+white = (250, 251, 255, 255)
+cyan = (30, 211, 220, 255)
+gold = (255, 194, 38, 255)
 
-# School silhouette.
-white = (246, 249, 255, 255)
-navy = (10, 27, 70, 255)
-d.polygon(pts([(92, 228), (256, 139), (420, 228), (420, 360), (92, 360)]), fill=white)
-d.polygon(pts([(66, 232), (256, 126), (446, 232), (423, 252), (256, 160), (89, 252)]), fill=white)
-# Main entrance and windows.
-d.rectangle((221*SCALE, 253*SCALE, 291*SCALE, 360*SCALE), fill=navy)
-d.rectangle((233*SCALE, 265*SCALE, 254*SCALE, 310*SCALE), fill=white)
-d.rectangle((260*SCALE, 265*SCALE, 280*SCALE, 310*SCALE), fill=white)
-for x, y in [(123, 258), (161, 258), (326, 258), (364, 258)]:
-    d.rounded_rectangle((x*SCALE, y*SCALE, (x+24)*SCALE, (y+34)*SCALE), radius=4*SCALE, fill=navy)
-# Flag.
-d.line(pts([(256, 128), (256, 76)]), fill=(255, 202, 50, 255), width=6*SCALE)
-d.polygon(pts([(258, 78), (305, 90), (258, 105)]), fill=(255, 202, 50, 255))
-# Navigation route.
-teal = (32, 219, 199, 255)
-d.line(pts([(184, 391), (234, 391), (274, 407), (317, 407), (347, 424), (392, 424)]), fill=teal, width=13*SCALE, joint="curve")
-d.ellipse((374*SCALE, 406*SCALE, 410*SCALE, 442*SCALE), fill=teal)
-# Location pin on the left.
-yellow = (255, 197, 43, 255)
-d.ellipse((98*SCALE, 350*SCALE, 154*SCALE, 406*SCALE), fill=yellow)
-d.polygon(pts([(105, 391), (147, 391), (126, 431)]), fill=yellow)
-d.ellipse((113*SCALE, 365*SCALE, 139*SCALE, 391*SCALE), fill=navy)
+# Deep-blue rounded tile and subtle inset border.
+d.rounded_rectangle((0, 0, N - 1, N - 1), radius=104 * SCALE, fill=navy)
+d.rounded_rectangle((9*SCALE, 9*SCALE, (SIZE-9)*SCALE, (SIZE-9)*SCALE),
+                    radius=96*SCALE, outline=(20, 53, 129, 255), width=2*SCALE)
+
+# Roof, split at the golden central ridge.
+d.polygon(p([(120, 151), (211, 109), (211, 126), (120, 168)]), fill=white)
+d.polygon(p([(301, 109), (392, 151), (392, 168), (301, 126)]), fill=white)
+d.polygon(p([(220, 104), (256, 86), (292, 104), (292, 118), (256, 100), (220, 118)]), fill=gold)
+
+# Side wings and central facade.
+d.polygon(p([(54, 224), (147, 190), (147, 365), (55, 365)]), fill=white)
+d.polygon(p([(365, 190), (458, 224), (457, 365), (365, 365)]), fill=white)
+d.polygon(p([(153, 158), (359, 158), (358, 360), (385, 393),
+             (333, 393), (300, 355), (300, 190), (212, 190),
+             (212, 355), (179, 393), (127, 393), (154, 360)]), fill=white)
+
+# Main entrance recess and six bright window panes.
+d.rectangle((212*SCALE, 190*SCALE, 300*SCALE, 355*SCALE), fill=navy)
+for x in (234, 261):
+    for y in (229, 262, 295):
+        d.rectangle((x*SCALE, y*SCALE, (x+16)*SCALE, (y+27)*SCALE), fill=cyan)
+
+# Symmetric windows in the wings.
+for x in (68, 106, 382, 420):
+    for y in (246, 292):
+        d.rectangle((x*SCALE, y*SCALE, (x+23)*SCALE, (y+32)*SCALE), fill=navy)
+
+# Broad entry steps echo the approved reference image.
+d.polygon(p([(216, 354), (296, 354), (307, 365), (205, 365)]), fill=white)
+d.polygon(p([(201, 371), (311, 371), (322, 382), (190, 382)]), fill=white)
+d.polygon(p([(185, 389), (327, 389), (339, 401), (173, 401)]), fill=white)
 
 im = im.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
 assets = ROOT / "assets"
@@ -53,4 +63,5 @@ for density, size in sizes.items():
     icon = im.resize((size, size), Image.Resampling.LANCZOS)
     icon.save(folder / "ic_launcher.png", optimize=True)
     icon.save(folder / "ic_launcher_round.png", optimize=True)
-print("Generated Navigator icon: assets/navigator_icon.png and 10 Android launcher images.")
+
+print("Generated approved school-building launcher icon.")
