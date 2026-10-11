@@ -72,7 +72,7 @@ class CorridorRoads {
     CorridorSegment(3, Offset(1257 / 7016, 2704 / 4960), Offset(2161 / 7016, 2713 / 4960), 'Длинное синее крыло'),
     CorridorSegment(3, Offset(2229 / 7016, 2392 / 4960), Offset(2093 / 7016, 2430 / 4960), 'отрезок из фиолетового', hidden: true),
     CorridorSegment(3, Offset(2093 / 7016, 2430 / 4960), Offset(2165 / 7016, 2697 / 4960), 'перпендикулярный проход', hidden: true),
-    CorridorSegment(3, Offset(2285 / 7016, 3388 / 4960), Offset(2157 / 7016, 3467 / 4960), 'Выход в короткое синее крыло', hidden: true),
+    CorridorSegment(3, Offset(2285 / 7016, 3540 / 4960), Offset(2157 / 7016, 3467 / 4960), 'Соединение локального коридора с синим крылом', hidden: true),
     CorridorSegment(3, Offset(2165 / 7016, 2697 / 4960), Offset(2157 / 7016, 3467 / 4960), 'Короткое синее крыло'),
     CorridorSegment(3, Offset(2157 / 7016, 3467 / 4960), Offset(2173 / 7016, 3319 / 4960), 'Переход из синего в бирюзовое крыло', hidden: true),
     CorridorSegment(3, Offset(2173 / 7016, 3319 / 4960), Offset(2701 / 7016, 3311 / 4960), 'Короткое бирюзовое крыло'),
