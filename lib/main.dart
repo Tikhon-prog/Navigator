@@ -665,32 +665,48 @@ class RouteEngine {
       return RouteResult([RouteNode('same_start', destination.floor, p, 'Точка назначения')], destination, 0, destination.floor, startLocationId);
     }
 
-    final distance = <String, double>{source: 0};
-    final previous = <String, String?>{source: null};
-    final open = <_QueueItem>[_QueueItem(source, 0, 0)];
+    // Prefer a fully same-floor path whenever one exists. A large stair penalty
+    // alone is not a guarantee: bad/overlapping map geometry can make a valid
+    // same-floor path appear more expensive than a stair shortcut.
+    (Map<String, double>, Map<String, String?>) search({required bool sameFloorOnly}) {
+      final distance = <String, double>{source: 0};
+      final previous = <String, String?>{source: null};
+      final open = <_QueueItem>[_QueueItem(source, 0, 0)];
 
-    double heuristic(String id) {
-      final a = nodes[id];
-      final b = nodes[target];
-      if (a == null || b == null) return 0;
-      return _pxDistance(a.point, b.point) + (a.floor - b.floor).abs() * _stairTransitionPenaltyPx;
-    }
+      double heuristic(String id) {
+        final a = nodes[id];
+        final b = nodes[target];
+        if (a == null || b == null) return 0;
+        return _pxDistance(a.point, b.point) +
+            (sameFloorOnly ? 0 : (a.floor - b.floor).abs() * _stairTransitionPenaltyPx);
+      }
 
-    while (open.isNotEmpty) {
-      open.sort((a, b) => a.priority.compareTo(b.priority));
-      final current = open.removeAt(0);
-      final best = distance[current.id];
-      if (best == null || current.g > best + 1e-9) continue;
-      if (current.id == target) break;
-      for (final edge in graph[current.id] ?? const <RouteEdge>[]) {
-        final nextG = best + edge.cost;
-        if (nextG < (distance[edge.b] ?? double.infinity)) {
-          distance[edge.b] = nextG;
-          previous[edge.b] = current.id;
-          open.add(_QueueItem(edge.b, nextG, nextG + heuristic(edge.b)));
+      while (open.isNotEmpty) {
+        open.sort((a, b) => a.priority.compareTo(b.priority));
+        final current = open.removeAt(0);
+        final best = distance[current.id];
+        if (best == null || current.g > best + 1e-9) continue;
+        if (current.id == target) break;
+        for (final edge in graph[current.id] ?? const <RouteEdge>[]) {
+          if (sameFloorOnly && nodes[edge.a]!.floor != nodes[edge.b]!.floor) continue;
+          final nextG = best + edge.cost;
+          if (nextG < (distance[edge.b] ?? double.infinity)) {
+            distance[edge.b] = nextG;
+            previous[edge.b] = current.id;
+            open.add(_QueueItem(edge.b, nextG, nextG + heuristic(edge.b)));
+          }
         }
       }
+      return (distance, previous);
     }
+
+    final preferSameFloor = effectiveStartFloor == destination.floor;
+    final firstSearch = search(sameFloorOnly: preferSameFloor);
+    final selectedSearch = firstSearch.$1.containsKey(target)
+        ? firstSearch
+        : search(sameFloorOnly: false);
+    final distance = selectedSearch.$1;
+    final previous = selectedSearch.$2;
     if (!distance.containsKey(target)) return null;
 
     final ids = <String>[];
