@@ -453,6 +453,9 @@ class RouteEngine {
   static const double _mapW = 7016.0;
   static const double _mapH = 4960.0;
   static const double _snapPx = 25.0;
+  // A room/stair anchor must be close to a mapped corridor. Without this limit,
+  // an incorrectly placed door can be connected through a wall to a distant wing.
+  static const double _maxAnchorConnectorPx = 450.0;
   // A stair transition is intentionally more expensive than any plausible
   // horizontal route across a school floor. This minimizes floor changes first;
   // within the same number of transitions, A* minimizes real map-pixel distance.
@@ -590,7 +593,9 @@ class RouteEngine {
           bestPoint = q;
         }
       }
-      if (bestSegment < 0) continue;
+      // Do not invent a corridor connection when the nearest mapped corridor is
+      // too far away: that usually means the door anchor or corridor graph is wrong.
+      if (bestSegment < 0 || bestDistance > _maxAnchorConnectorPx) continue;
       final roadId = addPointToSegment(floor, bestPoint, 'Подключение: $id', bestSegment);
       final aId = addNode(floor, p, 'Точка: $id', preferredId: 'anchor_$id');
       anchorNode[id] = aId;
