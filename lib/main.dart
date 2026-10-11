@@ -1981,7 +1981,7 @@ class SettingsPage extends StatelessWidget {
       const SizedBox(height: 18), const Text('Администрирование', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Вход для администраторов'), subtitle: const Text('Управление администраторами, расписанием, ДОПами и синхронизацией'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Поколение · 0.1.0-alpha'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationVersion: '0.1.0-alpha', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
+      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Офлайн-навигатор школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
     ]))));
   }
 
