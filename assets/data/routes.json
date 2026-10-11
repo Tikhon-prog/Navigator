@@ -19,6 +19,8 @@
     "The current route graph is assembled in Dart from manually mapped corridor segments and door anchors; this file documents the implementation and is not yet the graph data source.",
     "Stair transitions are explicitly configured in RouteEngine._verticalStairs.",
     "Hidden corridor segments remain routable; hidden controls map rendering only.",
-    "Any changes to floor plans, corridor segments, door anchors, or stair links should be checked with navigation route tests."
+    "Any changes to floor plans, corridor segments, door anchors, or stair links should be checked with navigation route tests.",
+    "Door and place anchors farther than 450 source-map pixels from every corridor segment are left disconnected instead of being routed through potentially obstructing walls.",
+    "The second-floor campus branch has an explicit connector to the main turquoise corridor because its endpoints are 32 source-map pixels apart, beyond the 25 px node-snap tolerance."
   ]
 }
