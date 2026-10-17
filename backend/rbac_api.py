@@ -511,6 +511,10 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
             teacher = _field(row, "teacher", "mentor", "coach", "преподаватель", "педагог")
             room = _field(row, "room", "cabinet", "location", "кабинет", "место")
             status = _field(row, "status", "state", "статус") or "active"
+            if status.strip().lower() in {"active", "активно", "активен", "действует", "enabled", "true", "1"}:
+                status = "active"
+            elif status.strip().lower() in {"inactive", "неактивно", "отменено", "отменён", "disabled", "false", "0"}:
+                status = "inactive"
             external_id = _field(row, "id", "supplement_id", "dop_id", "ид")
             stable_payload = json.dumps(
                 [student["id"], external_id or "", title, weekday, time_value, teacher, room],
