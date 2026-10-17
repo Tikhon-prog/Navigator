@@ -313,6 +313,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     final title = TextEditingController();
     final body = TextEditingController();
     final targetId = TextEditingController();
+    final classOptions = students
+        .map((student) => student['class_id']?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
     String kind = 'targeted';
     final isLead = isLeadership;
     String targetType = isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) ? 'class' : 'user';
@@ -358,7 +364,16 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     targetId.clear();
                   }),
           ),
-          if (targetType == 'user' && students.isNotEmpty)
+          if (targetType == 'class' && classOptions.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: classOptions.contains(targetId.text) ? targetId.text : null,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Класс-получатель'),
+              items: [for (final className in classOptions)
+                DropdownMenuItem(value: className, child: Text(className))],
+              onChanged: (value) => setDialogState(() => targetId.text = value ?? ''),
+            )
+          else if (targetType == 'user' && students.isNotEmpty)
             DropdownButtonFormField<String>(
               value: students.any((student) => student['id']?.toString() == targetId.text)
                   ? targetId.text : null,
