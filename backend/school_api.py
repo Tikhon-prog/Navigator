@@ -403,7 +403,8 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
         rows = db.execute("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100").fetchall()
     visible = []
     for row in rows:
-        if row["audience"] == "all" or row["audience"] == actor["role"]:
+        audience_role = {"students": "student"}.get(row["audience"], row["audience"])
+        if row["audience"] == "all" or audience_role == actor["role"]:
             visible.append(row)
         elif row["audience"] == "class" and actor.get("class_id") and row["class_id"] == actor["class_id"]:
             visible.append(row)
@@ -435,7 +436,8 @@ def create_announcement(body: AnnouncementBody, actor: dict[str, Any] = Depends(
         elif body.audience == "class":
             device_rows = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.class_id=?", (body.class_id,)).fetchall()
         else:
-            device_rows = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.role=?", (body.audience,)).fetchall()
+            target_role = {"students": "student"}.get(body.audience, body.audience)
+            device_rows = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.role=?", (target_role,)).fetchall()
         tokens = [row["fcm_token"] for row in device_rows]
     push_status, sent_count = _send_push(tokens, body.title, body.body, {"announcement_id": announcement_id, "severity": body.severity})
     with _db() as db:
