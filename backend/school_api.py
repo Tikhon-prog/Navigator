@@ -465,6 +465,15 @@ def register_device(body: DeviceBody, actor: dict[str, Any] = Depends(current_us
     return {"status": "registered"}
 
 
+@router.delete("/devices/me")
+def unregister_my_devices(actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    with _db() as db:
+        cur = db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=? AND active=1",
+                         (_utc_now(), actor["id"]))
+    _audit(actor["id"], "device.unregistered", None, {"count": cur.rowcount})
+    return {"status": "unregistered", "count": cur.rowcount}
+
+
 @router.get("/announcements")
 def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     with _db() as db:
