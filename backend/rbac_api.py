@@ -183,6 +183,7 @@ class UserPatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     class_id: str | None = Field(default=None, max_length=40)
     active: bool | None = None
+    password: str | None = Field(default=None, min_length=14, max_length=256)
 
 
 class AssignmentBody(BaseModel):
@@ -410,6 +411,8 @@ def patch_user(user_id: str, body: UserPatch,
         target_role = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
     if target_role and target_role["role"] == "admin" and actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only an existing administrator can modify administrator accounts")
+    if "password" in changes and (not isinstance(changes["password"], str) or len(changes["password"]) < 14):
+        raise HTTPException(status_code=422, detail="New password must contain at least 14 characters")
     if "active" in changes and not changes["active"]:
         with core._db() as db:
             target = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
@@ -423,15 +426,21 @@ def patch_user(user_id: str, body: UserPatch,
         if key in changes:
             fields.append(f"{key}=?")
             values.append(int(changes[key]) if key == "active" else changes[key])
-    deactivating = "active" in changes and not changes["active"]
-    if deactivating:
+    credentials_changed = "password" in changes or "active" in changes
+    if "password" in changes:
+        fields.append("password_hash=?")
+        values.append(core._hash_password(changes["password"]))
+    if credentials_changed:
         fields.append("token_version=token_version+1")
     with core._db() as db:
         exists = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
         if not exists:
             raise HTTPException(status_code=404, detail="Account not found")
         db.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", (*values, user_id))
-        if deactivating:
+        if credentials_changed:
+            # Invalidate all sessions and device registrations after a password or
+            # account-status change; incremented token_version also invalidates
+            # already issued access tokens without waiting for their expiry.
             db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
                        (_now(), _now(), user_id))
             db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=?",
