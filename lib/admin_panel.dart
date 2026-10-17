@@ -66,10 +66,25 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
   }
 
   @override Widget build(BuildContext context) => AlertDialog(
-    title: Text(setupMode ? 'Создание главного администратора' : 'Вход в кабинет школы'),
+    title: Text(setupMode ? 'Создание локального администратора' : 'Вход в кабинет школы'),
     content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      if (setupMode)
-        const Text('Первый запуск: создай уникальный логин и пароль не короче 12 символов. Пароль по умолчанию не используется.'),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Text(
+          'Это локальные инструменты управления приложением на этом устройстве. Школьный SSO и серверные права подключаются отдельно после настройки со стороны IT.',
+          style: TextStyle(fontSize: 12, height: 1.4),
+        ),
+      ),
+      if (setupMode) ...[
+        const SizedBox(height: 10),
+        const Text('Первый запуск: создай уникальный локальный логин и пароль не короче 12 символов. Пароль по умолчанию не используется.'),
+      ],
+      const SizedBox(height: 10),
       TextField(controller: login, autofocus: true, decoration: InputDecoration(labelText: setupMode ? 'Новый логин' : 'Логин')),
       const SizedBox(height: 10),
       TextField(controller: password, obscureText: hidden, onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: setupMode ? 'Новый пароль (от 12 символов)' : 'Пароль', suffixIcon: IconButton(onPressed: () => setState(() => hidden = !hidden), icon: Icon(hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded)))),
