@@ -557,7 +557,7 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
                 assignment_keys.add((student_id, teacher_id, row["subject"]))
 
     source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
-    if not assignment_keys:
+    if not assignment_keys and not split_class_subjects:
         with core._db() as db:
             db.execute(
                 "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
