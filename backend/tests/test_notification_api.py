@@ -217,6 +217,41 @@ class NotificationScopeTests(unittest.TestCase):
         self.assertIsNotNone(row["next_attempt_at"])
         self.assertEqual(row["push_status"], "provider_error")
 
+    def test_mentor_coordinator_cannot_add_staff_to_delivery_group(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("teacher2", "teacher2", core._hash_password("a sufficiently long test password"),
+                 "teacher", "Other Teacher", core._utc_now()),
+            )
+        actor = {"id": "teacher1", "role": "teacher"}
+        with patch("backend.rbac_api._position", return_value=("mentor_coordinator", None)):
+            group = notifications.create_group(notifications.GroupBody(name="Student Delivery Group"), actor)
+            with self.assertRaises(HTTPException) as raised:
+                notifications.add_group_member(
+                    group["id"], notifications.GroupMemberBody(user_id="teacher2"), actor
+                )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_mentor_coordinator_cannot_broadcast_to_mixed_staff_group(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("teacher2", "teacher2", core._hash_password("a sufficiently long test password"),
+                 "teacher", "Other Teacher", core._utc_now()),
+            )
+        admin = {"id": "admin1", "role": "admin"}
+        group = notifications.create_group(notifications.GroupBody(name="Mixed Group"), admin)
+        notifications.add_group_member(group["id"], notifications.GroupMemberBody(user_id="teacher2"), admin)
+        with patch("backend.rbac_api._position", return_value=("mentor_coordinator", None)):
+            body = notifications.NotificationBody(
+                title="Private", body="Should not reach staff", kind="targeted",
+                target_type="group", target_id=group["id"],
+            )
+            with self.assertRaises(HTTPException) as raised:
+                notifications.create_notification(body, {"id": "teacher1", "role": "teacher"})
+        self.assertEqual(raised.exception.status_code, 403)
+
     def test_teacher_cannot_broadcast_to_everyone(self):
         body = notifications.NotificationBody(title="Message", body="Test")
         with self.assertRaises(HTTPException) as raised:
