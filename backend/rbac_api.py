@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 import secrets
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -135,9 +136,14 @@ class AssignmentBody(BaseModel):
 
 
 def _position(user_id: str) -> tuple[str | None, str | None]:
-    with core._db() as db:
-        row = db.execute("SELECT position,scope_class FROM staff_positions WHERE user_id=?", (user_id,)).fetchone()
-    return (row["position"], row["scope_class"]) if row else (None, None)
+    try:
+        with core._db() as db:
+            row = db.execute("SELECT position,scope_class FROM staff_positions WHERE user_id=?", (user_id,)).fetchone()
+        return (row["position"], row["scope_class"]) if row else (None, None)
+    except sqlite3.OperationalError:
+        # Fail closed while databases are being initialized or migrated:
+        # missing position tables never grant elevated permissions.
+        return None, None
 
 
 def _has(actor: dict[str, Any], permission: str) -> bool:
