@@ -501,8 +501,20 @@ def login(body: LoginBody, request: Request) -> dict[str, Any]:
     ip = request.client.host if request.client else "unknown"
     now = time.monotonic()
     attempts = getattr(login, "_attempts", {})
-    recent = [t for t in attempts.get(ip, []) if now - t < 60]
+    # Keep the per-process development throttle bounded if clients rotate source IPs.
+    if len(attempts) > 4096:
+        attempts = {
+            address: [stamp for stamp in stamps if now - stamp < 60]
+            for address, stamps in attempts.items()
+        }
+        attempts = {address: stamps for address, stamps in attempts.items() if stamps}
+        if len(attempts) > 4096:
+            # Preserve the most recently inserted buckets; stale/overflow entries are
+            # dropped only from this local throttle, never from authentication data.
+            attempts = dict(list(attempts.items())[-2048:])
+    recent = [stamp for stamp in attempts.get(ip, []) if now - stamp < 60]
     if len(recent) >= 10:
+        login._attempts = attempts
         raise HTTPException(status_code=429, detail="Too many login attempts; retry later")
     recent.append(now)
     attempts[ip] = recent
