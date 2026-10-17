@@ -100,6 +100,8 @@ def create_notification(body: NotificationBody,
         raise HTTPException(status_code=422, detail="Personal and DOP reminders must target one user")
     if body.kind == "emergency" and actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only administrators may publish emergency notifications")
+    if actor["role"] == "teacher" and body.target_type != "user":
+        raise HTTPException(status_code=403, detail="Teachers may notify only explicitly assigned students")
     if body.target_type != "all" and not body.target_id:
         raise HTTPException(status_code=422, detail="target_id is required for this target_type")
     for value in (body.scheduled_at, body.expires_at):
@@ -110,9 +112,14 @@ def create_notification(body: NotificationBody,
                 raise HTTPException(status_code=422, detail="Dates must be ISO-8601 timestamps")
     with core._db() as db:
         if body.target_type == "user":
-            target = db.execute("SELECT id FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
+            target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
+            if actor["role"] == "teacher":
+                linked = db.execute("SELECT 1 FROM student_links WHERE student_id=? AND staff_id=? AND link_type='teacher'",
+                                    (body.target_id, actor["id"])).fetchone()
+                if target["role"] != "student" or not linked:
+                    raise HTTPException(status_code=403, detail="Student is not assigned to this teacher")
         elif body.target_type == "class":
             target = db.execute("SELECT 1 FROM users WHERE role='student' AND class_id=? AND active=1 LIMIT 1", (body.target_id,)).fetchone()
             if not target:
