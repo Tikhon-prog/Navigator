@@ -148,6 +148,20 @@ class SchoolAccountService {
     }
   }
 
+  Future<bool> setDopRemindersEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString(_tokenKey);
+    final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty) return false;
+    final response = await http.put(
+      _endpoint(baseUrl, 'notifications/preferences'),
+      headers: {'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken'},
+      body: jsonEncode({'dop_reminders_enabled': enabled}),
+    ).timeout(const Duration(seconds: 10));
+    return response.statusCode >= 200 && response.statusCode < 300;
+  }
+
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
