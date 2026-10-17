@@ -307,18 +307,25 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     }
     final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
     final healthPath = path.endsWith('/api/v2')
-        ? '$path/health'
+        ? '$path/health/ready'
         : path.endsWith('/api')
-            ? '$path/v2/health'
-            : '$path/api/v2/health';
+            ? '$path/v2/health/ready'
+            : '$path/api/v2/health/ready';
     final healthUri = uri.replace(path: healthPath, fragment: '');
     setState(() => apiStatus = 'Проверяю соединение…');
     try {
       final response = await http.get(healthUri).timeout(const Duration(seconds: 8));
       if (!mounted) return;
-      setState(() => apiStatus = response.statusCode >= 200 && response.statusCode < 300
-          ? 'Сервер «Поколение» доступен. HTTP ${response.statusCode}.'
-          : 'Сервер отвечает, но вернул HTTP ${response.statusCode}.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final readiness = jsonDecode(response.body);
+        final source = readiness is Map ? readiness['source']?.toString() ?? 'unknown' : 'unknown';
+        final classes = readiness is Map ? readiness['classes_available']?.toString() ?? '?' : '?';
+        setState(() => apiStatus = 'Сервер готов. Источник: $source • классов: $classes.');
+      } else if (response.statusCode == 503) {
+        setState(() => apiStatus = 'Сервер запущен, но не готов: настрой NAVIGATOR_TOKEN_SECRET и источник школьных данных в .env.');
+      } else {
+        setState(() => apiStatus = 'Сервер отвечает, но вернул HTTP ${response.statusCode}.');
+      }
       await AdminRepository().audit(widget.account, 'Проверено подключение API');
     } catch (_) {
       if (!mounted) return;
