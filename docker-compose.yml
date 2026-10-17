@@ -1,0 +1,17 @@
+services:
+  navigator-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NAVIGATOR_DB_PATH: /data/navigator.sqlite3
+    ports:
+      - "8000:8000"
+    volumes:
+      - navigator_data:/data
+    restart: unless-stopped
+
+volumes:
+  navigator_data:
