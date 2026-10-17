@@ -38,6 +38,7 @@ Required for authenticated endpoints:
 - `NAVIGATOR_TOKEN_TTL_SECONDS`: access token lifetime, default 8 hours.
 - `NAVIGATOR_REFRESH_TTL_SECONDS`: rotating refresh-token lifetime, default 30 days.
 - `NAVIGATOR_NOTIFICATION_WORKER_ENABLED` and `NAVIGATOR_NOTIFICATION_POLL_SECONDS`: enable and tune the single-container notification worker.
+- `NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS`: automatically refresh student DOPs and timetable-derived teacher assignments; set `0` to disable periodic sync. The default is 300 seconds.
 - `NAVIGATOR_SCHOOL_TIMEZONE`: timezone used for server-generated DOP reminders (default `Europe/Moscow`).
 - `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
 - `NAVIGATOR_OIDC_ISSUER`, `NAVIGATOR_OIDC_USERINFO_URL`, `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. The redirect URI must match the Android intent filter and the identity-provider registration.
