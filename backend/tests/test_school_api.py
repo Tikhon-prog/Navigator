@@ -159,6 +159,50 @@ class SchoolApiTests(unittest.TestCase):
             api.current_user("Bearer " + session["access_token"])
         self.assertEqual(raised.exception.status_code, 401)
 
+    def test_password_reset_revokes_access_refresh_and_device_registration(self):
+        with api._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+        session = api._issue_session(user, auth_method="sso")
+        device_token = "fcm-reset-test-token-with-enough-length-to-be-valid-12345"
+        with api._db() as db:
+            db.execute(
+                "INSERT INTO devices(id,user_id,fcm_token,platform,active,updated_at) VALUES(?,?,?,?,1,?)",
+                ("reset-device", "student1", device_token, "android", api._utc_now()),
+            )
+
+        result = rbac_api.reset_user_password(
+            "student1",
+            rbac_api.PasswordResetBody(password="brand new temporary password 123"),
+            {"id": "admin1", "role": "admin"},
+        )
+        self.assertEqual(result["status"], "password_reset")
+        with api._db() as db:
+            updated = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+            device = db.execute("SELECT active FROM devices WHERE id='reset-device'").fetchone()
+        self.assertTrue(api._verify_password("brand new temporary password 123", updated["password_hash"]))
+        self.assertEqual(device["active"], 0)
+        with self.assertRaises(HTTPException) as raised:
+            api.current_user("Bearer " + session["access_token"])
+        self.assertEqual(raised.exception.status_code, 401)
+        with self.assertRaises(HTTPException) as raised:
+            api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
+        self.assertEqual(raised.exception.status_code, 401)
+
+    def test_staff_cannot_reset_another_admin_password(self):
+        with api._db() as db:
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("admin2", "admin2", api._hash_password("another long test admin password"),
+                 "admin", "Another Admin", api._utc_now()),
+            )
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.reset_user_password(
+                "admin2",
+                rbac_api.PasswordResetBody(password="brand new temporary password 123"),
+                {"id": "teacher1", "role": "teacher"},
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
     def test_mentor_only_sees_linked_students(self):
         actor = {"id": "mentor1", "role": "mentor", "class_id": None}
         result = api.list_students(actor)
