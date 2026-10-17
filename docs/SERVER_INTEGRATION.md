@@ -1,4 +1,4 @@
-# Navigator school server integration
+# Серверная интеграция школы «Поколение»
 
 This branch adds a first usable, separately versioned service API at `/api/v2`.
 The existing workbook-backed `/api/*` endpoints remain read-only and unchanged.
@@ -89,7 +89,7 @@ then send the resulting short-lived access token to this endpoint. Configure:
 
 The server calls UserInfo over TLS and uses the returned stable `sub` claim. It **does
 not auto-link by email or username**. An administrator must explicitly link a local
-Navigator account once using `POST /api/v2/admin/sso-identities` with
+учётную запись «Поколение» один раз using `POST /api/v2/admin/sso-identities` with
 `{"username":"existing-login","subject":"stable-oidc-subject"}`. This avoids
 account takeover through mismatched or unverified profile claims. Do not enable this
 until the school IT team supplies and approves the issuer/endpoints and mobile client
