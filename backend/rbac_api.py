@@ -174,7 +174,6 @@ def public_config() -> dict[str, Any]:
     credential_ready = bool(os.getenv("FIREBASE_CREDENTIALS_JSON_BASE64", "").strip()) or bool(credential_path and os.path.isfile(credential_path))
     firebase_enabled = all(firebase.values()) and credential_ready and os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
-    userinfo_url = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
     return {
