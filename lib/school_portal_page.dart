@@ -58,16 +58,19 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
 
   Uri _uri(String suffix) {
     final base = Uri.parse(baseUrl);
+    final parts = suffix.split('?');
+    final endpoint = parts.first;
+    final queryParameters = parts.length > 1 ? Uri.splitQueryString(parts.sublist(1).join('?')) : null;
     var path = base.path.replaceFirst(RegExp(r'/+$'), '');
     if (path.endsWith('/api/v2')) {
       path = path.substring(0, path.length - '/api/v2'.length);
     }
     if (path.endsWith('/api')) {
-      path = '$path/v2/$suffix';
+      path = '$path/v2/$endpoint';
     } else {
-      path = '$path/api/v2/$suffix';
+      path = '$path/api/v2/$endpoint';
     }
-    return base.replace(path: path, query: null, fragment: '', userInfo: '');
+    return base.replace(path: path, queryParameters: queryParameters, fragment: '', userInfo: '');
   }
 
   Future<dynamic> _request(String method, String suffix, {Map<String, dynamic>? body}) async {
