@@ -690,16 +690,29 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
     # an explicit student-level assignment in the school portal.
     slot_groups: dict[tuple[str, str, tuple[str, str]], set[str]] = {}
     slot_teachers: dict[tuple[str, str, tuple[str, str]], set[str]] = {}
+    class_subject_groups: dict[tuple[str, str], set[str]] = {}
+    class_subject_teachers: dict[tuple[str, str], set[str]] = {}
     for row in parsed_rows:
         slot_key = (row["class_key"], row["subject_key"], row["slot"])
+        class_subject_key = (row["class_key"], row["subject_key"])
         if row["group"]:
             slot_groups.setdefault(slot_key, set()).add(row["group"])
+            class_subject_groups.setdefault(class_subject_key, set()).add(row["group"])
         slot_teachers.setdefault(slot_key, set()).update(row["teacher_ids"])
+        class_subject_teachers.setdefault(class_subject_key, set()).update(row["teacher_ids"])
     split_slots = {
         slot_key for slot_key, groups in slot_groups.items()
         if len(groups) > 1 and len(slot_teachers.get(slot_key, set())) > 1
     }
     split_class_subjects = {(class_key, subject_key) for class_key, subject_key, _ in split_slots}
+    # Also detect subgroup splits recorded in separate timetable slots/days.
+    # If a class/subject has multiple explicit groups and multiple teachers
+    # anywhere in its schedule, the source does not tell us which pupils are
+    # in which group. Never convert this into class-wide access automatically.
+    split_class_subjects.update(
+        class_subject_key for class_subject_key, groups in class_subject_groups.items()
+        if len(groups) > 1 and len(class_subject_teachers.get(class_subject_key, set())) > 1
+    )
 
     assignment_keys: set[tuple[str, str, str]] = set()
     for row in parsed_rows:
