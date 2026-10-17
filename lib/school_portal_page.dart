@@ -79,6 +79,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       response = await http.post(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 12));
     } else if (method == 'PATCH') {
       response = await http.patch(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 12));
+    } else if (method == 'PUT') {
+      response = await http.put(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 12));
+    } else if (method == 'DELETE') {
+      response = await http.delete(uri, headers: headers).timeout(const Duration(seconds: 12));
     } else {
       response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 12));
     }
