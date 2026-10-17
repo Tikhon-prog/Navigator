@@ -88,9 +88,13 @@ async def _auto_sync_loop() -> None:
         interval = max(60, int(os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300")))
         try:
             with core._db() as db:
-                admin = db.execute("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY created_at LIMIT 1").fetchone()
-            if admin:
-                actor = {"id": admin["id"], "role": "admin"}
+                sync_actor = db.execute(
+                    "SELECT u.id,u.role FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
+                    "WHERE u.active=1 AND (u.role='admin' OR p.position IN ('director','deputy')) "
+                    "ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,u.created_at LIMIT 1"
+                ).fetchone()
+            if sync_actor:
+                actor = {"id": sync_actor["id"], "role": sync_actor["role"]}
                 await asyncio.to_thread(sync_supplements, actor)
                 await asyncio.to_thread(sync_teacher_assignments, actor)
         except Exception:
