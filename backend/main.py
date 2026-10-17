@@ -542,36 +542,36 @@ def get_places(
 # ANNOUNCEMENTS
 # ============================================================
 
-@app.get("/api/announcements")
-def get_announcements(
-    class_id: str | None = None,
-):
+def _normalize_class_key(value: Any) -> str:
+    # Normalize visually identical Cyrillic/Latin class letters for matching only.
+    lookalikes = str.maketrans({
+        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+        "Х": "X", "У": "Y",
+    })
+    return str(value or "").strip().upper().replace(" ", "").translate(lookalikes)
 
+
+def _visible_announcements(class_id: str | None = None) -> list[dict[str, Any]]:
     data = read_sheet("Announcements")
-
-    if class_id is not None:
-
+    target_key = _normalize_class_key(class_id)
+    # Without a class profile, show only school-wide notices. Do not hand
+    # every class-targeted notice to an anonymous client by default.
+    if not target_key:
+        data = [item for item in data if not _normalize_class_key(item.get("target_class_id"))]
+    else:
         data = [
-            item
-            for item in data
-            if (
-                str(item.get("target_class_id"))
-                == class_id
-                or item.get("target_class_id")
-                in (None, "")
-            )
+            item for item in data
+            if not _normalize_class_key(item.get("target_class_id"))
+            or _normalize_class_key(item.get("target_class_id")) == target_key
         ]
+    data.sort(key=lambda item: str(item.get("published_at") or ""), reverse=True)
+    return data
 
-    data.sort(
-        key=lambda item: str(
-            item.get("published_at") or ""
-        ),
-        reverse=True,
-    )
 
-    return {
-        "data": data
-    }
+@app.get("/api/announcements")
+def get_announcements(class_id: str | None = None):
+    return {"data": _visible_announcements(class_id)}
 
 
 # ============================================================
@@ -599,12 +599,10 @@ def get_devices():
 # ============================================================
 
 @app.get("/api/data/{sheet_name}")
-def get_sheet_data(sheet_name: str):
+def get_sheet_data(sheet_name: str, class_id: str | None = None):
     # Prevent arbitrary reads such as /api/data/Admins or /api/data/AuditLog.
     if sheet_name not in PUBLIC_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
 
-    return {
-        "sheet": sheet_name,
-        "data": read_sheet(sheet_name),
-    }
+    data = _visible_announcements(class_id) if sheet_name == "Announcements" else read_sheet(sheet_name)
+    return {"sheet": sheet_name, "data": data}
