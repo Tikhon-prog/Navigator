@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
 import 'dop_parser.dart';
+import 'local_notification_service.dart';
 
 class Supplement {
   final String id;
@@ -73,6 +74,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
   bool syncing = false;
   DopStudent? student;
   String lastSync = '';
+  bool remindersEnabled = false;
 
   @override
   void initState() {
@@ -94,7 +96,11 @@ class _SupplementsPageState extends State<SupplementsPage> {
     }
     student = await const NavigatorStudentProvider().load();
     lastSync = prefs.getString('dop_last_sync') ?? '';
+    remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
     if (mounted) setState(() => loading = false);
+    if (remindersEnabled) {
+      try { await _refreshDopReminders(); } catch (_) {}
+    }
   }
 
   Future<void> _save() async {
@@ -103,6 +109,47 @@ class _SupplementsPageState extends State<SupplementsPage> {
       'supplements_local',
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
+    if (remindersEnabled) {
+      try { await _refreshDopReminders(); } catch (_) {}
+    }
+  }
+
+  Future<void> _refreshDopReminders({bool clearWhenDisabled = false}) async {
+    final service = LocalNotificationService();
+    if (remindersEnabled) {
+      await service.scheduleUpcomingSupplements(
+        entries: items.map((item) => (
+          id: item.id,
+          day: item.weekday,
+          time: item.start,
+          title: item.title,
+          room: item.room,
+        )).toList(),
+      );
+    } else if (clearWhenDisabled) {
+      await service.scheduleUpcomingSupplements(entries: const []);
+    }
+  }
+
+  Future<void> _setReminders(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dop_reminders_enabled', value);
+    if (mounted) setState(() => remindersEnabled = value);
+    try {
+      await _refreshDopReminders(clearWhenDisabled: !value);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось обновить уведомления. Проверь разрешение на уведомления в настройках Android.')),
+        );
+      }
+      return;
+    }
+    if (value && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Напоминания включены для занятий с временем в формате ЧЧ:ММ.')),
+      );
+    }
   }
 
   Future<void> _editStudent() async {
@@ -237,6 +284,24 @@ class _SupplementsPageState extends State<SupplementsPage> {
                           else
                             IconButton(onPressed: _editStudent, tooltip: 'Изменить профиль', icon: const Icon(Icons.edit_outlined)),
                         ]),
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: SwitchListTile.adaptive(
+                          value: remindersEnabled,
+                          onChanged: _setReminders,
+                          secondary: Icon(
+                            remindersEnabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                            color: scheme.primary,
+                          ),
+                          title: const Text('Напоминания о ДОПах', style: TextStyle(fontWeight: FontWeight.w900)),
+                          subtitle: Text(
+                            remindersEnabled
+                                ? 'За 15 минут • только если указано реальное время'
+                                : 'Получай напоминание за 15 минут до занятия',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 18),
                       Row(children: [
