@@ -402,16 +402,17 @@ class SchoolAccountService {
     }
     await prefs.setBool('dop_reminders_enabled', false);
     try { await LocalNotificationService().cancelDopReminders(); } catch (_) {}
-    if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty) {
+    String? deviceToken;
+    try {
+      deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
+    } catch (_) {}
+    if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty && deviceToken != null && deviceToken.isNotEmpty) {
       try {
-        final deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
-        if (deviceToken != null && deviceToken.isNotEmpty) {
-          await http.delete(
-            _endpoint(baseUrl, 'devices/me'),
-            headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json', 'Content-Type': 'application/json'},
-            body: jsonEncode({'token': deviceToken}),
-          ).timeout(const Duration(seconds: 5));
-        }
+        await http.delete(
+          _endpoint(baseUrl, 'devices/me'),
+          headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json', 'Content-Type': 'application/json'},
+          body: jsonEncode({'token': deviceToken}),
+        ).timeout(const Duration(seconds: 5));
       } catch (_) {}
     }
     if (refreshToken.isNotEmpty && baseUrl.isNotEmpty) {
@@ -423,7 +424,10 @@ class SchoolAccountService {
             'Content-Type': 'application/json',
             if (accessToken != null && accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
           },
-          body: jsonEncode({'refresh_token': refreshToken}),
+          body: jsonEncode({
+            'refresh_token': refreshToken,
+            if (deviceToken != null && deviceToken.isNotEmpty) 'device_token': deviceToken,
+          }),
         ).timeout(const Duration(seconds: 5));
       } catch (_) {}
     }
