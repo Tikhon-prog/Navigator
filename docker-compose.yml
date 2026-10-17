@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        ENABLE_FIREBASE: ${NAVIGATOR_ENABLE_FIREBASE:-false}
     env_file:
       - .env
     environment:
