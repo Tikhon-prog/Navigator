@@ -13,6 +13,7 @@ class SchoolAnnouncement {
   final String body;
   final String publishedAt;
   final String targetClass;
+  final String targetUserId;
   final String severity;
   final String expiresAt;
 
@@ -22,6 +23,7 @@ class SchoolAnnouncement {
     required this.body,
     required this.publishedAt,
     required this.targetClass,
+    required this.targetUserId,
     required this.severity,
     required this.expiresAt,
   });
@@ -43,6 +45,7 @@ class SchoolAnnouncement {
       body: firstText(['body', 'message', 'text', 'description'], fallback: 'Подробности не указаны.'),
       publishedAt: firstText(['published_at', 'created_at', 'date', 'updated_at']),
       targetClass: firstText(['target_class_id', 'class_id']),
+      targetUserId: firstText(['target_user_id']),
       severity: firstText(['severity', 'type', 'priority'], fallback: 'info').toLowerCase(),
       expiresAt: firstText(['expires_at', 'expiry', 'expiration_date']),
     );
@@ -54,6 +57,7 @@ class SchoolAnnouncement {
     'body': body,
     'published_at': publishedAt,
     'target_class_id': targetClass,
+    'target_user_id': targetUserId,
     'severity': severity,
     'expires_at': expiresAt,
   };
@@ -74,7 +78,7 @@ class SchoolAnnouncementsPage extends StatefulWidget {
 }
 
 class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
-  static const _cacheKey = 'school_announcements_cache_v1';
+  static const _cacheKey = 'school_announcements_cache_v2';
   List<SchoolAnnouncement> _items = [];
   bool _loading = true;
   bool _refreshing = false;
@@ -102,12 +106,16 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     final enabled = prefs.getBool('navigator_api_enabled') ?? false;
     final storedClassId = (prefs.getString('student_class_id') ?? '').trim();
     final storedClassName = (prefs.getString('student_class_name') ?? '').trim();
+    var currentUserId = '';
     var schoolClass = '';
     final rawSchoolUser = prefs.getString('school_user_v1');
     if (rawSchoolUser != null) {
       try {
         final schoolUser = jsonDecode(rawSchoolUser);
-        if (schoolUser is Map) schoolClass = (schoolUser['class_id'] ?? '').toString().trim();
+        if (schoolUser is Map) {
+          currentUserId = (schoolUser['id'] ?? '').toString().trim();
+          schoolClass = (schoolUser['class_id'] ?? '').toString().trim();
+        }
       } catch (_) {}
     }
     _classId = storedClassId.isNotEmpty ? storedClassId
@@ -120,6 +128,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         _items = decoded.map((item) => SchoolAnnouncement.fromJson(
           Map<String, dynamic>.from(item as Map),
         )).where((item) => !item.isExpired &&
+            (item.targetUserId.isEmpty || item.targetUserId == currentUserId) &&
             (item.targetClass.isEmpty ||
                 (_classId.isNotEmpty && _sameClass(item.targetClass, _classId)))).toList();
       } catch (_) {
@@ -207,11 +216,13 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                 'target_class_id': targetType == 'class'
                     ? source['target_id']
                     : audience == 'class' ? source['class_id'] : '',
+                'target_user_id': targetType == 'user' ? source['target_id'] : '',
                 'severity': source['severity'] ?? (kind == 'emergency' ? 'emergency' : kind == 'warning' ? 'warning' : 'info'),
                 'expires_at': source['expires_at'] ?? '',
               };
               final item = SchoolAnnouncement.fromJson(mapped);
               if (item.isExpired || seen.contains(item.id)) continue;
+              if (item.targetUserId.isNotEmpty && item.targetUserId != currentUserId) continue;
               if (item.targetClass.isNotEmpty &&
                   (_classId.isEmpty || !_sameClass(item.targetClass, _classId))) continue;
               parsed.add(item);
