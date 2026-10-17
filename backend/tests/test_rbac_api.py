@@ -55,6 +55,31 @@ class SchoolPositionTests(unittest.TestCase):
         result = rbac_api.management_students(actor)
         self.assertEqual(result["data"], [])
 
+    def test_class_labels_normalize_cyrillic_and_latin_lookalikes(self):
+        self.assertEqual(core.normalize_class_id("8А"), core.normalize_class_id("8A"))
+        self.assertEqual(core.normalize_class_id(" 10-Б "), core.normalize_class_id("10-B"))
+
+    def test_teacher_account_cannot_receive_mentor_only_position(self):
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.assign_position(
+                rbac_api.PositionBody(username="teacher1", position="mentor_coordinator"),
+                {"id": "admin1", "role": "admin"},
+            )
+        self.assertEqual(raised.exception.status_code, 422)
+
+    def test_mentor_account_can_receive_mentor_coordinator_position(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("mentor1", "mentor.one", core._hash_password("test password long enough"), "mentor", "Mentor One", core._utc_now()),
+            )
+        result = rbac_api.assign_position(
+            rbac_api.PositionBody(username="mentor.one", position="mentor_coordinator"),
+            {"id": "admin1", "role": "admin"},
+        )
+        self.assertEqual(result["position"], "mentor_coordinator")
+        self.assertTrue(rbac_api._has({"id": "mentor1", "role": "mentor"}, "assignments.manage"))
+
     def test_position_permission_is_not_equivalent_to_admin(self):
         actor = {"id": "teacher1", "role": "teacher", "class_id": "8A"}
         self.assertTrue(rbac_api._has(actor, "students.read_class"))
