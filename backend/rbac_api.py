@@ -465,6 +465,33 @@ def management_student_supplements(student_id: str, actor: dict[str, Any] = Depe
     return {"student": dict(student), "data": [dict(row) for row in rows]}
 
 
+@router.patch("/management/supplements/{supplement_id}")
+def update_supplement(supplement_id: str, body: core.SupplementBody,
+                      actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, Any]:
+    with core._db() as db:
+        row = db.execute("SELECT student_id FROM student_supplements WHERE id=?", (supplement_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="DOP record not found")
+        db.execute(
+            "UPDATE student_supplements SET title=?,weekday=?,time=?,teacher=?,room=?,status=?,updated_at=? WHERE id=?",
+            (body.title, body.weekday, body.time, body.teacher, body.room, body.status, _now(), supplement_id)
+        )
+    core._audit(actor["id"], "student.supplement_updated", row["student_id"], {"supplement_id": supplement_id})
+    return {"id": supplement_id, "student_id": row["student_id"], **body.model_dump(), "updated_at": _now()}
+
+
+@router.delete("/management/supplements/{supplement_id}")
+def delete_supplement(supplement_id: str,
+                      actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, str]:
+    with core._db() as db:
+        row = db.execute("SELECT student_id FROM student_supplements WHERE id=?", (supplement_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="DOP record not found")
+        db.execute("DELETE FROM student_supplements WHERE id=?", (supplement_id,))
+    core._audit(actor["id"], "student.supplement_deleted", row["student_id"], {"supplement_id": supplement_id})
+    return {"status": "deleted"}
+
+
 @router.post("/management/students/{student_id}/supplements", status_code=201)
 def management_add_supplement(student_id: str, body: core.SupplementBody,
                               actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
