@@ -280,14 +280,22 @@ def _send_push(tokens: list[str], title: str, body: str, data: dict[str, str]) -
                 return "firebase_not_configured", 0
             from firebase_admin import credentials
             firebase_admin.initialize_app(credentials.Certificate(credential_path))
-        message = messaging.MulticastMessage(
-            notification=messaging.Notification(title=title, body=body),
-            data={str(k): str(v) for k, v in data.items()},
-            tokens=tokens[:500],
-            android=messaging.AndroidConfig(priority="high" if data.get("severity") == "emergency" else "normal"),
-        )
-        response = messaging.send_each_for_multicast(message)
-        return ("sent" if response.success_count else "failed", response.success_count)
+        success_count = 0
+        for offset in range(0, len(tokens), 500):
+            batch = tokens[offset:offset + 500]
+            message = messaging.MulticastMessage(
+                notification=messaging.Notification(title=title, body=body),
+                data={str(k): str(v) for k, v in data.items()},
+                tokens=batch,
+                android=messaging.AndroidConfig(priority="high" if data.get("severity") == "emergency" else "normal"),
+            )
+            response = messaging.send_each_for_multicast(message)
+            success_count += response.success_count
+        if success_count == len(tokens):
+            return "sent", success_count
+        if success_count:
+            return "partial", success_count
+        return "failed", 0
     except ImportError:
         return "firebase_admin_package_missing", 0
     except Exception:
@@ -392,8 +400,31 @@ def get_student(student_id: str, actor: dict[str, Any] = Depends(require_roles("
         if not student or not _can_view_student(actor, student):
             # Deliberately use the same response for absent and unauthorized student records.
             raise HTTPException(status_code=404, detail="Student not found")
-        supplements = db.execute("SELECT id,title,weekday,time,teacher,room,status,updated_at FROM student_supplements WHERE student_id=? ORDER BY weekday,time", (student_id,)).fetchall()
-        links = db.execute("SELECT u.id,u.display_name,u.role FROM student_links l JOIN users u ON u.id=l.staff_id WHERE l.student_id=? AND u.active=1", (student_id,)).fetchall()
+        if actor["role"] == "teacher":
+            # A subject teacher can see the student record and only their own
+            # subject assignment, not the student's full private DOP schedule.
+            supplements = []
+            links = db.execute(
+                "SELECT u.id,u.display_name,u.role,l.subject FROM teacher_subject_assignments l "
+                "JOIN users u ON u.id=l.staff_id WHERE l.student_id=? AND l.staff_id=? AND u.active=1",
+                (student_id, actor["id"]),
+            ).fetchall()
+        else:
+            supplements = db.execute(
+                "SELECT id,title,weekday,time,teacher,room,status,updated_at FROM student_supplements "
+                "WHERE student_id=? ORDER BY weekday,time", (student_id,),
+            ).fetchall()
+            mentor_links = db.execute(
+                "SELECT u.id,u.display_name,u.role,'' AS subject FROM student_links l "
+                "JOIN users u ON u.id=l.staff_id WHERE l.student_id=? AND u.active=1",
+                (student_id,),
+            ).fetchall()
+            teacher_links = db.execute(
+                "SELECT u.id,u.display_name,u.role,l.subject FROM teacher_subject_assignments l "
+                "JOIN users u ON u.id=l.staff_id WHERE l.student_id=? AND u.active=1",
+                (student_id,),
+            ).fetchall()
+            links = list(mentor_links) + list(teacher_links)
     return {"student": dict(student), "supplements": [dict(x) for x in supplements], "staff": [dict(x) for x in links]}
 
 
@@ -465,9 +496,9 @@ def create_announcement(body: AnnouncementBody, actor: dict[str, Any] = Depends(
     push_status, sent_count = _send_push(tokens, body.title, body.body, {"announcement_id": announcement_id, "severity": body.severity})
     with _db() as db:
         db.execute("UPDATE announcements SET push_status=? WHERE id=?", (push_status, announcement_id))
-        if push_status in {"sent", "failed"}:
-            # Mark provider-rejected tokens inactive when possible. Token-level response
-            # handling is intentionally isolated to avoid persisting provider details.
+        if push_status in {"sent", "partial", "failed"}:
+            # Token-level response handling is intentionally isolated to avoid
+            # persisting provider details or exposing device tokens in the audit log.
             pass
     _audit(actor["id"], "announcement.created", announcement_id, {"severity": body.severity, "audience": body.audience, "push_status": push_status, "sent_count": sent_count})
     return {"id": announcement_id, "title": body.title, "body": body.body, "severity": body.severity, "audience": body.audience, "class_id": body.class_id, "created_at": created_at, "push_status": push_status, "sent_count": sent_count}
