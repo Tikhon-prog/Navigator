@@ -22,6 +22,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   String accessToken = '';
   Map<String, dynamic> user = {};
   Map<String, dynamic> counts = {};
+  Map<String, dynamic> syncStatus = {};
   String? position;
   String? scopeClass;
   List<String> permissions = [];
@@ -134,6 +135,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       if (permissions.contains('*') || permissions.contains('dashboard.read')) futures.add(_loadDashboard());
       if (canReadUsers || permissions.contains('assignments.manage')) futures.add(_loadUsers());
       if (canReadAudit) futures.add(_loadAudit());
+      if (permissions.contains('*') || permissions.contains('dop.read_all')) futures.add(_loadSyncStatus());
       await Future.wait(futures);
     } catch (e) {
       error = e.toString().replaceFirst('Exception: ', '');
@@ -164,6 +166,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       users = (result['data'] as List? ?? const []).whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row)).toList();
     } catch (_) { users = []; }
+  }
+
+  Future<void> _loadSyncStatus() async {
+    try {
+      syncStatus = Map<String, dynamic>.from(await _request('GET', 'management/sync/status') as Map);
+    } catch (_) { syncStatus = {}; }
   }
 
   Future<void> _loadAudit() async {
@@ -760,6 +768,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     ]),
     const SizedBox(height: 12),
     Card(child: ListTile(leading: const Icon(Icons.security_rounded), title: const Text('Права доступа'), subtitle: Text(permissions.contains('*') ? 'Полный административный доступ' : permissions.isEmpty ? 'Специальные права не назначены' : permissions.join(' • ')))),
+    if (syncStatus.isNotEmpty)
+      Card(child: ListTile(
+        leading: const Icon(Icons.sync_rounded),
+        title: const Text('Источник школьных данных'),
+        subtitle: Text('Источник: ${syncStatus['configured_source'] ?? 'не указан'}\nПоследняя синхронизация: ${(syncStatus['last_run'] as Map?)?['created_at'] ?? 'ещё не выполнялась'}'),
+      )),
     if (permissions.contains('*') || permissions.contains('dop.manage'))
       Card(child: ListTile(
         leading: Icon(Icons.sync_rounded, color: scheme.primary),
