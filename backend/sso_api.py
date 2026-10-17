@@ -31,7 +31,7 @@ class SsoLinkBody(BaseModel):
 
 
 def _verify_id_token(id_token: str) -> dict[str, Any]:
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     jwks_url = os.getenv("NAVIGATOR_OIDC_JWKS_URL", "").strip()
     if not issuer or not client_id:
@@ -40,10 +40,10 @@ def _verify_id_token(id_token: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="OIDC issuer must use HTTPS")
     try:
         if not jwks_url:
-            discovery = requests.get(issuer + "/.well-known/openid-configuration", timeout=5)
+            discovery = requests.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=5)
             discovery.raise_for_status()
             metadata = discovery.json()
-            if str(metadata.get("issuer", "")).rstrip("/") != issuer:
+            if str(metadata.get("issuer", "")) != issuer:
                 raise HTTPException(status_code=503, detail="OIDC discovery issuer does not match configuration")
             jwks_url = str(metadata.get("jwks_uri", "")).strip()
         if not jwks_url or (not jwks_url.startswith("https://") and not jwks_url.startswith("http://localhost")):
@@ -196,7 +196,7 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
 
 @router.post("/auth/sso")
 def sso_login(body: SsoLoginBody) -> dict[str, Any]:
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     id_claims = _verify_id_token(body.id_token)
     claims = _userinfo(body.access_token)
     if id_claims.get("sub") != claims.get("sub"):
