@@ -5,7 +5,9 @@ grant additional school duties without making every deputy/teacher an administra
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 import re
 import secrets
 from datetime import datetime, timezone
@@ -69,9 +71,32 @@ def _init() -> None:
         """)
 
 
+_auto_sync_task: asyncio.Task | None = None
+
+
 @router.on_event("startup")
-def init_roles() -> None:
+async def init_roles() -> None:
+    global _auto_sync_task
     _init()
+    interval = int(os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300"))
+    if interval > 0 and (_auto_sync_task is None or _auto_sync_task.done()):
+        _auto_sync_task = asyncio.create_task(_auto_sync_loop())
+
+
+async def _auto_sync_loop() -> None:
+    while True:
+        interval = max(60, int(os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300")))
+        try:
+            with core._db() as db:
+                admin = db.execute("SELECT id FROM users WHERE role='admin' AND active=1 ORDER BY created_at LIMIT 1").fetchone()
+            if admin:
+                actor = {"id": admin["id"], "role": "admin"}
+                await asyncio.to_thread(sync_supplements, actor)
+                await asyncio.to_thread(sync_teacher_assignments, actor)
+        except Exception:
+            # Keep the API alive if an external data source is unavailable.
+            pass
+        await asyncio.sleep(interval)
 
 
 class ManagedUserCreate(BaseModel):
