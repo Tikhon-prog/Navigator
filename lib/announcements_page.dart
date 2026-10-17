@@ -11,6 +11,7 @@ class SchoolAnnouncement {
   final String publishedAt;
   final String targetClass;
   final String severity;
+  final String expiresAt;
 
   const SchoolAnnouncement({
     required this.id,
@@ -19,6 +20,7 @@ class SchoolAnnouncement {
     required this.publishedAt,
     required this.targetClass,
     required this.severity,
+    required this.expiresAt,
   });
 
   factory SchoolAnnouncement.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ class SchoolAnnouncement {
       publishedAt: firstText(['published_at', 'created_at', 'date', 'updated_at']),
       targetClass: firstText(['target_class_id', 'class_id']),
       severity: firstText(['severity', 'type', 'priority'], fallback: 'info').toLowerCase(),
+      expiresAt: firstText(['expires_at', 'expiry', 'expiration_date']),
     );
   }
 
@@ -49,11 +52,12 @@ class SchoolAnnouncement {
     'published_at': publishedAt,
     'target_class_id': targetClass,
     'severity': severity,
+    'expires_at': expiresAt,
   };
 
   bool get isExpired {
-    // The legacy workbook may not have this field; such notices remain visible.
-    return false;
+    final expiry = DateTime.tryParse(expiresAt);
+    return expiry != null && expiry.isBefore(DateTime.now());
   }
 
   DateTime? get date => DateTime.tryParse(publishedAt);
