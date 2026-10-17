@@ -180,7 +180,7 @@ def public_config() -> dict[str, Any]:
     return {
         "school_name": os.getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
         "api_version": "v2",
-        "sso": {"enabled": bool(issuer and userinfo_url and client_id and redirect_uri), "issuer": issuer,
+        "sso": {"enabled": bool(issuer and client_id and redirect_uri), "issuer": issuer,
                 "client_id": client_id, "redirect_uri": redirect_uri,
                 "scopes": ["openid", "profile", "email"]},
         "firebase": {"enabled": firebase_enabled, **(firebase if firebase_enabled else {})},
