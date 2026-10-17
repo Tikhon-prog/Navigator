@@ -139,14 +139,16 @@ def public_config() -> dict[str, Any]:
         "messaging_sender_id": __import__("os").getenv("FIREBASE_MESSAGING_SENDER_ID", "").strip(),
         "project_id": __import__("os").getenv("FIREBASE_PROJECT_ID", "").strip(),
     }
-    firebase_enabled = all(firebase.values())
-    issuer = __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
-    client_id = __import__("os").getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
-    redirect_uri = __import__("os").getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
+    os = __import__("os")
+    firebase_enabled = all(firebase.values()) and os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    userinfo_url = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
+    client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+    redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
     return {
-        "school_name": __import__("os").getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
+        "school_name": os.getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
         "api_version": "v2",
-        "sso": {"enabled": bool(issuer and client_id and redirect_uri), "issuer": issuer,
+        "sso": {"enabled": bool(issuer and userinfo_url and client_id and redirect_uri), "issuer": issuer,
                 "client_id": client_id, "redirect_uri": redirect_uri,
                 "scopes": ["openid", "profile", "email"]},
         "firebase": {"enabled": firebase_enabled, **(firebase if firebase_enabled else {})},
