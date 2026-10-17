@@ -43,7 +43,7 @@ Required for authenticated endpoints:
 - `NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS`: automatically refresh student DOPs and timetable-derived teacher assignments; set `0` to disable periodic sync. The default is 300 seconds.
 - `NAVIGATOR_SCHOOL_TIMEZONE`: timezone used for server-generated DOP reminders (default `Europe/Moscow`).
 - `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
-- `NAVIGATOR_OIDC_ISSUER`, optional `NAVIGATOR_OIDC_JWKS_URL`, `NAVIGATOR_OIDC_USERINFO_URL`, `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. The backend verifies the ID-token signature/audience via the IdP JWKS (or OIDC discovery) and compares its subject to UserInfo. The redirect URI must match the Android intent filter and identity-provider registration.
+- `NAVIGATOR_OIDC_ISSUER`, optional `NAVIGATOR_OIDC_JWKS_URL` and `NAVIGATOR_OIDC_USERINFO_URL`, plus `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. UserInfo/JWKS endpoints are discovered automatically when omitted. The backend verifies the ID-token signature/audience via the IdP JWKS (or OIDC discovery) and compares its subject to UserInfo. The redirect URI must match the Android intent filter and identity-provider registration.
 - `NAVIGATOR_OIDC_AUTO_LINK_USERNAME` and `NAVIGATOR_OIDC_AUTO_PROVISION`: optional first-login automation. Enable only if the configured IdP returns authoritative, non-user-editable username/role/class claims. Configure the claim names explicitly; student accounts require a class claim. Provisioning of `admin` accounts stays disabled unless `NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION=true`.
 - `NAVIGATOR_DATA_SOURCE`: `yandex`, `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
 - `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM.
@@ -59,7 +59,7 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 ## Routes
 
 - `POST /api/v2/auth/login` — local username/password session.
-- `POST /api/v2/auth/sso` — exchange the school OIDC access token for a school session.
+- `POST /api/v2/auth/sso` — verify the OIDC ID token and UserInfo subject, then issue a school session.
 - `POST /api/v2/auth/refresh` and `POST /api/v2/auth/logout` — rotate/revoke refreshable sessions.
 - `GET /api/v2/auth/me` and `GET /api/v2/auth/permissions` — current account and effective position permissions.
 - `GET /api/v2/public/config` — non-secret OIDC/Firebase client configuration for the Android app.
@@ -72,6 +72,8 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 - `GET /api/v2/students` and `GET /api/v2/students/{id}` — role-scoped student list/details.
 - `POST /api/v2/management/students/{id}/supplements`, `PATCH/DELETE /api/v2/management/supplements/{id}` — create/update/delete DOP records with permissions.
 - `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter.
+- `POST /api/v2/management/sync/teacher-assignments` and `PUT /api/v2/admin/schedule-teacher-aliases` — derive teacher/student/subject access from the authoritative timetable, with explicit aliases when timetable teacher names differ from account names.
+- `GET /api/v2/announcements/workbook` — class-scoped workbook announcements; public announcement routes intentionally return school-wide notices only.
 - `POST /api/v2/devices/register`, `DELETE /api/v2/devices/me` — register and revoke FCM device tokens.
 - `GET /api/v2/notifications`, `POST /api/v2/admin/notifications` — list visible notifications and create global, class, group, personal, emergency, or scheduled messages.
 - `GET/PUT /api/v2/notifications/preferences` — opt in/out of server-generated DOP reminders.
