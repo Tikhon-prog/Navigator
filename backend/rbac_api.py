@@ -455,8 +455,11 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         if not class_name or not subject or not source_teacher:
             skipped += 1
             continue
-        teacher_id = aliases.get(source_teacher.casefold()) or teachers_by_name.get(source_teacher.casefold())
-        if not teacher_id:
+        teacher_ids = {
+            staff_id for teacher_name in re.split(r"[,;]+", source_teacher)
+            if (staff_id := (aliases.get(teacher_name.strip().casefold()) or teachers_by_name.get(teacher_name.strip().casefold())))
+        }
+        if not teacher_ids:
             skipped += 1
             continue
         class_keys = {_class_key(class_name), _class_key(class_ref)}
@@ -465,7 +468,8 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
             skipped += 1
             continue
         for student in matched:
-            assignment_keys.add((student["id"], teacher_id, subject))
+            for teacher_id in teacher_ids:
+                assignment_keys.add((student["id"], teacher_id, subject))
 
     if not assignment_keys:
         return {"status": "no_assignments_imported", "rows_seen": len(raw_rows), "imported": 0,
