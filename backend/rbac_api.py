@@ -169,6 +169,35 @@ def _require_position_actor(actor: dict[str, Any], permission: str) -> tuple[str
     return position or ("administrator" if actor.get("role") == "admin" else actor.get("role", "")), scope_class
 
 
+@router.get("/health/ready")
+def readiness() -> dict[str, Any]:
+    """Readiness checks required configuration without exposing secret values."""
+    # Liveness is available at /api/v2/health; readiness verifies the two
+    # dependencies needed for authenticated school usage.
+    core._signing_key()
+    from .main import read_sheet
+    try:
+        classes = read_sheet("Classes")
+        if not isinstance(classes, list) or not classes:
+            raise HTTPException(status_code=503, detail="School classes source is empty or not configured")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="School data source is not ready")
+    firebase_enabled = __import__("os").getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    return {
+        "status": "ready",
+        "source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
+        "classes_available": len(classes),
+        "firebase_delivery_enabled": firebase_enabled,
+        "school_sso_enabled": bool(
+            __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
+            and __import__("os").getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
+            and __import__("os").getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+        ),
+    }
+
+
 @router.get("/public/config")
 def public_config() -> dict[str, Any]:
     # Only public client configuration is exposed here. No secrets, service-account
