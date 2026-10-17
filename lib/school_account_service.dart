@@ -253,10 +253,14 @@ class SchoolAccountService {
     final refreshToken = prefs.getString(_refreshKey) ?? '';
     if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty) {
       try {
-        await http.delete(
-          _endpoint(baseUrl, 'devices/me'),
-          headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
-        ).timeout(const Duration(seconds: 5));
+        final deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
+        if (deviceToken != null && deviceToken.isNotEmpty) {
+          await http.delete(
+            _endpoint(baseUrl, 'devices/me'),
+            headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json', 'Content-Type': 'application/json'},
+            body: jsonEncode({'token': deviceToken}),
+          ).timeout(const Duration(seconds: 5));
+        }
       } catch (_) {}
     }
     if (refreshToken.isNotEmpty && baseUrl.isNotEmpty) {
