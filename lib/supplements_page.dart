@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
 import 'dop_parser.dart';
 import 'local_notification_service.dart';
+import 'school_account_service.dart';
 
 class Supplement {
   final String id;
@@ -137,6 +138,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
     if (mounted) setState(() => remindersEnabled = value);
     try {
       await _refreshDopReminders(clearWhenDisabled: !value);
+      // When a school account is connected, mirror the preference to the server
+      // so server-side reminders can also be delivered while the app is closed.
+      try { await SchoolAccountService().setDopRemindersEnabled(value); } catch (_) {}
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
