@@ -153,6 +153,46 @@ class SchoolAccountService {
     }
   }
 
+  Future<int> refreshMySupplements() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString(_tokenKey);
+    final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    final rawUser = prefs.getString(_userKey);
+    if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty || rawUser == null) return 0;
+    try {
+      final user = jsonDecode(rawUser);
+      if (user is! Map || user['role'] != 'student' || user['id'] == null) return 0;
+      final response = await http.get(
+        _endpoint(baseUrl, 'students/${user['id']}'),
+        headers: {'Accept': 'application/json', 'Authorization': 'Bearer $accessToken'},
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) return 0;
+      final payload = jsonDecode(response.body);
+      if (payload is! Map || payload['supplements'] is! List) return 0;
+      final rows = <Map<String, dynamic>>[];
+      for (final item in (payload['supplements'] as List).whereType<Map>()) {
+        final weekday = (item['weekday'] as num?)?.toInt();
+        if (weekday == null || weekday < 1 || weekday > 7) continue;
+        rows.add({
+          'id': 'server_${item['id'] ?? ''}',
+          'title': item['title']?.toString() ?? 'ДОП',
+          'weekday': weekday,
+          'start': item['time']?.toString() ?? '',
+          'end': '',
+          'teacher': item['teacher']?.toString() ?? '',
+          'room': item['room']?.toString() ?? '',
+          'place': '',
+          'group': '',
+          'description': '',
+        });
+      }
+      await prefs.setString('school_supplements_cache_v1', jsonEncode(rows));
+      return rows.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<bool> setDopRemindersEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     final accessToken = prefs.getString(_tokenKey);
