@@ -68,12 +68,19 @@ class NavigatorStudentProvider {
       return '';
     }
 
-    final classId = first([
+    var classId = first([
       'student_class_id',
       'student_class_name',
       'class_id',
       'class_name',
     ]);
+    // These two legacy keys are rewritten from the active SSO account on every
+    // successful login and removed on sign-out, so they are safe session scope
+    // fallbacks when a user has not manually completed the DOP profile yet.
+    if (classId.isEmpty && hasSchoolSession) {
+      classId = (prefs.getString('student_class_name') ??
+          prefs.getString('student_class_id') ?? '').trim();
+    }
 
     final classMatch = RegExp(
       r'^(\d{1,2})\s*([А-ЯЁA-Z])$',
