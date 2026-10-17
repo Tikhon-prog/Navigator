@@ -21,6 +21,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 def _init() -> None:
     with core._db() as db:
         db.executescript("""
@@ -308,12 +317,11 @@ def create_notification(body: NotificationBody,
         raise HTTPException(status_code=422, detail="Emergency notifications cannot be scheduled")
     if body.target_type != "all" and not body.target_id:
         raise HTTPException(status_code=422, detail="target_id is required for this target_type")
-    for value in (body.scheduled_at, body.expires_at):
-        if value:
-            try:
-                datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                raise HTTPException(status_code=422, detail="Dates must be ISO-8601 timestamps")
+    try:
+        scheduled_at = _normalize_timestamp(body.scheduled_at)
+        expires_at = _normalize_timestamp(body.expires_at)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Dates must be ISO-8601 timestamps")
     with core._db() as db:
         if body.target_type == "user":
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
@@ -345,14 +353,14 @@ def create_notification(body: NotificationBody,
                 raise HTTPException(status_code=404, detail="Target group not found")
         notification_id = secrets.token_urlsafe(12)
         created_at = _now()
-        delivery_status = "scheduled" if body.scheduled_at and body.scheduled_at > created_at else "queued"
+        delivery_status = "scheduled" if scheduled_at and scheduled_at > created_at else "queued"
         db.execute("INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,scheduled_at,expires_at,delivery_status) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                   (notification_id, body.title, body.body, body.kind, body.target_type, body.target_id, actor["id"], created_at, body.scheduled_at, body.expires_at, delivery_status))
+                   (notification_id, body.title, body.body, body.kind, body.target_type, body.target_id, actor["id"], created_at, scheduled_at, expires_at, delivery_status))
     core._audit(actor["id"], "notification.created", notification_id,
                 {"kind": body.kind, "target_type": body.target_type, "target_id": body.target_id})
     return {"id": notification_id, "title": body.title, "body": body.body, "kind": body.kind,
             "target_type": body.target_type, "target_id": body.target_id, "created_at": created_at,
-            "scheduled_at": body.scheduled_at, "delivery_status": delivery_status, "push_status": "pending"}
+            "scheduled_at": scheduled_at, "expires_at": expires_at, "delivery_status": delivery_status, "push_status": "pending"}
 
 
 @router.get("/notifications")
