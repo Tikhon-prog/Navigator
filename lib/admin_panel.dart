@@ -321,7 +321,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         final source = readiness is Map ? readiness['source']?.toString() ?? 'unknown' : 'unknown';
         final classes = readiness is Map ? readiness['classes_available']?.toString() ?? '?' : '?';
         final scheduleRows = readiness is Map ? readiness['schedule_rows_available']?.toString() ?? '?' : '?';
-        setState(() => apiStatus = 'Сервер готов. Источник: $source • классов: $classes • строк расписания: $scheduleRows.');
+        final adminReady = readiness is Map && readiness['administration_ready'] == true;
+        setState(() => apiStatus = adminReady
+            ? 'Сервер готов. Источник: $source • классов: $classes • строк расписания: $scheduleRows.'
+            : 'Источник готов, но нет активного технического администратора. Заполни NAVIGATOR_BOOTSTRAP_ADMIN_USERNAME/PASSWORD в .env.');
       } else if (response.statusCode == 503) {
         setState(() => apiStatus = 'Сервер запущен, но не готов: настрой NAVIGATOR_TOKEN_SECRET и источник школьных данных в .env.');
       } else {
