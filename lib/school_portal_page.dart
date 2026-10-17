@@ -69,6 +69,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   }
 
   Future<dynamic> _request(String method, String suffix, {Map<String, dynamic>? body}) async {
+    final freshToken = await SchoolAccountService().validAccessToken();
+    if (freshToken != null && freshToken.isNotEmpty) accessToken = freshToken;
     final headers = <String, String>{
       'Accept': 'application/json',
       'Authorization': 'Bearer $accessToken',
