@@ -106,6 +106,12 @@ class SchoolAccountService {
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(user));
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
+    if (user['id'] != null) {
+      final preferenceKey = 'dop_reminders_enabled_${user['id']}';
+      final reminderPreference = prefs.getBool(preferenceKey) ?? false;
+      await prefs.setBool(preferenceKey, reminderPreference);
+      await prefs.setBool('dop_reminders_enabled', reminderPreference);
+    }
     var pushRegistered = false;
     try {
       pushRegistered = await _initializePush(await _getConfig(baseUrl), baseUrl, payload['access_token'] as String);
@@ -161,6 +167,13 @@ class SchoolAccountService {
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     final userData = payload['user'];
+    if (userData is Map && userData['id'] != null) {
+      final preferenceKey = 'dop_reminders_enabled_${userData['id']}';
+      final savedPreference = prefs.getBool(preferenceKey);
+      final reminderPreference = savedPreference ?? (prefs.getBool('dop_reminders_enabled') ?? false);
+      await prefs.setBool(preferenceKey, reminderPreference);
+      await prefs.setBool('dop_reminders_enabled', reminderPreference);
+    }
     if (userData is Map && userData['class_id'] != null && userData['class_id'].toString().trim().isNotEmpty) {
       final classId = userData['class_id'].toString().trim();
       final className = await _resolveClassName(baseUrl, classId);
@@ -281,6 +294,15 @@ class SchoolAccountService {
   Future<bool> setDopRemindersEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    final rawUser = prefs.getString(_userKey);
+    if (rawUser != null) {
+      try {
+        final user = jsonDecode(rawUser);
+        if (user is Map && user['id'] != null) {
+          await prefs.setBool('dop_reminders_enabled_${user['id']}', enabled);
+        }
+      } catch (_) {}
+    }
     final accessToken = await validAccessToken();
     if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty) return false;
     final response = await http.put(
@@ -331,6 +353,17 @@ class SchoolAccountService {
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     final accessToken = await validAccessToken();
     final refreshToken = prefs.getString(_refreshKey) ?? '';
+    final rawUser = prefs.getString(_userKey);
+    if (rawUser != null) {
+      try {
+        final user = jsonDecode(rawUser);
+        if (user is Map && user['id'] != null) {
+          await prefs.setBool('dop_reminders_enabled_${user['id']}', prefs.getBool('dop_reminders_enabled') ?? false);
+        }
+      } catch (_) {}
+    }
+    await prefs.setBool('dop_reminders_enabled', false);
+    try { await LocalNotificationService().cancelDopReminders(); } catch (_) {}
     if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty) {
       try {
         final deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
