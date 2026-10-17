@@ -119,7 +119,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     try {
       final prefs = await SharedPreferences.getInstance();
       baseUrl = (prefs.getString('school_api_base_url_v1') ?? prefs.getString('navigator_api_url') ?? '').trim();
-      accessToken = prefs.getString('school_access_token_v1') ?? '';
+      accessToken = (await SchoolAccountService().validAccessToken()) ?? '';
       final rawUser = prefs.getString('school_user_v1');
       if (rawUser != null) {
         final decoded = jsonDecode(rawUser);
