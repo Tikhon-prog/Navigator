@@ -30,12 +30,14 @@ Required for authenticated endpoints:
   optional initial admin account; password must be at least 14 characters. The bootstrap
   account is created only when there is no existing admin.
 - `NAVIGATOR_TOKEN_TTL_SECONDS`: access token lifetime, default 8 hours.
-- `FIREBASE_CREDENTIALS_PATH`: path to a Firebase service-account JSON file mounted
-  as a secret, never committed to the repository.
+- `FIREBASE_CREDENTIALS_PATH`: optional path to a Firebase service-account JSON file mounted
+  read-only as a secret, never committed to the repository. Alternatively, set
+  `FIREBASE_CREDENTIALS_JSON_BASE64` to the one-line Base64 encoding of that JSON. Protect
+  `.env` with restrictive filesystem permissions; never put real credentials in Git.
 
 Install base dependencies with `pip install -r backend/requirements.txt`.
 For push delivery additionally run `pip install -r backend/requirements-firebase.txt`.
-Mount credentials read-only and create an FCM-enabled Firebase project first.
+Create an FCM-enabled Firebase project first. For the one-line environment option, generate the value with `base64 -w0 service-account.json` on Linux or `[Convert]::ToBase64String([IO.File]::ReadAllBytes('service-account.json'))` in PowerShell. The Android app also needs the public Firebase Android app settings (`FIREBASE_WEB_API_KEY`, `FIREBASE_ANDROID_APP_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_PROJECT_ID`) so it can initialize Firebase at runtime.
 
 ## Routes
 
