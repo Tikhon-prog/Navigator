@@ -94,6 +94,42 @@ class NotificationScopeTests(unittest.TestCase):
         self.assertEqual(first, 1)
         self.assertEqual(second, 1)
 
+    def test_student_cannot_create_server_dop_reminder_for_another_user(self):
+        body = notifications.NotificationBody(
+            title="DOP reminder", body="Not allowed",
+            kind="dop_reminder", target_type="user", target_id="student2",
+        )
+        with self.assertRaises(HTTPException) as raised:
+            notifications.create_notification(body, {"id": "student1", "role": "student", "class_id": "8A"})
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_coordinator_cannot_send_personal_message_to_staff_account(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
+                ("teacher2", "teacher2", core._hash_password("a sufficiently long test password"),
+                 "teacher", "Other teacher", None, core._utc_now()),
+            )
+        body = notifications.NotificationBody(
+            title="Message", body="Only student recipients are allowed",
+            kind="personal", target_type="user", target_id="teacher2",
+        )
+        with patch("backend.rbac_api._position", return_value=("dop_coordinator", None)):
+            with self.assertRaises(HTTPException) as raised:
+                notifications.create_notification(body, {"id": "teacher1", "role": "teacher", "class_id": "8A"})
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_homeroom_teacher_receives_notifications_for_assigned_class(self):
+        body = notifications.NotificationBody(
+            title="Class notice", body="Visible to 8A",
+            kind="targeted", target_type="class", target_id="8A",
+        )
+        with patch("backend.rbac_api._position", return_value=("director", None)):
+            notifications.create_notification(body, {"id": "admin1", "role": "admin"})
+        with patch("backend.rbac_api._position", return_value=("homeroom_teacher", "8A")):
+            result = notifications.list_notifications({"id": "teacher1", "role": "teacher", "class_id": None})
+        self.assertEqual([row["title"] for row in result["data"]], ["Class notice"])
+
     def test_teacher_cannot_broadcast_to_everyone(self):
         body = notifications.NotificationBody(title="Message", body="Test")
         with self.assertRaises(HTTPException) as raised:
