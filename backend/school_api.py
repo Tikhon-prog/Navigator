@@ -224,6 +224,8 @@ def _issue_session(user: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     refresh_token = secrets.token_urlsafe(48)
     token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
     with _db() as db:
+        db.execute("DELETE FROM revoked_access_tokens WHERE expires_at<=?", (now.isoformat(),))
+        db.execute("DELETE FROM refresh_tokens WHERE expires_at<=?", (now.isoformat(),))
         db.execute(
             "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)",
             (secrets.token_urlsafe(12), user["id"], token_hash, now.isoformat(),
@@ -311,7 +313,7 @@ def logout_session(body: RefreshBody,
             actor_id = row["user_id"]
         if access_claims and (actor_id is None or access_claims.get("sub") == actor_id):
             token_digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
-            expiry = datetime.fromtimestamp(int(access_claims["exp"]), timezone.utc).isoformat()
+            expiry = datetime.fromtimestamp(int(access_claims["exp"]), timezone.utc).isoformat(timespec="microseconds")
             db.execute(
                 "INSERT OR REPLACE INTO revoked_access_tokens(token_hash,expires_at,revoked_at) VALUES(?,?,?)",
                 (token_digest, expiry, _utc_now())
