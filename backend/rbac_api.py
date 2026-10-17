@@ -61,6 +61,11 @@ def _init() -> None:
           imported INTEGER NOT NULL, skipped INTEGER NOT NULL, created_at TEXT NOT NULL,
           result_json TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE TABLE IF NOT EXISTS schedule_teacher_aliases (
+          source_name TEXT PRIMARY KEY COLLATE NOCASE,
+          staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL
+        );
         """)
 
 
@@ -323,6 +328,139 @@ def _weekday(value: str) -> int | None:
         "вс": 7, "воскресенье": 7, "sun": 7, "sunday": 7,
     }
     return days.get(raw)
+
+
+class TeacherAliasBody(BaseModel):
+    source_name: str = Field(min_length=1, max_length=160)
+    staff_id: str = Field(min_length=1, max_length=128)
+
+
+def _class_key(value: str) -> str:
+    lookalikes = str.maketrans({
+        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+        "Х": "X", "У": "Y",
+    })
+    return str(value or "").strip().upper().replace(" ", "").translate(lookalikes)
+
+
+@router.get("/management/sync/teacher-aliases")
+def list_teacher_aliases(actor: dict[str, Any] = Depends(require_permission("assignments.manage"))) -> dict[str, Any]:
+    with core._db() as db:
+        rows = db.execute(
+            "SELECT a.source_name,a.staff_id,u.display_name,u.username FROM schedule_teacher_aliases a "
+            "JOIN users u ON u.id=a.staff_id ORDER BY a.source_name"
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
+@router.put("/admin/schedule-teacher-aliases")
+def set_teacher_alias(body: TeacherAliasBody,
+                      actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    if actor["role"] != "admin" and not _has(actor, "assignments.manage"):
+        raise HTTPException(status_code=403, detail="Assignment management permission required")
+    source_name = body.source_name.strip()
+    with core._db() as db:
+        staff = db.execute("SELECT id,role,active FROM users WHERE id=?", (body.staff_id,)).fetchone()
+        if not staff or not staff["active"] or staff["role"] != "teacher":
+            raise HTTPException(status_code=422, detail="Alias must map to an active teacher account")
+        db.execute(
+            "INSERT INTO schedule_teacher_aliases(source_name,staff_id,created_by,created_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(source_name) DO UPDATE SET staff_id=excluded.staff_id,created_by=excluded.created_by,created_at=excluded.created_at",
+            (source_name, body.staff_id, actor["id"], _now())
+        )
+    core._audit(actor["id"], "schedule.teacher_alias_set", body.staff_id, {"source_name": source_name})
+    return {"status": "saved", "source_name": source_name, "staff_id": body.staff_id}
+
+
+@router.post("/management/sync/teacher-assignments")
+def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission("assignments.manage"))) -> dict[str, Any]:
+    """Rebuild only schedule-derived teacher/student/subject links from the configured source."""
+    from .main import read_sheet
+
+    raw_rows = read_sheet("BaseSchedule")
+    class_rows = read_sheet("Classes")
+    if not isinstance(raw_rows, list) or not isinstance(class_rows, list):
+        raise HTTPException(status_code=502, detail="Schedule source did not return valid rows")
+    class_aliases: dict[str, str] = {}
+    for raw_class in class_rows:
+        if not isinstance(raw_class, dict):
+            continue
+        row = _normalized_row(raw_class)
+        class_id = _field(row, "id", "class_id", "code")
+        class_name = _field(row, "name", "class_name", "title", "class", "класс")
+        if class_name:
+            class_aliases[_class_key(class_name)] = class_name
+            if class_id:
+                class_aliases[_class_key(class_id)] = class_name
+
+    with core._db() as db:
+        students = [dict(row) for row in db.execute(
+            "SELECT id,display_name,username,class_id FROM users WHERE role='student' AND active=1"
+        ).fetchall()]
+        teachers = [dict(row) for row in db.execute(
+            "SELECT id,display_name,username FROM users WHERE role='teacher' AND active=1"
+        ).fetchall()]
+        aliases = {str(row["source_name"]).strip().casefold(): row["staff_id"]
+                   for row in db.execute("SELECT source_name,staff_id FROM schedule_teacher_aliases").fetchall()}
+
+    teachers_by_name: dict[str, str] = {}
+    for teacher in teachers:
+        for value in (teacher["username"], teacher["display_name"]):
+            if value:
+                teachers_by_name[str(value).strip().casefold()] = teacher["id"]
+
+    assignment_keys: set[tuple[str, str, str]] = set()
+    skipped = 0
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            skipped += 1
+            continue
+        row = _normalized_row(raw)
+        class_ref = _field(row, "class_id", "class", "класс_id", "класс")
+        class_label = _field(row, "class_name", "class_label", "class_display_name")
+        class_name = class_label or class_aliases.get(_class_key(class_ref), class_ref)
+        subject = _field(row, "subject", "discipline", "lesson", "предмет", "дисциплина")
+        source_teacher = _field(row, "teacher", "teacher_name", "educator", "педагог", "учитель")
+        if not class_name or not subject or not source_teacher:
+            skipped += 1
+            continue
+        teacher_id = aliases.get(source_teacher.casefold()) or teachers_by_name.get(source_teacher.casefold())
+        if not teacher_id:
+            skipped += 1
+            continue
+        class_keys = {_class_key(class_name), _class_key(class_ref)}
+        matched = [student for student in students if _class_key(str(student.get("class_id") or "")) in class_keys]
+        if not matched:
+            skipped += 1
+            continue
+        for student in matched:
+            assignment_keys.add((student["id"], teacher_id, subject))
+
+    if not assignment_keys:
+        return {"status": "no_assignments_imported", "rows_seen": len(raw_rows), "imported": 0,
+                "skipped": skipped, "note": "No matching teacher/student records found; previous schedule assignments were preserved."}
+
+    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+    with core._db() as db:
+        db.execute("DELETE FROM teacher_subject_assignments WHERE source_key LIKE 'schedule:%'")
+        for student_id, teacher_id, subject in sorted(assignment_keys):
+            key_data = json.dumps([student_id, teacher_id, subject], ensure_ascii=False, separators=(",", ":"))
+            source_key = "schedule:" + hashlib.sha256(key_data.encode()).hexdigest()
+            db.execute(
+                "INSERT INTO teacher_subject_assignments(student_id,staff_id,subject,created_at,source_key) VALUES(?,?,?,?,?) "
+                "ON CONFLICT(student_id,staff_id,subject) DO UPDATE SET created_at=excluded.created_at,source_key=excluded.source_key",
+                (student_id, teacher_id, subject, _now(), source_key)
+            )
+        db.execute(
+            "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
+            (source_name + ":teacher_assignments", len(assignment_keys), skipped, _now(),
+             json.dumps({"sheet": "BaseSchedule"}, ensure_ascii=False))
+        )
+    core._audit(actor["id"], "school_data.teacher_assignments_synced", None,
+                {"source": source_name, "imported": len(assignment_keys), "skipped": skipped})
+    return {"status": "completed", "source": source_name, "rows_seen": len(raw_rows),
+            "imported": len(assignment_keys), "skipped": skipped}
 
 
 @router.post("/management/sync/supplements")
