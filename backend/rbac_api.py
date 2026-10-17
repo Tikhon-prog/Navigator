@@ -422,6 +422,11 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         class_name = class_label or class_aliases.get(_class_key(class_ref), class_ref)
         subject = _field(row, "subject", "discipline", "lesson", "предмет", "дисциплина")
         source_teacher = _field(row, "teacher", "teacher_name", "educator", "педагог", "учитель")
+        if subject and not source_teacher:
+            suffix = re.search(r"\\s+([А-ЯЁ][а-яё-]+\\s+[А-ЯЁ]\\.[А-ЯЁ]\\.(?:,\\s*[А-ЯЁ][а-яё-]+\\s+[А-ЯЁ]\\.[А-ЯЁ]\\.)?)\\s*$", subject)
+            if suffix:
+                source_teacher = suffix.group(1).strip()
+                subject = subject[:suffix.start()].strip()
         if not class_name or not subject or not source_teacher:
             skipped += 1
             continue
