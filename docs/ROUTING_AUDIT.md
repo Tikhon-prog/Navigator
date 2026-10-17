@@ -20,6 +20,15 @@ The local geometry still contains a diagonal branch around doors 315–316 and a
 - Several floor 2 and floor 3 connections are explicitly marked `hidden: true`; hidden means not drawn as a corridor overlay in the editor, not excluded from route-graph construction. They can still influence the chosen route.
 - The router snaps endpoints within 32 source-map pixels and connects anchors to a nearest corridor segment if the connector is within 450 pixels. This can connect close parallel segments or cause visible small jogs when source geometry is approximate.
 
+## Router implementation changes now in the working branch
+
+- The default origin is always the main entrance on floor 1. Selecting floor 2 or 3 for map browsing no longer creates a fake starting point on that floor.
+- Unknown origin/destination IDs fail gracefully (returning `null`) instead of looking up a room with a throwing accessor.
+- If a room's door anchor has no manual point entry, the router attaches its catalog point to the graph as a fallback. This improves coverage but still requires map review before a real route can be trusted.
+- Route display removes duplicate graph/door anchors and only collapses near-collinear road nodes; the graph itself is not altered by display simplification.
+- Turn instructions use the actual map pixel aspect ratio to avoid false left/right turns introduced by normalized coordinates. Small angle noise is ignored; stair transitions and semantic start/destination points are retained.
+- Regression tests cover main entrance floor invariance, cross-floor origin behavior, invalid identifiers, identical origin/destination, all catalog destinations from the entrance, third-floor reachability from room 311, and single displayed entry/destination anchors.
+
 ## Recommended verification
 
 1. Compare each flagged segment against the original floor-plan image at full resolution.
