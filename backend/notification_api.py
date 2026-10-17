@@ -256,11 +256,11 @@ def _dispatch_due_notifications() -> int:
             {"notification_id": notification_id, "kind": row["kind"], "severity": "emergency" if row["kind"] == "emergency" else "info"}
         )
         attempt_count = int(row["delivery_attempts"] or 1)
-        retryable_statuses = {
-            "firebase_not_configured", "firebase_credentials_invalid",
-            "firebase_admin_package_missing", "provider_error", "failed",
-        }
-        retryable = push_status in retryable_statuses and attempt_count < 6
+        # Missing credentials/packages and invalid registration tokens are
+        # configuration or recipient failures, not transient network failures.
+        # Retrying those on a timer only hides the problem and wastes work.
+        # A partial send is also terminal to avoid duplicate pushes.
+        retryable = push_status == "provider_error" and sent_count == 0 and attempt_count < 6
         if retryable:
             status = "retry"
             backoff_seconds = min(3600, 15 * (2 ** (attempt_count - 1)))
