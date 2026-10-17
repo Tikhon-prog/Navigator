@@ -51,10 +51,13 @@ def _verify_id_token(id_token: str) -> dict[str, Any]:
         import jwt
         key = jwt.PyJWKClient(jwks_url, timeout=5).get_signing_key_from_jwt(id_token).key
         claims = jwt.decode(
-            id_token, key, algorithms=["RS256", "RS384", "ES256", "ES384", "PS256"],
+            id_token, key, algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"],
             audience=client_id, issuer=issuer,
             options={"require": ["exp", "iss", "sub", "aud"]},
         )
+        audience = claims.get("aud")
+        if isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != client_id:
+            raise HTTPException(status_code=401, detail="OIDC authorized party does not match this app")
         return dict(claims)
     except HTTPException:
         raise
