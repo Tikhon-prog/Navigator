@@ -186,6 +186,10 @@ class UserPatch(BaseModel):
     password: str | None = Field(default=None, min_length=14, max_length=256)
 
 
+class PasswordResetBody(BaseModel):
+    password: str = Field(min_length=14, max_length=256)
+
+
 class AssignmentBody(BaseModel):
     student_id: str = Field(min_length=1, max_length=128)
     staff_id: str = Field(min_length=1, max_length=128)
