@@ -29,12 +29,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   List<Map<String, dynamic>> students = [];
   List<Map<String, dynamic>> users = [];
   List<Map<String, dynamic>> notifications = [];
+  List<Map<String, dynamic>> notificationGroups = [];
   List<Map<String, dynamic>> auditEvents = [];
 
   bool get isAdmin => user['role'] == 'admin';
   bool get isLeadership => isAdmin || const {'director', 'deputy'}.contains(position);
   bool get canManageUsers => permissions.contains('*') || permissions.contains('staff.manage');
   bool get canManageDop => permissions.contains('*') || permissions.contains('dop.manage');
+  bool get canManageGroups => permissions.contains('*') || permissions.contains('assignments.manage');
   bool get canReadUsers => permissions.contains('*') || permissions.contains('staff.read');
   bool get canSeeStaffList => canReadUsers || permissions.contains('assignments.manage');
   bool get canReadAudit => permissions.contains('*') || permissions.contains('audit.read');
@@ -135,6 +137,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       if (permissions.contains('*') || permissions.contains('dashboard.read')) futures.add(_loadDashboard());
       if (canReadUsers || permissions.contains('assignments.manage')) futures.add(_loadUsers());
       if (canReadAudit) futures.add(_loadAudit());
+      if (canManageGroups) futures.add(_loadGroups());
       if (permissions.contains('*') || permissions.contains('dop.read_all')) futures.add(_loadSyncStatus());
       await Future.wait(futures);
     } catch (e) {
@@ -188,6 +191,209 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       notifications = (result['data'] as List? ?? const []).whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row)).toList();
     } catch (_) { notifications = []; }
+  }
+
+  Future<void> _loadGroups() async {
+    if (!canManageGroups) {
+      notificationGroups = [];
+      return;
+    }
+    try {
+      final result = await _request('GET', 'admin/notification-groups') as Map;
+      notificationGroups = (result['data'] as List? ?? const []).whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row)).toList();
+    } catch (_) {
+      notificationGroups = [];
+    }
+  }
+
+  Future<void> _createNotificationGroup() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Создать группу рассылки'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 120,
+          decoration: const InputDecoration(labelText: 'Название группы', hintText: 'Например, Олимпиада по математике'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (controller.text.trim().isNotEmpty) Navigator.pop(dialogContext, controller.text.trim());
+          }, child: const Text('Создать')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    try {
+      await _request('POST', 'admin/notification-groups', body: {'name': name.trim()});
+      await _loadGroups();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Группа создана.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _addNotificationGroupMember(Map<String, dynamic> group) async {
+    final candidatesById = <String, Map<String, dynamic>>{};
+    for (final account in [...students, ...users]) {
+      final id = (account['id'] ?? '').toString();
+      final active = account['active'];
+      if (id.isEmpty || (active != null && active != true && active != 1)) continue;
+      candidatesById[id] = account;
+    }
+    final candidates = candidatesById.values.toList()
+      ..sort((a, b) => (a['display_name'] ?? a['username'] ?? '')
+          .toString().compareTo((b['display_name'] ?? b['username'] ?? '').toString()));
+    if (candidates.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала загрузите список учеников и сотрудников.')));
+      return;
+    }
+    String selectedId = candidates.first['id'].toString();
+    final memberId = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
+        title: Text('Добавить участника • ${group['name'] ?? 'группа'}'),
+        content: SizedBox(width: 460, child: DropdownButtonFormField<String>(
+          value: selectedId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Ученик или сотрудник'),
+          items: [for (final account in candidates)
+            DropdownMenuItem(
+              value: account['id'].toString(),
+              child: Text(
+                '${account['display_name'] ?? account['username'] ?? 'Пользователь'}'
+                ' • ${account['role'] ?? '—'}'
+                '${account['class_id'] == null ? '' : ' • ${account['class_id']}'}',
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+              ),
+            )],
+          onChanged: (value) => setDialogState(() => selectedId = value ?? candidates.first['id'].toString()),
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, selectedId), child: const Text('Добавить')),
+        ],
+      )),
+    );
+    if (memberId == null) return;
+    try {
+      await _request('POST', 'admin/notification-groups/${group['id']}/members', body: {'user_id': memberId});
+      await _loadGroups();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Участник добавлен в группу.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _manageNotificationGroupMembers(Map<String, dynamic> group, void Function(void Function()) refreshDialog) async {
+    List<Map<String, dynamic>> members = [];
+    try {
+      final result = await _request('GET', 'admin/notification-groups/${group['id']}/members') as Map;
+      members = (result['data'] as List? ?? const []).whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row)).toList();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setMemberState) => AlertDialog(
+        title: Text('Участники • ${group['name'] ?? 'группа'}'),
+        content: SizedBox(width: 480, height: MediaQuery.sizeOf(context).height * .55,
+          child: members.isEmpty ? const Center(child: Text('В группе пока никого нет.')) : ListView(children: [
+            for (final member in members)
+              ListTile(
+                leading: CircleAvatar(child: Icon(member['role'] == 'student' ? Icons.school_rounded : Icons.badge_rounded)),
+                title: Text(member['display_name']?.toString() ?? member['username']?.toString() ?? 'Пользователь'),
+                subtitle: Text('${member['role'] ?? ''}${member['class_id'] == null ? '' : ' • ${member['class_id']}'}'),
+                trailing: IconButton(
+                  tooltip: 'Удалить из группы',
+                  icon: const Icon(Icons.person_remove_alt_1_rounded),
+                  onPressed: () async {
+                    try {
+                      await _request('DELETE', 'admin/notification-groups/${group['id']}/members/${member['id']}');
+                      members.removeWhere((item) => item['id'] == member['id']);
+                      setMemberState(() {});
+                      await _loadGroups();
+                      refreshDialog(() {});
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+                    }
+                  },
+                ),
+              ),
+          ]),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Закрыть'))],
+      )),
+    );
+  }
+
+  Future<void> _deleteNotificationGroup(Map<String, dynamic> group, void Function(void Function()) refreshDialog) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить группу?'),
+        content: Text('Группа «${group['name'] ?? ''}» и её состав будут удалены. Уже отправленные сообщения не изменятся.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Удалить')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _request('DELETE', 'admin/notification-groups/${group['id']}');
+      await _loadGroups();
+      refreshDialog(() {});
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _manageNotificationGroups() async {
+    await _loadGroups();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Группы рассылки'),
+        content: SizedBox(width: 520, height: MediaQuery.sizeOf(context).height * .62,
+          child: notificationGroups.isEmpty
+              ? const Center(child: Text('Групп пока нет. Создай первую группу.'))
+              : ListView(children: [
+                  for (final group in notificationGroups)
+                    Card(child: ListTile(
+                      title: Text(group['name']?.toString() ?? 'Группа', style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text('Участников: ${group['member_count'] ?? 0}'),
+                      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(tooltip: 'Добавить участника', onPressed: () async {
+                          await _addNotificationGroupMember(group);
+                          await _loadGroups();
+                          setDialogState(() {});
+                        }, icon: const Icon(Icons.person_add_alt_1_rounded)),
+                        IconButton(tooltip: 'Состав группы', onPressed: () async {
+                          await _manageNotificationGroupMembers(group, setDialogState);
+                          await _loadGroups();
+                          setDialogState(() {});
+                        }, icon: const Icon(Icons.groups_rounded)),
+                        IconButton(tooltip: 'Удалить группу', onPressed: () => _deleteNotificationGroup(group, setDialogState), icon: const Icon(Icons.delete_outline_rounded)),
+                      ]),
+                    )),
+                ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Закрыть')),
+          FilledButton.icon(onPressed: _createNotificationGroup, icon: const Icon(Icons.add_rounded), label: const Text('Создать группу')),
+        ],
+      )),
+    );
   }
 
   Future<void> _withBusy(Future<void> Function() action) async {
