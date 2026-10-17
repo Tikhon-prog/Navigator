@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_security.dart';
+
 class SchoolAnnouncement {
   final String id;
   final String title;
@@ -123,6 +125,16 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       return;
     }
 
+    if (!isSecureApiBaseUrl(base)) {
+      if (mounted) setState(() {
+        _serverConfigured = false;
+        _loading = false;
+        _refreshing = false;
+        _status = 'Адрес сервера должен использовать HTTPS без логина, пароля и параметров.';
+      });
+      return;
+    }
+
     try {
       final uri = _announcementsUri(base, _classId);
       final response = await http.get(uri, headers: const {'Accept': 'application/json'})
@@ -185,15 +197,22 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     path = '$path/announcements';
     return parsed.replace(
       path: path,
-      queryParameters: classId.isEmpty ? null : {'class_id': classId},
+      queryParameters: classId.isEmpty ? null : {'class_id': _normalizeClass(classId)},
       fragment: '',
       userInfo: '',
     );
   }
 
-  bool _sameClass(String a, String b) =>
-      a.trim().toLowerCase().replaceAll(' ', '') ==
-      b.trim().toLowerCase().replaceAll(' ', '');
+  String _normalizeClass(String value) {
+    const latinLookalikes = <String, String>{
+      'А': 'A', 'В': 'B', 'С': 'C', 'Е': 'E', 'Н': 'H', 'К': 'K',
+      'М': 'M', 'О': 'O', 'Р': 'P', 'Т': 'T', 'Х': 'X', 'У': 'Y',
+    };
+    return value.trim().toUpperCase().replaceAll(' ', '').split('')
+        .map((letter) => latinLookalikes[letter] ?? letter).join();
+  }
+
+  bool _sameClass(String a, String b) => _normalizeClass(a) == _normalizeClass(b);
 
   @override
   Widget build(BuildContext context) {
