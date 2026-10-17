@@ -14,6 +14,7 @@ import 'security_service.dart';
 import 'supplements_page.dart';
 import 'school_account_service.dart';
 import 'school_portal_page.dart';
+import 'online_data_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -140,8 +141,89 @@ class SchoolScheduleCatalog {
   static Map<String, dynamic>? _data;
   static Future<void> load() async {
     if (_data != null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('school_schedule_cache_v1');
+    if (cached != null) {
+      try {
+        _data = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        return;
+      } catch (_) {}
+    }
     final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
     _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+  }
+
+  static String _rowText(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key];
+      if (value != null && value.toString().trim().isNotEmpty) return value.toString().trim();
+    }
+    return '';
+  }
+
+  static int? _rowDay(String raw) {
+    final n = int.tryParse(raw.trim());
+    if (n != null && n >= 1 && n <= 7) return n;
+    const days = <String, int>{
+      'пн': 1, 'понедельник': 1, 'mon': 1, 'monday': 1,
+      'вт': 2, 'вторник': 2, 'tue': 2, 'tuesday': 2,
+      'ср': 3, 'среда': 3, 'wed': 3, 'wednesday': 3,
+      'чт': 4, 'четверг': 4, 'thu': 4, 'thursday': 4,
+      'пт': 5, 'пятница': 5, 'fri': 5, 'friday': 5,
+      'сб': 6, 'суббота': 6, 'sat': 6, 'saturday': 6,
+      'вс': 7, 'воскресенье': 7, 'sun': 7, 'sunday': 7,
+    };
+    return days[raw.trim().toLowerCase()];
+  }
+
+  /// Refreshes the existing schedule catalog from the configured source while
+  /// retaining the bundled schedule as an offline fallback.
+  static Future<int> refreshOnline() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('navigator_api_enabled') ?? false)) return 0;
+    final base = (prefs.getString('navigator_api_url') ?? '').trim();
+    if (!isSecureApiBaseUrl(base)) return 0;
+    final payload = await const OnlineDataService(NavigatorApiConfig()).get('data/BaseSchedule');
+    // Use the configured URL rather than a compile-time API address.
+    final response = await OnlineDataService(NavigatorApiConfig(baseUrl: base)).get('data/BaseSchedule');
+    if (response == null) return 0;
+    final rawRows = response['data'];
+    if (rawRows is! List) return 0;
+    final variantsByClass = <String, List<Map<String, dynamic>>>{};
+    for (final raw in rawRows) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final className = _rowText(row, ['class_id', 'class_name', 'class', 'класс']);
+      final subject = _rowText(row, ['subject', 'discipline', 'lesson', 'предмет', 'дисциплина']);
+      final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
+      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'время']);
+      if (className.isEmpty || subject.isEmpty || day == null || time.isEmpty) continue;
+      final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'группа'])) ?? 1;
+      variantsByClass.putIfAbsent(className, () => <Map<String, dynamic>>[]).add({
+        'day': day, 'time': time, 'subject': subject,
+        'room': _rowText(row, ['room', 'cabinet', 'room_id', 'кабинет']),
+        'teacher': _rowText(row, ['teacher', 'teacher_name', 'педагог', 'учитель']),
+        'group': group,
+      });
+    }
+    if (variantsByClass.isEmpty) return 0;
+    final baseData = Map<String, dynamic>.from(_data ?? const {});
+    final classes = Map<String, dynamic>.from(baseData['classes'] as Map? ?? const {});
+    final classOrder = <String, dynamic>{};
+    for (final entry in (baseData['class_order'] as Map? ?? const {}).entries) {
+      classOrder[entry.key.toString()] = List<String>.from(entry.value as List);
+    }
+    for (final entry in variantsByClass.entries) {
+      classes[entry.key] = {'variants': entry.value};
+      final grade = RegExp(r'^\\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
+      final list = List<String>.from(classOrder[grade] as List? ?? const <String>[]);
+      if (!list.contains(entry.key)) list.add(entry.key);
+      list.sort();
+      classOrder[grade] = list;
+    }
+    _data = {...baseData, 'classes': classes, 'class_order': classOrder};
+    await prefs.setString('school_schedule_cache_v1', jsonEncode(_data));
+    return variantsByClass.values.fold<int>(0, (sum, rows) => sum + rows.length);
   }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
   static List<String> classesForGrade(String grade) => List<String>.from(((_data?['class_order'] as Map?)?[grade] as List?) ?? const []);
