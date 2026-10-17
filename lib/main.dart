@@ -222,9 +222,9 @@ class SchoolScheduleCatalog {
       final className = classLabel.isNotEmpty ? classLabel : (classNames[classRef] ?? classRef);
       final subject = _rowText(row, ['subject', 'subject_name', 'discipline', 'discipline_name', 'lesson', 'предмет', 'дисциплина']);
       final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
-      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_начала']);
+      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_урока', 'время_начала', 'время_начала_урока']);
       if (className.isEmpty || subject.isEmpty || day == null || time.isEmpty) continue;
-      final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'группа'])) ?? 1;
+      final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'подгруппа', 'группа'])) ?? 1;
       variantsByClass.putIfAbsent(className, () => <Map<String, dynamic>>[]).add({
         'day': day, 'time': time, 'subject': subject,
         'room': _rowText(row, ['room', 'room_name', 'cabinet', 'room_id', 'кабинет']),
