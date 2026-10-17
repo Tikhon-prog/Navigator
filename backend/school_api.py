@@ -68,6 +68,9 @@ def init_db() -> None:
           revoked_at TEXT, last_used_at TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id,expires_at);
+        CREATE TABLE IF NOT EXISTS revoked_access_tokens (
+          token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL, revoked_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS student_links (
           student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -200,8 +203,16 @@ def _decode_token(token: str) -> dict[str, Any]:
 def current_user(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Bearer token required")
-    claims = _decode_token(authorization[7:].strip())
+    raw_token = authorization[7:].strip()
+    claims = _decode_token(raw_token)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     with _db() as db:
+        revoked = db.execute(
+            "SELECT 1 FROM revoked_access_tokens WHERE token_hash=? AND expires_at>?",
+            (token_hash, _utc_now())
+        ).fetchone()
+        if revoked:
+            raise HTTPException(status_code=401, detail="Access token has been revoked")
         user = db.execute("SELECT id,username,role,display_name,class_id,active FROM users WHERE id=?", (claims.get("sub"),)).fetchone()
     if not user or not user["active"] or user["role"] != claims.get("role"):
         raise HTTPException(status_code=401, detail="Account is inactive or token is no longer valid")
@@ -280,16 +291,32 @@ def _issue_access_with_refresh(user: sqlite3.Row | dict[str, Any], refresh_token
 
 
 @router.post("/auth/logout")
-def logout_session(body: RefreshBody) -> dict[str, str]:
-    token_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
+def logout_session(body: RefreshBody,
+                   authorization: str | None = Header(default=None)) -> dict[str, str]:
+    refresh_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
+    access_token = ""
+    access_claims = None
+    if authorization and authorization.startswith("Bearer "):
+        access_token = authorization[7:].strip()
+        try:
+            access_claims = _decode_token(access_token)
+        except HTTPException:
+            access_claims = None
+    actor_id = None
     with _db() as db:
-        row = db.execute("SELECT id,user_id FROM refresh_tokens WHERE token_hash=? AND revoked_at IS NULL", (token_hash,)).fetchone()
+        row = db.execute("SELECT id,user_id FROM refresh_tokens WHERE token_hash=? AND revoked_at IS NULL", (refresh_hash,)).fetchone()
         if row:
             db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=?",
                        (_utc_now(), _utc_now(), row["id"]))
             actor_id = row["user_id"]
-        else:
-            actor_id = None
+        if access_claims and (actor_id is None or access_claims.get("sub") == actor_id):
+            token_digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+            expiry = datetime.fromtimestamp(int(access_claims["exp"]), timezone.utc).isoformat()
+            db.execute(
+                "INSERT OR REPLACE INTO revoked_access_tokens(token_hash,expires_at,revoked_at) VALUES(?,?,?)",
+                (token_digest, expiry, _utc_now())
+            )
+            actor_id = access_claims.get("sub")
     if actor_id:
         _audit(actor_id, "auth.logout")
     return {"status": "logged_out"}
