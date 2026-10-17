@@ -126,3 +126,13 @@ token on the server; never put it in the APK. Use HTTPS for remote endpoints.
 - These new notification records are not yet wired to FCM delivery. Existing broadcast
   announcements can send FCM pushes when configured; per-user/group push fan-out and
   delivery receipts remain follow-up work.
+
+
+## Portable deployment
+
+A Dockerfile and `docker-compose.yml` are included. Copy `.env.example` to `.env`,
+fill in the values supplied by school IT, then run `docker compose up --build -d`.
+The SQLite database persists in the `navigator_data` volume. Back it up and restrict
+host access. This only packages the API; it does not provision school SSO, Firebase,
+Yandex access, certificates, or official school data. Do not expose port 8000 directly
+to the public internet; put it behind the school's HTTPS reverse proxy.
