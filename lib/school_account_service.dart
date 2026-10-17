@@ -310,8 +310,9 @@ class SchoolAccountService {
           'description': '',
         });
       }
-      await prefs.setString('school_supplements_cache_v1', jsonEncode(rows));
-      await prefs.setString('school_supplements_user_id_v1', user['id'].toString());
+      final cacheSuffix = user['id'].toString();
+      await prefs.setString('school_supplements_cache_v1_$cacheSuffix', jsonEncode(rows));
+      await prefs.setString('school_supplements_user_id_v1_$cacheSuffix', cacheSuffix);
       return rows.length;
     } catch (_) {
       return null;
