@@ -2134,7 +2134,7 @@ class SettingsPage extends StatelessWidget {
     login.dispose(); password.dispose();
     if (result == null) return;
     try {
-      final session = await SchoolAccountService().signInAsServerAdmin(
+      await SchoolAccountService().signInAsServerAdmin(
         baseUrl, username: result['username']!, password: result['password']!,
       );
       if (context.mounted) {
