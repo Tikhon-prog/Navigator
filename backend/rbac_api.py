@@ -5,6 +5,8 @@ grant additional school duties without making every deputy/teacher an administra
 """
 from __future__ import annotations
 
+import hashlib
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Any
@@ -54,6 +56,11 @@ def _init() -> None:
           updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_staff_positions_position ON staff_positions(position,scope_class);
+        CREATE TABLE IF NOT EXISTS school_sync_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL,
+          imported INTEGER NOT NULL, skipped INTEGER NOT NULL, created_at TEXT NOT NULL,
+          result_json TEXT NOT NULL DEFAULT '{}'
+        );
         """)
 
 
@@ -279,6 +286,116 @@ def management_audit(limit: int = 100,
             (limit,)
         ).fetchall()
     return {"data": [dict(row) for row in rows]}
+
+
+def _normalized_row(row: dict[str, Any]) -> dict[str, Any]:
+    def key(value: Any) -> str:
+        return re.sub(r"[^a-z0-9а-я]+", "_", str(value or "").strip().lower())
+    return {key(k): v for k, v in row.items()}
+
+
+def _field(row: dict[str, Any], *names: str) -> str:
+    for name in names:
+        value = row.get(name)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _weekday(value: str) -> int | None:
+    raw = value.strip().lower()
+    try:
+        number = int(float(raw))
+        return number if 1 <= number <= 7 else None
+    except ValueError:
+        pass
+    days = {
+        "пн": 1, "понедельник": 1, "mon": 1, "monday": 1,
+        "вт": 2, "вторник": 2, "tue": 2, "tuesday": 2,
+        "ср": 3, "среда": 3, "wed": 3, "wednesday": 3,
+        "чт": 4, "четверг": 4, "thu": 4, "thursday": 4,
+        "пт": 5, "пятница": 5, "fri": 5, "friday": 5,
+        "сб": 6, "суббота": 6, "sat": 6, "saturday": 6,
+        "вс": 7, "воскресенье": 7, "sun": 7, "sunday": 7,
+    }
+    return days.get(raw)
+
+
+@router.post("/management/sync/supplements")
+def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, Any]:
+    """Import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter."""
+    from .main import read_sheet
+
+    rows = read_sheet("Supplements")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=502, detail="Supplements source did not return a row list")
+    imported = 0
+    skipped = 0
+    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+    with core._db() as db:
+        for raw in rows:
+            if not isinstance(raw, dict):
+                skipped += 1
+                continue
+            row = _normalized_row(raw)
+            student_ref = _field(row, "student_id", "student_login", "student_username", "student_account", "login", "ученик_id", "логин_ученика")
+            title = _field(row, "title", "name", "supplement", "program", "subject", "название", "доп", "кружок")
+            if not student_ref or not title:
+                skipped += 1
+                continue
+            student = db.execute(
+                "SELECT id FROM users WHERE role='student' AND active=1 AND (id=? OR username=? COLLATE NOCASE)",
+                (student_ref, student_ref),
+            ).fetchone()
+            if not student:
+                # Exact display-name matching is permitted only if unambiguous.
+                candidates = db.execute(
+                    "SELECT id FROM users WHERE role='student' AND active=1 AND display_name=? COLLATE NOCASE LIMIT 2",
+                    (student_ref,),
+                ).fetchall()
+                if len(candidates) == 1:
+                    student = candidates[0]
+            if not student:
+                skipped += 1
+                continue
+            weekday_raw = _field(row, "weekday", "day", "week_day", "день", "день_недели")
+            weekday = _weekday(weekday_raw) if weekday_raw else None
+            time_value = _field(row, "time", "start", "start_time", "время", "начало")
+            teacher = _field(row, "teacher", "mentor", "coach", "преподаватель", "педагог")
+            room = _field(row, "room", "cabinet", "location", "кабинет", "место")
+            status = _field(row, "status", "state", "статус") or "active"
+            external_id = _field(row, "id", "supplement_id", "dop_id", "ид")
+            stable_payload = json.dumps(
+                [student["id"], external_id or "", title, weekday, time_value, teacher, room],
+                ensure_ascii=False, separators=(",", ":")
+            )
+            source_key = "workbook:" + (external_id if external_id else hashlib.sha256(stable_payload.encode()).hexdigest())
+            db.execute(
+                "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at,source_key) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_key) WHERE source_key IS NOT NULL DO UPDATE SET "
+                "student_id=excluded.student_id,title=excluded.title,weekday=excluded.weekday,time=excluded.time,"
+                "teacher=excluded.teacher,room=excluded.room,status=excluded.status,updated_at=excluded.updated_at",
+                ("src_" + hashlib.sha256(source_key.encode()).hexdigest()[:24], student["id"], title, weekday,
+                 time_value, teacher, room, status, _now(), source_key)
+            )
+            imported += 1
+        db.execute(
+            "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
+            (source_name, imported, skipped, _now(), json.dumps({"sheet": "Supplements"}, ensure_ascii=False))
+        )
+    core._audit(actor["id"], "school_data.supplements_synced", None,
+                {"source": source_name, "imported": imported, "skipped": skipped})
+    return {"status": "completed", "source": source_name, "rows_seen": len(rows),
+            "imported_or_updated": imported, "skipped": skipped,
+            "note": "Only rows mapped to an active student account are imported. Unmatched rows are skipped safely."}
+
+
+@router.get("/management/sync/status")
+def sync_status(actor: dict[str, Any] = Depends(require_permission("dop.read_all"))) -> dict[str, Any]:
+    with core._db() as db:
+        row = db.execute("SELECT source,imported,skipped,created_at,result_json FROM school_sync_runs ORDER BY id DESC LIMIT 1").fetchone()
+    return {"last_run": dict(row) if row else None,
+            "configured_source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()}
 
 
 @router.get("/management/dashboard")
