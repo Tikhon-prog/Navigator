@@ -11,8 +11,8 @@ supplements, registered devices, announcements, and audit events in SQLite.
   records, publishes announcements, and reads the audit log.
 - `mentor`: can list and inspect only students explicitly linked to that mentor,
   including their supplement records.
-- `teacher`: can inspect students in the teacher's own `class_id` and students
-  explicitly linked to them.
+- `teacher`: can inspect only students explicitly linked to them, with a subject label
+  recorded on each assignment. Use `GET /api/v2/teachers/me/subjects` for the subject roster.
 - `student`: can inspect only their own record (the public endpoint is intentionally
   narrower than staff access).
 
@@ -41,7 +41,8 @@ Mount credentials read-only and create an FCM-enabled Firebase project first.
 - `POST /api/v2/auth/login` — username/password to bearer token.
 - `GET /api/v2/auth/me` — current account.
 - `POST /api/v2/admin/users` — create an account.
-- `POST /api/v2/admin/student-links` — explicitly associate a student with a mentor/teacher.
+- `POST /api/v2/admin/student-links` — explicitly associate a student with a mentor/teacher; include `subject` for teacher assignments.
+- `GET /api/v2/teachers/me/subjects` — list students explicitly assigned to the signed-in teacher by subject.
 - `GET /api/v2/students` and `GET /api/v2/students/{id}` — role-scoped student list/details.
 - `POST /api/v2/admin/students/{id}/supplements` — add a student-specific supplement record.
 - `POST /api/v2/devices/register` — register an FCM device token for the signed-in user.
@@ -73,7 +74,8 @@ rules; enable centralized rate limiting; add account recovery/deactivation workf
 review local privacy/legal requirements with school leadership; test database migration
 and restore; decide how Firebase tokens are revoked; and replace SQLite with PostgreSQL
 if multiple app instances or higher write concurrency are needed. The current login
-throttle is process-local and is not a substitute for edge rate limiting.
+throttle is process-local and is not a substitute for edge rate limiting. Teacher visibility
+is deliberately based on explicit subject assignments, not inferred from a shared class.
 
 
 ## School SSO
