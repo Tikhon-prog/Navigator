@@ -7,18 +7,24 @@ supplements, registered devices, announcements, and audit events in SQLite.
 
 ## Roles and visibility
 
-- `admin`: creates accounts and student/staff relationships, adds student supplement
-  records, publishes announcements, and reads the audit log.
-- `mentor`: can list and inspect only students explicitly linked to that mentor,
-  including their supplement records.
-- `teacher`: can inspect only students explicitly assigned to them by subject, using
-  `GET /api/v2/teachers/me/subjects`. Teacher detail responses omit the student's full
-  private DOP schedule; mentors and the student themself retain that view.
-- `student`: can inspect only their own record (the public endpoint is intentionally
-  narrower than staff access).
+The base account type is separate from a school position. Positions are stored and granted
+by an existing administrator; they do not automatically turn a teacher into a superadmin.
 
-Do not infer mentor relationships from names or class labels. The school must provide
-an authoritative mapping and a responsible administrator must import or approve it.
+- `admin`: technical administrator; provisions accounts, links SSO identities, grants positions, and can audit the system.
+- `director`: school-wide management dashboard, student directory, DOP oversight, account lifecycle, assignments, notifications and audit read access.
+- `deputy`: school-wide academic/operational overview, DOP oversight, staff lifecycle, assignments, notifications and audit read access; cannot grant director/deputy or create another superadmin.
+- `homeroom_teacher`: student roster and DOP view limited to the explicitly assigned class; class and personal messages only to students in that class.
+- `teacher`: students explicitly assigned by subject; personal messages only to assigned students; student detail responses do not disclose the full private DOP schedule.
+- `mentor`: only explicitly linked mentees, including their relevant DOP records.
+- `mentor_coordinator`: school student directory for assignment purposes and authority to manage mentor/subject assignments.
+- `dop_coordinator`: student directory, DOP import/CRUD, class-targeted notifications, and opted-in server DOP reminder oversight.
+- `librarian`: read-only student directory; no private DOP access by default.
+- `student`: only their own profile, assigned DOP records and notifications addressed to them/their class.
+
+A single account has one optional position and one optional class scope. Teacher-subject
+assignments and mentor relationships are explicit database records. Do not infer them from
+names, emails or class labels; the school must provide an authoritative mapping and an
+administrator must import or approve it.
 
 ## Environment
 
@@ -34,6 +40,9 @@ Required for authenticated endpoints:
 - `NAVIGATOR_NOTIFICATION_WORKER_ENABLED` and `NAVIGATOR_NOTIFICATION_POLL_SECONDS`: enable and tune the single-container notification worker.
 - `NAVIGATOR_SCHOOL_TIMEZONE`: timezone used for server-generated DOP reminders (default `Europe/Moscow`).
 - `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
+- `NAVIGATOR_OIDC_ISSUER`, `NAVIGATOR_OIDC_USERINFO_URL`, `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. The redirect URI must match the Android intent filter and the identity-provider registration.
+- `NAVIGATOR_DATA_SOURCE`: `yandex`, `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
+- `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM.
 - `FIREBASE_CREDENTIALS_PATH`: optional path to a Firebase service-account JSON file mounted
   read-only as a secret, never committed to the repository. Alternatively, set
   `FIREBASE_CREDENTIALS_JSON_BASE64` to the one-line Base64 encoding of that JSON. Protect
