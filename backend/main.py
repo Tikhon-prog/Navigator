@@ -10,6 +10,8 @@ import openpyxl
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+from .school_api import router as school_services_router
 from dotenv import load_dotenv
 
 
@@ -59,6 +61,9 @@ app = FastAPI(
     description="Backend школьного навигатора",
     version="1.0.0",
 )
+
+# Separate authenticated API for accounts, scoped student access, and announcements.
+app.include_router(school_services_router)
 
 app.add_middleware(
     CORSMiddleware,
