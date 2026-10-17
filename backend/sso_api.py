@@ -242,7 +242,7 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
         identity = _link_or_provision(claims, issuer)
     if not identity:
         raise HTTPException(status_code=403, detail="SSO identity is not linked or auto-provisioning claims are incomplete; ask the school administrator")
-    result = core._issue_session(identity)
+    result = core._issue_session(identity, auth_method="sso")
     core._audit(identity["id"], "auth.sso_login")
     return result
 
