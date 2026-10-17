@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+from functools import lru_cache
 from typing import Any
 
 import requests
@@ -30,6 +31,16 @@ class SsoLinkBody(BaseModel):
     subject: str = Field(min_length=1, max_length=512)
 
 
+@lru_cache(maxsize=4)
+def _oidc_metadata(issuer: str) -> dict[str, Any]:
+    response = requests.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=5)
+    response.raise_for_status()
+    metadata = response.json()
+    if str(metadata.get("issuer", "")) != issuer:
+        raise HTTPException(status_code=503, detail="OIDC discovery issuer does not match configuration")
+    return dict(metadata)
+
+
 def _verify_id_token(id_token: str) -> dict[str, Any]:
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
@@ -40,12 +51,7 @@ def _verify_id_token(id_token: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="OIDC issuer must use HTTPS")
     try:
         if not jwks_url:
-            discovery = requests.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=5)
-            discovery.raise_for_status()
-            metadata = discovery.json()
-            if str(metadata.get("issuer", "")) != issuer:
-                raise HTTPException(status_code=503, detail="OIDC discovery issuer does not match configuration")
-            jwks_url = str(metadata.get("jwks_uri", "")).strip()
+            jwks_url = str(_oidc_metadata(issuer).get("jwks_uri", "")).strip()
         if not jwks_url or (not jwks_url.startswith("https://") and not jwks_url.startswith("http://localhost")):
             raise HTTPException(status_code=503, detail="OIDC JWKS endpoint must use HTTPS")
         import jwt
@@ -67,9 +73,16 @@ def _verify_id_token(id_token: str) -> dict[str, Any]:
 
 def _userinfo(access_token: str) -> dict[str, Any]:
     endpoint = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").rstrip("/")
-    if not endpoint or not issuer:
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
+    if not issuer:
         raise HTTPException(status_code=503, detail="School SSO is not configured")
+    if not endpoint:
+        try:
+            endpoint = str(_oidc_metadata(issuer).get("userinfo_endpoint", "")).strip()
+        except Exception:
+            raise HTTPException(status_code=503, detail="OIDC discovery did not provide a UserInfo endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=503, detail="OIDC UserInfo endpoint is not configured")
     if not issuer.startswith("https://") and not issuer.startswith("http://localhost"):
         raise HTTPException(status_code=503, detail="SSO issuer must use HTTPS")
     if not endpoint.startswith("https://") and not endpoint.startswith("http://localhost"):
