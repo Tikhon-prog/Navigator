@@ -66,7 +66,7 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 
 ## Routes
 
-- `POST /api/v2/auth/login` — local username/password session.
+- `POST /api/v2/auth/login` — local username/password session, intended for technical admins by default; non-admin local password login is disabled unless `NAVIGATOR_ALLOW_NON_SSO_PASSWORD_LOGIN=true` is explicitly approved.
 - `POST /api/v2/auth/sso` — verify the OIDC ID token and UserInfo subject, then issue a school session.
 - `POST /api/v2/auth/refresh` and `POST /api/v2/auth/logout` — rotate/revoke refreshable sessions.
 - `GET /api/v2/auth/me` and `GET /api/v2/auth/permissions` — current account and effective position permissions.
@@ -147,7 +147,7 @@ address guessed from the username). Trusted-claim auto-linking/provisioning is o
 and disabled by default. Enable it only after school IT confirms that the configured
 username, role and class claims are controlled by the IdP and cannot be user-edited.
 Administrative-account provisioning remains separately disabled unless explicitly
-approved. The app's redirect URI must match the URI registered for the Android client.
+approved. The app's redirect URI must match the URI registered for the Android client. Access and refresh tokens are stored using platform secure storage (Android Keystore-backed encrypted storage / Apple Keychain), with a one-time migration from the older preferences-based token keys. Password login is restricted to technical administrators by default; do not enable non-SSO password login without a school-approved fallback policy.
 
 ## Notifications and delivery
 
