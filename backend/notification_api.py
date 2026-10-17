@@ -105,7 +105,12 @@ def _recipient_tokens(db, row) -> list[str]:
             "WHERE d.active=1 AND u.active=1"
         )
     elif target_type == "class":
-        result = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.class_id=? AND u.active=1", (target_id,))
+        rows = db.execute(
+            "SELECT d.fcm_token,u.class_id FROM devices d JOIN users u ON u.id=d.user_id "
+            "WHERE d.active=1 AND u.active=1 AND u.role='student'"
+        ).fetchall()
+        wanted_class = core.normalize_class_id(target_id)
+        return [row["fcm_token"] for row in rows if core.normalize_class_id(row["class_id"]) == wanted_class]
     elif target_type == "user":
         result = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.id=? AND u.active=1", (target_id,))
     else:
@@ -355,10 +360,11 @@ def create_notification(body: NotificationBody,
                 if target["role"] != "student" or not linked:
                     raise HTTPException(status_code=403, detail="Student is not assigned to this mentor")
         elif body.target_type == "class":
-            if position == "homeroom_teacher" and body.target_id != scope_class:
+            if position == "homeroom_teacher" and core.normalize_class_id(body.target_id) != core.normalize_class_id(scope_class):
                 raise HTTPException(status_code=403, detail="Homeroom teacher may publish only to their assigned class")
-            target = db.execute("SELECT 1 FROM users WHERE role='student' AND class_id=? AND active=1 LIMIT 1", (body.target_id,)).fetchone()
-            if not target:
+            class_rows = db.execute("SELECT class_id FROM users WHERE role='student' AND active=1 AND class_id IS NOT NULL").fetchall()
+            target_key = core.normalize_class_id(body.target_id)
+            if not any(core.normalize_class_id(row["class_id"]) == target_key for row in class_rows):
                 raise HTTPException(status_code=404, detail="Target class not found")
         elif body.target_type == "group":
             target = db.execute("SELECT id FROM notification_groups WHERE id=?", (body.target_id,)).fetchone()
@@ -387,7 +393,7 @@ def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> di
                 visible.append(dict(row))
             elif row["target_type"] == "user" and row["target_id"] == actor["id"]:
                 visible.append(dict(row))
-            elif row["target_type"] == "class" and actor.get("class_id") and row["target_id"] == actor["class_id"]:
+            elif row["target_type"] == "class" and actor.get("class_id") and core.normalize_class_id(row["target_id"]) == core.normalize_class_id(actor["class_id"]):
                 visible.append(dict(row))
             elif row["target_type"] == "group":
                 member = db.execute("SELECT 1 FROM notification_group_members WHERE group_id=? AND user_id=?", (row["target_id"], actor["id"])).fetchone()
