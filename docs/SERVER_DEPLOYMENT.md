@@ -51,13 +51,15 @@ All endpoints except **/**, **/api/v1/health**, **/api/v1/auth/bootstrap** and *
 | POST /api/v1/auth/bootstrap | One-time first admin setup; requires out-of-band bootstrap key |
 | POST /api/v1/auth/login, GET /api/v1/me | Login and current identity |
 | GET /api/v1/classes, GET /api/v1/students | Only classes/students visible to the current role |
-| POST /api/v1/admin/users | Admin creates a school account with a role |
+| GET /api/v1/classes/{id}/schedule | Schedule for an authorised class; checked against class/mentor assignments |
+| GET /api/v1/admin/users, POST /api/v1/admin/users, PATCH /api/v1/admin/users/{id} | Admin account listing, creation and update; prevents disabling/demoting the last active admin |
 | POST /api/v1/admin/classes | Admin creates a class |
 | POST /api/v1/admin/assignments/mentor | Admin links a mentor to a student |
 | POST /api/v1/admin/assignments/teacher | Admin links a teacher to a class |
 | POST /api/v1/admin/class-memberships | Admin links a student to a class |
-| POST /api/v1/admin/schedule, POST /api/v1/admin/supplements | Admin adds schedule/DOP records |
-| GET /api/v1/mentees | Mentor sees assigned students, their classes and supplements |
+| POST/PATCH/DELETE /api/v1/admin/schedule[/{id}] | Admin creates, edits and deletes schedule records |
+| POST/PATCH/DELETE /api/v1/admin/supplements[/{id}] | Admin creates, edits and deletes student DOP records |
+| GET /api/v1/mentees | Mentor sees only assigned students, their classes, class schedules and supplements |
 | GET /api/v1/students/{id}/schedule | Own student schedule; mentor/teacher only for assigned students/classes; admin for any student |
 | GET /api/v1/students/{id}/supplements | Same access policy for the student's additional activities |
 | POST /api/v1/devices/register, DELETE /api/v1/devices/{id} | Register/revoke the signed-in user's push device |
