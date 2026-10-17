@@ -62,6 +62,14 @@ def init_roles() -> None:
     _init()
 
 
+class ManagedUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+    password: str = Field(min_length=14, max_length=256)
+    role: str
+    display_name: str = Field(min_length=1, max_length=160)
+    class_id: str | None = Field(default=None, max_length=40)
+
+
 class PositionBody(BaseModel):
     username: str = Field(min_length=1, max_length=120)
     position: str
@@ -132,6 +140,22 @@ def list_users(actor: dict[str, Any] = Depends(require_permission("staff.read"))
             "ORDER BY u.role,u.display_name LIMIT 2000"
         ).fetchall()
     return {"data": [dict(row) for row in rows]}
+
+
+@router.post("/management/users", status_code=201)
+def management_create_user(body: ManagedUserCreate,
+                           actor: dict[str, Any] = Depends(require_permission("staff.manage"))) -> dict[str, Any]:
+    # Director/deputy accounts can create operational accounts; the highest
+    # leadership position itself remains assignable only by a base admin.
+    position, _ = _position(actor["id"])
+    if actor["role"] != "admin" and position not in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="Only school leadership can create accounts")
+    result = core.create_user(
+        core.UserCreate(username=body.username, password=body.password, role=body.role,
+                        display_name=body.display_name, class_id=body.class_id),
+        actor,
+    )
+    return result
 
 
 @router.patch("/admin/users/{user_id}")
