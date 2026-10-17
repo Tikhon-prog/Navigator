@@ -29,7 +29,7 @@ administrator must import or approve it.
 ## Environment
 
 Required for authenticated endpoints:
-- `NAVIGATOR_TOKEN_SECRET`: random secret, at least 32 characters; keep it outside Git.
+- `NAVIGATOR_TOKEN_SECRET`: random secret, at least 32 characters; keep it outside Git. The example uses `CHANGE_ME` deliberately; authentication will remain unavailable until you replace it with a real random value.
   Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"` on the server.
 - `NAVIGATOR_DB_PATH`: writable persistent path for the SQLite database (default is
   `backend/navigator.sqlite3`, suitable for development, not ephemeral production containers).
