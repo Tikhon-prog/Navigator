@@ -5,7 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY backend/requirements.txt /app/backend/requirements.txt
+COPY backend/requirements-firebase.txt /app/backend/requirements-firebase.txt
 RUN python -m pip install --no-cache-dir -r /app/backend/requirements.txt
+ARG ENABLE_FIREBASE=false
+RUN if [ "$ENABLE_FIREBASE" = "true" ]; then python -m pip install --no-cache-dir -r /app/backend/requirements-firebase.txt; fi
 
 COPY backend /app/backend
 EXPOSE 8000
