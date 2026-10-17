@@ -43,7 +43,7 @@ Required for authenticated endpoints:
 - `NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS`: automatically refresh student DOPs and timetable-derived teacher assignments; set `0` to disable periodic sync. The default is 300 seconds.
 - `NAVIGATOR_SCHOOL_TIMEZONE`: timezone used for server-generated DOP reminders (default `Europe/Moscow`).
 - `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
-- `NAVIGATOR_OIDC_ISSUER`, `NAVIGATOR_OIDC_USERINFO_URL`, `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. The redirect URI must match the Android intent filter and the identity-provider registration.
+- `NAVIGATOR_OIDC_ISSUER`, optional `NAVIGATOR_OIDC_JWKS_URL`, `NAVIGATOR_OIDC_USERINFO_URL`, `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. The backend verifies the ID-token signature/audience via the IdP JWKS (or OIDC discovery) and compares its subject to UserInfo. The redirect URI must match the Android intent filter and identity-provider registration.
 - `NAVIGATOR_OIDC_AUTO_LINK_USERNAME` and `NAVIGATOR_OIDC_AUTO_PROVISION`: optional first-login automation. Enable only if the configured IdP returns authoritative, non-user-editable username/role/class claims. Configure the claim names explicitly; student accounts require a class claim. Provisioning of `admin` accounts stays disabled unless `NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION=true`.
 - `NAVIGATOR_DATA_SOURCE`: `yandex`, `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
 - `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM.
