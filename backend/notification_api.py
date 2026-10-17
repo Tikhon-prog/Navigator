@@ -279,7 +279,7 @@ def create_notification(body: NotificationBody,
     position, scope_class = rbac_api._position(actor["id"])
     is_school_leadership = actor["role"] == "admin" or position in {"director", "deputy"}
     can_manage_dop = actor["role"] == "admin" or position in {"director", "deputy", "dop_coordinator"}
-    can_class_broadcast = is_school_leadership or position == "homeroom_teacher"
+    can_class_broadcast = is_school_leadership or position in {"homeroom_teacher", "dop_coordinator"}
     if actor["role"] not in {"admin", "teacher", "mentor"} and not position:
         raise HTTPException(status_code=403, detail="Notification publishing is not available for this account")
     kinds = {"global", "targeted", "personal", "dop_reminder", "emergency"}
@@ -298,8 +298,8 @@ def create_notification(body: NotificationBody,
         raise HTTPException(status_code=403, detail="DOP reminder permission required")
     if actor["role"] == "teacher" and not is_school_leadership and body.target_type not in {"user", "class"}:
         raise HTTPException(status_code=403, detail="Teachers may notify only assigned students")
-    if actor["role"] == "teacher" and not is_school_leadership and body.target_type == "class" and position != "homeroom_teacher":
-        raise HTTPException(status_code=403, detail="Class broadcast requires homeroom-teacher assignment")
+    if actor["role"] == "teacher" and not is_school_leadership and body.target_type == "class" and position not in {"homeroom_teacher", "dop_coordinator"}:
+        raise HTTPException(status_code=403, detail="Class broadcast requires an assigned school position")
     if body.target_type == "all" and not is_school_leadership:
         raise HTTPException(status_code=403, detail="Global target requires school leadership")
     if body.target_type == "class" and not can_class_broadcast:
@@ -319,11 +319,16 @@ def create_notification(body: NotificationBody,
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
-            if actor["role"] == "teacher" and not is_school_leadership:
+            if actor["role"] == "teacher" and not is_school_leadership and position != "dop_coordinator":
                 linked = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
                                     (body.target_id, actor["id"])).fetchone()
                 if target["role"] != "student" or not linked:
                     raise HTTPException(status_code=403, detail="Student is not assigned to this teacher")
+            if actor["role"] == "mentor" and not is_school_leadership:
+                linked = db.execute("SELECT 1 FROM student_links WHERE student_id=? AND staff_id=? AND link_type='mentor'",
+                                    (body.target_id, actor["id"])).fetchone()
+                if target["role"] != "student" or not linked:
+                    raise HTTPException(status_code=403, detail="Student is not assigned to this mentor")
         elif body.target_type == "class":
             if position == "homeroom_teacher" and body.target_id != scope_class:
                 raise HTTPException(status_code=403, detail="Homeroom teacher may publish only to their assigned class")
