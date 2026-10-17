@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navigator/main.dart';
+import 'package:navigator/corridor_roads.dart';
 
 void main() {
   group('RouteEngine school navigation', () {
@@ -91,6 +92,39 @@ void main() {
 
     test('unknown route origin returns null rather than throwing', () {
       expect(RouteEngine.build('201', startLocationId: 'not-a-real-room'), isNull);
+    });
+
+    test('every catalog destination is reachable from the main entrance', () {
+      for (final destination in SchoolData.locations) {
+        final result = RouteEngine.build(destination.id);
+        expect(
+          result,
+          isNotNull,
+          reason: 'No route from the main entrance to ${destination.id} on floor ${destination.floor}',
+        );
+        expect(result!.destination.id, destination.id);
+        if (destination.floor == 1) {
+          expect(result.changesFloor, isFalse,
+              reason: 'A first-floor route should not use stairs: ${destination.id}');
+        } else {
+          expect(result.changesFloor, isTrue,
+              reason: 'The route to ${destination.id} should include a floor transition');
+        }
+      }
+    });
+
+    test('every third-floor destination is reachable from room 311 without stairs', () {
+      for (final destination in SchoolData.locations.where((location) => location.floor == 3)) {
+        final result = RouteEngine.build(
+          destination.id,
+          startFloor: 3,
+          startLocationId: '311',
+        );
+        expect(result, isNotNull, reason: 'No third-floor route from 311 to ${destination.id}');
+        expect(result!.changesFloor, isFalse,
+            reason: 'Route 311 → ${destination.id} unexpectedly leaves floor 3');
+        expect(result.nodes.every((node) => node.floor == 3), isTrue);
+      }
     });
 
     test('same room produces a zero-distance route', () {
