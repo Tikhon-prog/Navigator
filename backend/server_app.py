@@ -190,6 +190,13 @@ class UserCreate(BaseModel):
     active: bool = True
 
 
+class UserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    role: Literal["admin", "mentor", "teacher", "student", "emergency_manager"] | None = None
+    active: bool | None = None
+    password: str | None = Field(default=None, min_length=12, max_length=256)
+
+
 class ClassCreate(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=80)
@@ -221,6 +228,16 @@ class ScheduleBody(BaseModel):
     teacher_name: str = Field(default="", max_length=160)
 
 
+class ScheduleUpdate(BaseModel):
+    class_id: str | None = None
+    weekday: int | None = Field(default=None, ge=1, le=7)
+    lesson_number: int | None = Field(default=None, ge=1, le=20)
+    start_time: str | None = Field(default=None, max_length=20)
+    subject: str | None = Field(default=None, min_length=1, max_length=200)
+    room: str | None = Field(default=None, max_length=80)
+    teacher_name: str | None = Field(default=None, max_length=160)
+
+
 class SupplementBody(BaseModel):
     student_id: str
     title: str = Field(min_length=1, max_length=200)
@@ -233,6 +250,20 @@ class SupplementBody(BaseModel):
     group_name: str = Field(default="", max_length=160)
     description: str = Field(default="", max_length=3000)
     source: str = Field(default="school", max_length=40)
+
+
+class SupplementUpdate(BaseModel):
+    student_id: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    weekday: int | None = Field(default=None, ge=1, le=7)
+    start_time: str | None = Field(default=None, max_length=80)
+    end_time: str | None = Field(default=None, max_length=80)
+    teacher_name: str | None = Field(default=None, max_length=160)
+    room: str | None = Field(default=None, max_length=80)
+    place: str | None = Field(default=None, max_length=160)
+    group_name: str | None = Field(default=None, max_length=160)
+    description: str | None = Field(default=None, max_length=3000)
+    source: str | None = Field(default=None, max_length=40)
 
 
 class DeviceBody(BaseModel):
