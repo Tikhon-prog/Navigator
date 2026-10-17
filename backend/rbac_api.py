@@ -338,8 +338,8 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                 skipped += 1
                 continue
             row = _normalized_row(raw)
-            student_ref = _field(row, "student_id", "student_login", "student_username", "student_account", "login", "ученик_id", "логин_ученика")
-            title = _field(row, "title", "name", "supplement", "program", "subject", "название", "доп", "кружок")
+            student_ref = _field(row, "student_id", "student_login", "student_username", "student_account", "student_name", "student", "login", "ученик_id", "логин_ученика", "ученик", "фио_ученика", "ученик_фио")
+            title = _field(row, "title", "name", "supplement", "program", "program_name", "discipline", "subject", "название", "название_программы", "направление", "доп", "кружок")
             if not student_ref or not title:
                 skipped += 1
                 continue
@@ -369,7 +369,7 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                 [student["id"], external_id or "", title, weekday, time_value, teacher, room],
                 ensure_ascii=False, separators=(",", ":")
             )
-            source_key = "workbook:" + (external_id if external_id else hashlib.sha256(stable_payload.encode()).hexdigest())
+            source_key = "workbook:" + student["id"] + ":" + (("id:" + external_id) if external_id else hashlib.sha256(stable_payload.encode()).hexdigest())
             db.execute(
                 "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at,source_key) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_key) WHERE source_key IS NOT NULL DO UPDATE SET "
