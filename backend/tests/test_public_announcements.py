@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from backend import main
+from backend import main, rbac_api
 
 
 class PublicAnnouncementVisibilityTests(unittest.TestCase):
@@ -21,8 +21,12 @@ class PublicAnnouncementVisibilityTests(unittest.TestCase):
         result = main.get_announcements()
         self.assertEqual([item["id"] for item in result["data"]], ["global"])
 
-    def test_class_filter_returns_school_wide_and_matching_class(self):
+    def test_public_class_filter_never_reveals_class_targeted_notices(self):
         result = main.get_announcements("8А")
+        self.assertEqual([item["id"] for item in result["data"]], ["global"])
+
+    def test_authenticated_workbook_feed_returns_matching_class_notices(self):
+        result = rbac_api.list_workbook_announcements({"id": "student1", "role": "student", "class_id": "8А"})
         self.assertEqual({item["id"] for item in result["data"]}, {"global", "class_8a"})
 
     def test_generic_announcements_endpoint_uses_same_filter(self):
