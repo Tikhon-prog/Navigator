@@ -22,11 +22,44 @@ router = APIRouter(prefix="/api/v2", tags=["school SSO"])
 
 class SsoLoginBody(BaseModel):
     access_token: str = Field(min_length=20, max_length=8192)
+    id_token: str = Field(min_length=20, max_length=8192)
 
 
 class SsoLinkBody(BaseModel):
     username: str = Field(min_length=1, max_length=120)
     subject: str = Field(min_length=1, max_length=512)
+
+
+def _verify_id_token(id_token: str) -> dict[str, Any]:
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+    jwks_url = os.getenv("NAVIGATOR_OIDC_JWKS_URL", "").strip()
+    if not issuer or not client_id:
+        raise HTTPException(status_code=503, detail="School OIDC issuer/client ID is not configured")
+    if not issuer.startswith("https://") and not issuer.startswith("http://localhost"):
+        raise HTTPException(status_code=503, detail="OIDC issuer must use HTTPS")
+    try:
+        if not jwks_url:
+            discovery = requests.get(issuer + "/.well-known/openid-configuration", timeout=5)
+            discovery.raise_for_status()
+            metadata = discovery.json()
+            if str(metadata.get("issuer", "")).rstrip("/") != issuer:
+                raise HTTPException(status_code=503, detail="OIDC discovery issuer does not match configuration")
+            jwks_url = str(metadata.get("jwks_uri", "")).strip()
+        if not jwks_url or (not jwks_url.startswith("https://") and not jwks_url.startswith("http://localhost")):
+            raise HTTPException(status_code=503, detail="OIDC JWKS endpoint must use HTTPS")
+        import jwt
+        key = jwt.PyJWKClient(jwks_url, timeout=5).get_signing_key_from_jwt(id_token).key
+        claims = jwt.decode(
+            id_token, key, algorithms=["RS256", "RS384", "ES256", "ES384", "PS256"],
+            audience=client_id, issuer=issuer,
+            options={"require": ["exp", "iss", "sub", "aud"]},
+        )
+        return dict(claims)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="School ID token signature, issuer, audience or expiry is invalid")
 
 
 def _userinfo(access_token: str) -> dict[str, Any]:
@@ -163,8 +196,11 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
 
 @router.post("/auth/sso")
 def sso_login(body: SsoLoginBody) -> dict[str, Any]:
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    id_claims = _verify_id_token(body.id_token)
     claims = _userinfo(body.access_token)
+    if id_claims.get("sub") != claims.get("sub"):
+        raise HTTPException(status_code=401, detail="ID token and userinfo subject do not match")
     with core._db() as db:
         identity = db.execute(
             "SELECT u.* FROM sso_identities i JOIN users u ON u.id=i.user_id "
