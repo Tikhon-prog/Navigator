@@ -49,10 +49,11 @@ class SchoolAccountService {
   static Future<void> _deleteToken(String key) async {
     try {
       await _secureStorage.delete(key: key);
-    } finally {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(key);
+    } catch (_) {
+      // Still clear legacy plaintext copies and let server-side revocation run.
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(key);
   }
 
   static Uri _endpoint(String rawBase, String suffix) {
@@ -203,7 +204,7 @@ class SchoolAccountService {
     }
     final prefs = await SharedPreferences.getInstance();
     await _writeToken(_tokenKey, payload['access_token'] as String);
-    await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
+    await _writeToken(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     final userData = payload['user'];
@@ -410,7 +411,7 @@ class SchoolAccountService {
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final payload = jsonDecode(response.body);
       if (payload is! Map || payload['access_token'] is! String || payload['refresh_token'] is! String) return null;
-      await prefs.setString(_tokenKey, payload['access_token'] as String);
+      await _writeToken(_tokenKey, payload['access_token'] as String);
       await _writeToken(_refreshKey, payload['refresh_token'] as String);
       await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
       if (payload['user'] != null) await prefs.setString(_userKey, jsonEncode(payload['user']));
@@ -424,7 +425,7 @@ class SchoolAccountService {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     final accessToken = await validAccessToken();
-    final refreshToken = prefs.getString(_refreshKey) ?? '';
+    final refreshToken = (await _readToken(_refreshKey)) ?? '';
     final rawUser = prefs.getString(_userKey);
     var currentUserId = '';
     if (rawUser != null) {
