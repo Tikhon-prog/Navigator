@@ -90,6 +90,17 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
 
+    def test_old_access_token_stays_invalid_after_account_reactivation(self):
+        with api._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+        session = api._issue_session(user)
+        with api._db() as db:
+            db.execute("UPDATE users SET active=0,token_version=token_version+1 WHERE id='student1'")
+            db.execute("UPDATE users SET active=1 WHERE id='student1'")
+        with self.assertRaises(HTTPException) as raised:
+            api.current_user("Bearer " + session["access_token"])
+        self.assertEqual(raised.exception.status_code, 401)
+
     def test_mentor_only_sees_linked_students(self):
         actor = {"id": "mentor1", "role": "mentor", "class_id": None}
         result = api.list_students(actor)
