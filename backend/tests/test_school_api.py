@@ -96,6 +96,21 @@ class SchoolApiTests(unittest.TestCase):
         self.assertEqual(result["push_status"], "firebase_not_configured")
         self.assertEqual(result["severity"], "emergency")
 
+    def test_teacher_can_have_multiple_subjects_for_same_student(self):
+        actor = {"id": "admin1", "role": "admin"}
+        first = api.create_student_link(
+            api.LinkBody(student_id="student1", staff_id="teacher1", link_type="teacher", subject="Physics"),
+            actor,
+        )
+        second = api.create_student_link(
+            api.LinkBody(student_id="student1", staff_id="teacher1", link_type="teacher", subject="Chemistry"),
+            actor,
+        )
+        self.assertEqual(first["subject"], "Physics")
+        self.assertEqual(second["subject"], "Chemistry")
+        roster = api.teacher_subject_roster({"id": "teacher1", "role": "teacher"})
+        self.assertEqual({row["subject"] for row in roster["data"]}, {"Chemistry", "Mathematics", "Physics"})
+
 
 if __name__ == "__main__":
     unittest.main()
