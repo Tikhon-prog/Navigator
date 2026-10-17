@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,6 +42,17 @@ def _init() -> None:
           delivered_count INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          dop_reminders_enabled INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS dop_reminder_occurrences (
+          id TEXT PRIMARY KEY, supplement_id TEXT NOT NULL REFERENCES student_supplements(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          starts_at TEXT NOT NULL, notification_id TEXT NOT NULL UNIQUE REFERENCES notifications(id) ON DELETE CASCADE,
+          UNIQUE(supplement_id,student_id,starts_at)
+        );
         """)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(notifications)").fetchall()}
         if "delivery_status" not in columns:
@@ -67,6 +80,7 @@ async def _worker_loop() -> None:
     # from sending the same notification concurrently.
     while True:
         try:
+            await asyncio.to_thread(_enqueue_dop_reminders)
             await asyncio.to_thread(_dispatch_due_notifications)
         except Exception:
             # The loop must survive a transient database/provider error.
@@ -85,6 +99,89 @@ def _recipient_tokens(db, row) -> list[str]:
     else:
         result = db.execute("SELECT d.fcm_token FROM devices d JOIN notification_group_members m ON m.user_id=d.user_id JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.active=1 AND m.group_id=?", (target_id,))
     return [item["fcm_token"] for item in result.fetchall()]
+
+
+class NotificationPreferencesBody(BaseModel):
+    dop_reminders_enabled: bool = False
+
+
+@router.get("/notifications/preferences")
+def get_notification_preferences(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    with core._db() as db:
+        row = db.execute("SELECT dop_reminders_enabled,updated_at FROM notification_preferences WHERE user_id=?", (actor["id"],)).fetchone()
+    return {"dop_reminders_enabled": bool(row["dop_reminders_enabled"]) if row else False,
+            "updated_at": row["updated_at"] if row else None}
+
+
+@router.put("/notifications/preferences")
+def set_notification_preferences(body: NotificationPreferencesBody,
+                                 actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    with core._db() as db:
+        db.execute(
+            "INSERT INTO notification_preferences(user_id,dop_reminders_enabled,updated_at) VALUES(?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET dop_reminders_enabled=excluded.dop_reminders_enabled,updated_at=excluded.updated_at",
+            (actor["id"], int(body.dop_reminders_enabled), _now()),
+        )
+    core._audit(actor["id"], "notification.preferences_updated", actor["id"],
+                {"dop_reminders_enabled": body.dop_reminders_enabled})
+    return {"dop_reminders_enabled": body.dop_reminders_enabled}
+
+
+def _enqueue_dop_reminders() -> int:
+    """Create idempotent per-student push reminders 15 minutes before opted-in DOPs."""
+    timezone_name = os.getenv("NAVIGATOR_SCHOOL_TIMEZONE", "Europe/Moscow").strip() or "Europe/Moscow"
+    try:
+        school_tz = ZoneInfo(timezone_name)
+    except Exception:
+        school_tz = ZoneInfo("UTC")
+    now_local = datetime.now(school_tz)
+    now_utc = now_local.astimezone(timezone.utc)
+    horizon = now_utc + timedelta(days=8)
+    inserted = 0
+    with core._db() as db:
+        records = db.execute(
+            "SELECT s.id AS supplement_id,s.student_id,s.title,s.weekday,s.time,s.room "
+            "FROM student_supplements s JOIN users u ON u.id=s.student_id AND u.active=1 "
+            "JOIN notification_preferences p ON p.user_id=s.student_id AND p.dop_reminders_enabled=1 "
+            "WHERE s.status='active' AND s.weekday BETWEEN 1 AND 7"
+        ).fetchall()
+        for record in records:
+            match = re.search(r"(\\d{1,2}):(\\d{2})", str(record["time"] or ""))
+            if not match:
+                continue
+            hour, minute = int(match.group(1)), int(match.group(2))
+            if hour > 23 or minute > 59:
+                continue
+            for offset in range(0, 8):
+                day = (now_local.date() + timedelta(days=offset))
+                if day.isoweekday() != record["weekday"]:
+                    continue
+                starts_local = datetime.combine(day, datetime_time(hour, minute), tzinfo=school_tz)
+                starts_utc = starts_local.astimezone(timezone.utc)
+                remind_utc = starts_utc - timedelta(minutes=15)
+                if remind_utc <= now_utc or remind_utc > horizon:
+                    continue
+                starts_iso = starts_utc.isoformat()
+                notification_id = secrets.token_urlsafe(12)
+                try:
+                    db.execute(
+                        "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,scheduled_at,expires_at,delivery_status) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?, 'scheduled')",
+                        (notification_id, "Напоминание о ДОПе",
+                         f"{record['title']} • начало в {hour:02d}:{minute:02d}" +
+                         (f" • кабинет {record['room']}" if record["room"] else ""),
+                         "dop_reminder", "user", record["student_id"], record["student_id"],
+                         _now(), remind_utc.isoformat(), starts_iso)
+                    )
+                    db.execute(
+                        "INSERT INTO dop_reminder_occurrences(id,supplement_id,student_id,starts_at,notification_id) VALUES(?,?,?,?,?)",
+                        (secrets.token_urlsafe(12), record["supplement_id"], record["student_id"], starts_iso, notification_id)
+                    )
+                    inserted += 1
+                except Exception:
+                    # Unique occurrence constraints make repeated polling idempotent.
+                    continue
+    return inserted
 
 
 def _dispatch_due_notifications() -> int:
