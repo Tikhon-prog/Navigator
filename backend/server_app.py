@@ -345,6 +345,32 @@ def _can_view_student(db: Session, viewer: User, student_id: str) -> bool:
     return False
 
 
+
+def _can_view_class(db: Session, viewer: User, class_id: str) -> bool:
+    if db.get(SchoolClass, class_id) is None:
+        return False
+    if viewer.role == "admin":
+        return True
+    if viewer.role == "teacher":
+        return db.scalar(select(TeacherAssignment.id).where(
+            TeacherAssignment.teacher_id == viewer.id,
+            TeacherAssignment.class_id == class_id,
+        ).limit(1)) is not None
+    if viewer.role == "student":
+        return db.scalar(select(ClassMembership.id).where(
+            ClassMembership.student_id == viewer.id,
+            ClassMembership.class_id == class_id,
+        ).limit(1)) is not None
+    if viewer.role == "mentor":
+        return db.scalar(select(MentorAssignment.id).join(
+            ClassMembership, ClassMembership.student_id == MentorAssignment.student_id
+        ).where(
+            MentorAssignment.mentor_id == viewer.id,
+            ClassMembership.class_id == class_id,
+        ).limit(1)) is not None
+    return False
+
+
 def _target_user_ids(db: Session, alert: AlertRecord) -> set[str]:
     if alert.target_type == "all":
         return {u.id for u in db.scalars(select(User).where(User.active.is_(True)))}
@@ -597,6 +623,17 @@ def create_app(
             items = list(db.scalars(select(SchoolClass).where(SchoolClass.id.in_(linked_ids))))
         return {"data": [_class_json(item) for item in items]}
 
+
+    @app.get("/api/v1/classes/{class_id}/schedule")
+    def class_schedule(class_id: str, user: Annotated[User, Depends(current_user)],
+                       db: Annotated[Session, Depends(get_db)]):
+        if not _can_view_class(db, user, class_id):
+            raise HTTPException(status_code=403, detail="You cannot view this class schedule")
+        data = db.scalars(select(ScheduleRecord).where(
+            ScheduleRecord.class_id == class_id
+        ).order_by(ScheduleRecord.weekday, ScheduleRecord.lesson_number)).all()
+        return {"data": [_schedule_json(item) for item in data]}
+
     @app.get("/api/v1/students")
     def students(user: Annotated[User, Depends(current_user)], db: Annotated[Session, Depends(get_db)],
                  class_id: str | None = None):
@@ -637,6 +674,47 @@ def create_app(
             db.rollback()
             raise HTTPException(status_code=409, detail="Login already exists")
         return _user_json(user)
+
+
+    @app.get("/api/v1/admin/users")
+    def list_users(actor: Annotated[User, Depends(require_roles("admin"))],
+                   db: Annotated[Session, Depends(get_db)]):
+        rows = db.scalars(select(User).order_by(User.role, User.display_name)).all()
+        return {"data": [_user_json(item) for item in rows]}
+
+    @app.patch("/api/v1/admin/users/{user_id}")
+    def update_user(user_id: str, body: UserUpdate,
+                    actor: Annotated[User, Depends(require_roles("admin"))],
+                    db: Annotated[Session, Depends(get_db)]):
+        item = db.get(User, user_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        changes = body.model_dump(exclude_unset=True)
+        next_role = changes.get("role", item.role)
+        next_active = changes.get("active", item.active)
+        if item.id == actor.id and (next_role != "admin" or not next_active):
+            raise HTTPException(status_code=409, detail="Do not disable or demote your own administrator account")
+        if item.role == "admin" and item.active and (next_role != "admin" or not next_active):
+            another_admin = db.scalar(select(User.id).where(
+                User.role == "admin", User.active.is_(True), User.id != item.id
+            ).limit(1))
+            if another_admin is None:
+                raise HTTPException(status_code=409, detail="At least one active administrator must remain")
+        if "display_name" in changes and changes["display_name"] is not None:
+            changes["display_name"] = changes["display_name"].strip()
+            if not changes["display_name"]:
+                raise HTTPException(status_code=422, detail="Display name cannot be empty")
+        password = changes.pop("password", None)
+        for key, value in changes.items():
+            if value is not None:
+                setattr(item, key, value)
+        if password:
+            item.password_hash = ph.hash(password)
+        _audit(db, actor.id, "user_updated", "user", item.id,
+               {"changed_fields": sorted(changes.keys() | ({"password"} if password else set()))})
+        db.commit()
+        db.refresh(item)
+        return _user_json(item)
 
     @app.post("/api/v1/admin/classes", status_code=status.HTTP_201_CREATED)
     def create_class(body: ClassCreate, actor: Annotated[User, Depends(require_roles("admin"))],
