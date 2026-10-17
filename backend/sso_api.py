@@ -124,6 +124,8 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
                 return None
             if mapped_role == "student" and class_id and existing["class_id"] != class_id:
                 return None
+            if mapped_role == "homeroom_teacher" and class_id and existing["scope_class"] != class_id:
+                return None
             try:
                 db.execute("INSERT INTO sso_identities(issuer,subject,user_id,linked_at) VALUES(?,?,?,?)",
                            (issuer, claims["sub"], existing["id"], core._utc_now()))
@@ -143,9 +145,10 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         base_role = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
         user_id = secrets.token_urlsafe(12)
         random_password = secrets.token_urlsafe(48)
+        assigned_class = class_id if mapped_role in {"student", "homeroom_teacher"} else None
         db.execute(
             "INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
-            (user_id, username, core._hash_password(random_password), base_role, display_name, class_id, core._utc_now())
+            (user_id, username, core._hash_password(random_password), base_role, display_name, assigned_class, core._utc_now())
         )
         position = mapped_role if mapped_role in {"director", "deputy", "homeroom_teacher", "dop_coordinator", "mentor_coordinator", "librarian"} else None
         if position:
