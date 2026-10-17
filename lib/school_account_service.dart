@@ -420,5 +420,7 @@ class SchoolAccountService {
     await prefs.remove(_refreshKey);
     await prefs.remove(_expiresKey);
     await prefs.remove(_userKey);
+    await prefs.remove('student_class_id');
+    await prefs.remove('student_class_name');
   }
 }
