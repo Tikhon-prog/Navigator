@@ -16,7 +16,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/v2", tags=["school services"])
 DB_PATH = Path(os.getenv("NAVIGATOR_DB_PATH", str(Path(__file__).resolve().parent / "navigator.sqlite3")))
 TOKEN_SECRET = os.getenv("NAVIGATOR_TOKEN_SECRET", "")
 TOKEN_TTL_SECONDS = int(os.getenv("NAVIGATOR_TOKEN_TTL_SECONDS", "28800"))
+REFRESH_TTL_SECONDS = int(os.getenv("NAVIGATOR_REFRESH_TTL_SECONDS", "2592000"))
 ROLES = {"admin", "student", "mentor", "teacher"}
 ANNOUNCEMENT_AUDIENCES = {"all", "students", "mentors", "teachers", "class"}
 MAX_BODY_TEXT = 4000
@@ -61,6 +62,12 @@ def init_db() -> None:
           display_name TEXT NOT NULL, class_id TEXT, active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+          revoked_at TEXT, last_used_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id,expires_at);
         CREATE TABLE IF NOT EXISTS student_links (
           student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -196,6 +203,93 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
     return dict(user)
 
 
+def _issue_session(user: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    refresh_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+    with _db() as db:
+        db.execute(
+            "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)",
+            (secrets.token_urlsafe(12), user["id"], token_hash, now.isoformat(),
+             (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat())
+        )
+    return {
+        "access_token": _make_token(user),
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": TOKEN_TTL_SECONDS,
+        "refresh_expires_in": REFRESH_TTL_SECONDS,
+        "user": _public_user(user),
+    }
+
+
+@router.post("/auth/refresh")
+def refresh_session(body: RefreshBody) -> dict[str, Any]:
+    token_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc)
+    with _db() as db:
+        row = db.execute(
+            "SELECT r.id AS refresh_id,r.expires_at,r.revoked_at,u.* FROM refresh_tokens r "
+            "JOIN users u ON u.id=r.user_id WHERE r.token_hash=?",
+            (token_hash,)
+        ).fetchone()
+        if not row or row["revoked_at"] or not row["active"]:
+            raise HTTPException(status_code=401, detail="Refresh token is invalid or revoked")
+        try:
+            expires = datetime.fromisoformat(row["expires_at"])
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Refresh token expiry is invalid")
+        if expires <= now:
+            raise HTTPException(status_code=401, detail="Refresh token has expired")
+        changed = db.execute(
+            "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=? AND revoked_at IS NULL",
+            (now.isoformat(), now.isoformat(), row["refresh_id"])
+        )
+        if changed.rowcount != 1:
+            raise HTTPException(status_code=401, detail="Refresh token has already been rotated")
+        new_refresh = secrets.token_urlsafe(48)
+        new_hash = hashlib.sha256(new_refresh.encode("utf-8")).hexdigest()
+        db.execute(
+            "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)",
+            (secrets.token_urlsafe(12), row["id"], new_hash, now.isoformat(),
+             (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat())
+        )
+        user = db.execute(
+            "SELECT id,username,role,display_name,class_id,active FROM users WHERE id=?",
+            (row["id"],)
+        ).fetchone()
+    result = _issue_access_with_refresh(user, new_refresh)
+    _audit(user["id"], "auth.token_refreshed")
+    return result
+
+
+def _issue_access_with_refresh(user: sqlite3.Row | dict[str, Any], refresh_token: str) -> dict[str, Any]:
+    return {
+        "access_token": _make_token(user),
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": TOKEN_TTL_SECONDS,
+        "refresh_expires_in": REFRESH_TTL_SECONDS,
+        "user": _public_user(user),
+    }
+
+
+@router.post("/auth/logout")
+def logout_session(body: RefreshBody) -> dict[str, str]:
+    token_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
+    with _db() as db:
+        row = db.execute("SELECT id,user_id FROM refresh_tokens WHERE token_hash=? AND revoked_at IS NULL", (token_hash,)).fetchone()
+        if row:
+            db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=?",
+                       (_utc_now(), _utc_now(), row["id"]))
+            actor_id = row["user_id"]
+        else:
+            actor_id = None
+    if actor_id:
+        _audit(actor_id, "auth.logout")
+    return {"status": "logged_out"}
+
+
 def require_roles(*roles: str):
     def dependency(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
         if user["role"] not in roles:
@@ -217,6 +311,10 @@ def _public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
 class LoginBody(BaseModel):
     username: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=1, max_length=256)
+
+
+class RefreshBody(BaseModel):
+    refresh_token: str = Field(min_length=32, max_length=512)
 
 
 class UserCreate(BaseModel):
@@ -359,9 +457,9 @@ def login(body: LoginBody, request: Request) -> dict[str, Any]:
     if not user or not user["active"] or not _verify_password(body.password, user["password_hash"]):
         _audit(None, "auth.login_failed", None, {"username": body.username[:120]})
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = _make_token(user)
+    result = _issue_session(user)
     _audit(user["id"], "auth.login")
-    return {"access_token": token, "token_type": "bearer", "expires_in": TOKEN_TTL_SECONDS, "user": _public_user(user)}
+    return result
 
 
 @router.get("/auth/me")
