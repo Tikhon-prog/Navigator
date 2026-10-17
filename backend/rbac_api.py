@@ -178,8 +178,11 @@ def readiness() -> dict[str, Any]:
     from .main import read_sheet
     try:
         classes = read_sheet("Classes")
+        schedule = read_sheet("BaseSchedule")
         if not isinstance(classes, list) or not classes:
             raise HTTPException(status_code=503, detail="School classes source is empty or not configured")
+        if not isinstance(schedule, list) or not schedule:
+            raise HTTPException(status_code=503, detail="Base timetable source is empty or not configured")
     except HTTPException:
         raise
     except Exception:
@@ -189,6 +192,7 @@ def readiness() -> dict[str, Any]:
         "status": "ready",
         "source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
         "classes_available": len(classes),
+        "schedule_rows_available": len(schedule),
         "firebase_delivery_enabled": firebase_enabled,
         "school_sso_enabled": bool(
             __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
