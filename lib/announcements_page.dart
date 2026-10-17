@@ -78,7 +78,10 @@ class SchoolAnnouncementsPage extends StatefulWidget {
 }
 
 class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
-  static const _cacheKey = 'school_announcements_cache_v2';
+  static const _legacyCacheKey = 'school_announcements_cache_v2';
+
+  String _cacheKeyFor(String userId) =>
+      userId.trim().isEmpty ? _legacyCacheKey : '${_legacyCacheKey}_${userId.trim()}';
   List<SchoolAnnouncement> _items = [];
   bool _loading = true;
   bool _refreshing = false;
@@ -121,7 +124,11 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     _classId = storedClassId.isNotEmpty ? storedClassId
         : storedClassName.isNotEmpty ? storedClassName : schoolClass;
 
-    final cached = prefs.getString(_cacheKey);
+    final cacheKey = _cacheKeyFor(currentUserId);
+    // Migrate the old shared cache only after filtering it by this session's
+    // class/recipient scope. New writes are always account-scoped.
+    final cached = prefs.getString(cacheKey) ??
+        (currentUserId.isEmpty ? null : prefs.getString(_legacyCacheKey));
     if (_items.isEmpty && cached != null) {
       try {
         final decoded = jsonDecode(cached) as List;
@@ -249,7 +256,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         if (bDate == null) return -1;
         return bDate.compareTo(aDate);
       });
-      await prefs.setString(_cacheKey, jsonEncode(parsed.map((e) => e.toJson()).toList()));
+      await prefs.setString(cacheKey, jsonEncode(parsed.map((e) => e.toJson()).toList()));
       if (mounted) setState(() {
         _items = parsed;
         _serverConfigured = true;
