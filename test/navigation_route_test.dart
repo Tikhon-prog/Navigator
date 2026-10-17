@@ -94,7 +94,6 @@ void main() {
       });
     }
   });
-}
 
   group('Route detour regression checks', () {
     void expectShortSymmetricRoute({
@@ -139,4 +138,4 @@ void main() {
       expectShortSymmetricRoute(from: '215', to: '214', floor: 2, maximumPixels: 6000);
     });
   });
-
+}
