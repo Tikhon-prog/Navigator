@@ -180,5 +180,76 @@ class NavigatorServerApiTests(unittest.TestCase):
         self.assertEqual(response.json()["database"], "ok")
 
 
+
+    def test_teacher_can_read_assigned_class_schedule_only(self):
+        _mentor, _other_mentor, _teacher, _student, _stranger = self.set_up_school_graph()
+        lesson = self.client.post("/api/v1/admin/schedule", headers=self.admin_headers, json={
+            "class_id": "8A", "weekday": 1, "lesson_number": 1,
+            "start_time": "08:30", "subject": "Алгебра", "room": "311",
+        })
+        self.assertEqual(lesson.status_code, 201, lesson.text)
+        teacher_headers = self.token_for("teacher-one")
+        visible = self.client.get("/api/v1/classes/8A/schedule", headers=teacher_headers)
+        self.assertEqual(visible.status_code, 200, visible.text)
+        self.assertEqual(visible.json()["data"][0]["subject"], "Алгебра")
+        forbidden = self.client.get("/api/v1/classes/8B/schedule", headers=teacher_headers)
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_admin_can_edit_schedule_and_supplement_and_cannot_disable_last_admin(self):
+        _mentor, _other_mentor, _teacher, student, _stranger = self.set_up_school_graph()
+        lesson = self.client.post("/api/v1/admin/schedule", headers=self.admin_headers, json={
+            "class_id": "8A", "weekday": 1, "lesson_number": 1,
+            "start_time": "08:30", "subject": "Алгебра", "room": "311",
+        })
+        self.assertEqual(lesson.status_code, 201, lesson.text)
+        lesson_id = lesson.json()["id"]
+        updated_lesson = self.client.patch(
+            f"/api/v1/admin/schedule/{lesson_id}", headers=self.admin_headers,
+            json={"subject": "Геометрия", "room": "312"},
+        )
+        self.assertEqual(updated_lesson.status_code, 200, updated_lesson.text)
+        self.assertEqual(updated_lesson.json()["subject"], "Геометрия")
+        self.assertEqual(updated_lesson.json()["room"], "312")
+        deleted_lesson = self.client.delete(
+            f"/api/v1/admin/schedule/{lesson_id}", headers=self.admin_headers
+        )
+        self.assertEqual(deleted_lesson.status_code, 204)
+
+        supplement = self.client.post("/api/v1/admin/supplements", headers=self.admin_headers, json={
+            "student_id": student["id"], "title": "Робототехника", "weekday": 3,
+            "start_time": "15:00", "room": "317",
+        })
+        self.assertEqual(supplement.status_code, 201, supplement.text)
+        supplement_id = supplement.json()["id"]
+        updated_supplement = self.client.patch(
+            f"/api/v1/admin/supplements/{supplement_id}", headers=self.admin_headers,
+            json={"room": "318", "teacher_name": "New teacher"},
+        )
+        self.assertEqual(updated_supplement.status_code, 200, updated_supplement.text)
+        self.assertEqual(updated_supplement.json()["room"], "318")
+        self.assertEqual(updated_supplement.json()["teacher_name"], "New teacher")
+        self.assertEqual(self.client.delete(
+            f"/api/v1/admin/supplements/{supplement_id}", headers=self.admin_headers
+        ).status_code, 204)
+
+        locked_out = self.client.patch(
+            f"/api/v1/admin/users/{self.admin['user']['id']}",
+            headers=self.admin_headers, json={"active": False},
+        )
+        self.assertEqual(locked_out.status_code, 409)
+
+    def test_admin_can_update_account_details_without_exposing_password_hash(self):
+        created = self.create_user("teacher-edit", "teacher", "Old Name")
+        response = self.client.patch(
+            f"/api/v1/admin/users/{created['id']}", headers=self.admin_headers,
+            json={"display_name": "Updated Name", "active": False},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["display_name"], "Updated Name")
+        self.assertFalse(response.json()["active"])
+        self.assertNotIn("password_hash", response.json())
+        self.assertEqual(self.client.get("/api/v1/admin/users",
+            headers=self.admin_headers).status_code, 200)
+
 if __name__ == "__main__":
     unittest.main()
