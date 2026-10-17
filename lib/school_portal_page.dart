@@ -353,8 +353,22 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             onChanged: kind == 'global' || kind == 'emergency' || kind == 'personal'
                 ? null : (v) => setDialogState(() => targetType = v ?? 'class'),
           ),
-          if (targetType != 'all') TextField(controller: targetId,
-            decoration: InputDecoration(labelText: targetType == 'class' ? 'Класс, например 8А' : targetType == 'user' ? 'ID пользователя' : 'ID группы')),
+          if (targetType == 'user' && students.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: students.any((student) => student['id']?.toString() == targetId.text)
+                  ? targetId.text : null,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Получатель'),
+              items: [for (final student in students)
+                DropdownMenuItem(
+                  value: student['id'].toString(),
+                  child: Text('${student['display_name'] ?? student['username'] ?? 'Ученик'} • ${student['class_id'] ?? 'класс не указан'}'),
+                )],
+              onChanged: (value) => setDialogState(() => targetId.text = value ?? ''),
+            )
+          else if (targetType != 'all')
+            TextField(controller: targetId,
+              decoration: InputDecoration(labelText: targetType == 'class' ? 'Класс, например 8А' : 'ID группы')),
           const SizedBox(height: 6),
           const Text('Экстренное оповещение — дополнительный канал, а не замена школьной системы тревоги.', style: TextStyle(fontSize: 12)),
         ]))),
