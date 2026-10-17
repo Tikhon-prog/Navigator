@@ -99,8 +99,9 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     final prefs = await SharedPreferences.getInstance();
     final base = (prefs.getString('navigator_api_url') ?? '').trim();
     final enabled = prefs.getBool('navigator_api_enabled') ?? false;
-    _classId = (prefs.getString('student_class_id') ??
-        prefs.getString('student_class_name') ?? '').trim();
+    final storedClassId = (prefs.getString('student_class_id') ?? '').trim();
+    final storedClassName = (prefs.getString('student_class_name') ?? '').trim();
+    _classId = storedClassId.isNotEmpty ? storedClassId : storedClassName;
 
     final cached = prefs.getString(_cacheKey);
     if (_items.isEmpty && cached != null) {
