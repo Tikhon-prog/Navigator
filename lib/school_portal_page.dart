@@ -531,7 +531,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               DropdownMenuItem(value: 'student', child: Text('Ученик')),
               DropdownMenuItem(value: 'teacher', child: Text('Учитель / сотрудник')),
               DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
-              DropdownMenuItem(value: 'admin', child: Text('Администратор')),
+              if (isAdmin) const DropdownMenuItem(value: 'admin', child: Text('Технический администратор')),
             ],
             onChanged: (v) => setDialogState(() {
               role = v ?? 'teacher';
