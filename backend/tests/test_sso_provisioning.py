@@ -47,6 +47,19 @@ class SsoProvisioningTests(unittest.TestCase):
             identity = db.execute("SELECT user_id FROM sso_identities WHERE subject='school-sub-001'").fetchone()
         self.assertEqual(identity["user_id"], user["id"])
 
+    def test_mentor_coordinator_sso_account_uses_mentor_base_role(self):
+        user = sso_api._link_or_provision({
+            "sub": "mentor-coord-sub", "preferred_username": "mentor.coordinator",
+            "role": "mentor_coordinator", "name": "Mentor Coordinator",
+        }, "https://idp.school.example")
+        self.assertIsNotNone(user)
+        self.assertEqual(user["role"], "mentor")
+        with core._db() as db:
+            position = db.execute(
+                "SELECT position FROM staff_positions WHERE user_id=?", (user["id"],)
+            ).fetchone()
+        self.assertEqual(position["position"], "mentor_coordinator")
+
     def test_admin_auto_provision_is_disabled_by_default(self):
         user = sso_api._link_or_provision({
             "sub": "school-admin-001", "preferred_username": "new.admin",
