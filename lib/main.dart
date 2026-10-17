@@ -12,6 +12,7 @@ import 'corridor_roads.dart';
 import 'local_notification_service.dart';
 import 'security_service.dart';
 import 'supplements_page.dart';
+import 'school_account_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1989,6 +1990,53 @@ class SettingsPage extends StatelessWidget {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(account: account)));
   }
 
+  Future<void> _schoolAccount(BuildContext context) async {
+    final service = SchoolAccountService();
+    final current = await service.currentUser();
+    if (!context.mounted) return;
+    if (current != null) {
+      final signOut = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Школьная учётная запись'),
+          content: Text('Вход выполнен: ${current['display_name'] ?? current['username'] ?? 'учётная запись'}\nРоль: ${current['role'] ?? 'не указана'}'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Закрыть')),
+            FilledButton.tonal(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Выйти')),
+          ],
+        ),
+      );
+      if (signOut == true) {
+        await service.signOut();
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
+      }
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('navigator_api_enabled') ?? false;
+    final baseUrl = (prefs.getString('navigator_api_url') ?? '').trim();
+    if (!enabled || baseUrl.isEmpty) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала настрой адрес API в «Кабинет школы → Сервер».')));
+      return;
+    }
+    try {
+      final result = await service.signInWithSchoolAccount(baseUrl);
+      final user = Map<String, dynamic>.from(result['user'] as Map);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Вход выполнен: ${user['display_name'] ?? user['username'] ?? 'учётная запись'}.${result['push_registered'] == true ? ' Уведомления подключены.' : ' Push-уведомления пока не настроены.'}'),
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 6)));
+      }
+    }
+  }
+
   Future<void> _editClass(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
     final result = await showDialog<String>(context: context, builder: (_) => const _StudentClassDialog());
@@ -2007,6 +2055,7 @@ class SettingsPage extends StatelessWidget {
       const SizedBox(height: 18), const Text('Оформление', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: ListTile(leading: Icon(Icons.palette_rounded, color: c.primary), title: const Text('Цветовая тема'), subtitle: Text(AppPalette.name(theme)), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _pickTheme(context))),
       const SizedBox(height: 18), const Text('Для сотрудников', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
+      Card(child: ListTile(leading: Icon(Icons.verified_user_rounded, color: c.primary), title: const Text('Школьная учётная запись'), subtitle: const Text('Безопасный вход через школьный SSO и регистрация уведомлений'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _schoolAccount(context))),
       Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Инструменты управления приложением, расписанием и подключением к серверу'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Офлайн-навигатор школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
