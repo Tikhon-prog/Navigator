@@ -157,11 +157,14 @@ def _firebase_status() -> dict[str, bool]:
                 payload = json.load(credential_file)
         else:
             payload = {}
-        credentials_ready = all(
+        credentials_ready = isinstance(payload, dict) and all(
             isinstance(payload.get(key), str) and payload[key].strip()
             for key in ("project_id", "client_email", "private_key")
         )
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        if credentials_ready:
+            configured_project = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+            credentials_ready = bool(configured_project) and payload["project_id"].strip() == configured_project
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, AttributeError):
         credentials_ready = False
     try:
         package_ready = importlib.util.find_spec("firebase_admin") is not None
