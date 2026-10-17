@@ -30,11 +30,13 @@ administrator must import or approve it.
 
 Required for authenticated endpoints:
 - `NAVIGATOR_TOKEN_SECRET`: random secret, at least 32 characters; keep it outside Git.
+  Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"` on the server.
 - `NAVIGATOR_DB_PATH`: writable persistent path for the SQLite database (default is
   `backend/navigator.sqlite3`, suitable for development, not ephemeral production containers).
 - `NAVIGATOR_BOOTSTRAP_ADMIN_USERNAME` and `NAVIGATOR_BOOTSTRAP_ADMIN_PASSWORD`:
-  optional initial admin account; password must be at least 14 characters. The bootstrap
-  account is created only when there is no existing admin.
+  initial technical admin account; password must be at least 14 characters. The bootstrap
+  account is created only when there is no existing admin. Use this account for the first
+  technical login, then link the school's SSO identities or enable trusted-claim provisioning.
 - `NAVIGATOR_TOKEN_TTL_SECONDS`: access token lifetime, default 8 hours.
 - `NAVIGATOR_REFRESH_TTL_SECONDS`: rotating refresh-token lifetime, default 30 days.
 - `NAVIGATOR_NOTIFICATION_WORKER_ENABLED` and `NAVIGATOR_NOTIFICATION_POLL_SECONDS`: enable and tune the single-container notification worker.
