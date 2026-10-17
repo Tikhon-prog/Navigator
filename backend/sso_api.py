@@ -217,6 +217,16 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
     claims = _userinfo(body.access_token)
     if id_claims.get("sub") != claims.get("sub"):
         raise HTTPException(status_code=401, detail="ID token and userinfo subject do not match")
+    # Some school IdPs publish role/class only in the signed ID token; fill only
+    # missing configured profile claims from that already-verified token.
+    for claim_name in {
+        os.getenv("NAVIGATOR_OIDC_USERNAME_CLAIM", "preferred_username").strip(),
+        os.getenv("NAVIGATOR_OIDC_ROLE_CLAIM", "role").strip(),
+        os.getenv("NAVIGATOR_OIDC_CLASS_CLAIM", "class_id").strip(),
+        os.getenv("NAVIGATOR_OIDC_DISPLAY_NAME_CLAIM", "name").strip(),
+    }:
+        if claim_name and claim_name not in claims and claim_name in id_claims:
+            claims[claim_name] = id_claims[claim_name]
     with core._db() as db:
         identity = db.execute(
             "SELECT u.* FROM sso_identities i JOIN users u ON u.id=i.user_id "
