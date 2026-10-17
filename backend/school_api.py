@@ -479,7 +479,18 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
     with _db() as db:
         rows = db.execute("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100").fetchall()
     visible = []
+    now = datetime.now(timezone.utc)
     for row in rows:
+        if row["expires_at"]:
+            try:
+                expiry = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry <= now:
+                    continue
+            except ValueError:
+                # Invalid legacy expiry values are excluded rather than shown indefinitely.
+                continue
         audience_role = {"students": "student"}.get(row["audience"], row["audience"])
         if row["audience"] == "all" or audience_role == actor["role"]:
             visible.append(row)
