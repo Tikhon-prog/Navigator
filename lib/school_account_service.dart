@@ -13,6 +13,8 @@ class SchoolAccountService {
   static const _appAuth = FlutterAppAuth();
   static const _tokenKey = 'school_access_token_v1';
   static const _userKey = 'school_user_v1';
+  static const _refreshKey = 'school_refresh_token_v1';
+  static const _expiresKey = 'school_access_expires_at_v1';
   static StreamSubscription<String>? _tokenSubscription;
   static StreamSubscription<RemoteMessage>? _messageSubscription;
 
@@ -87,6 +89,8 @@ class SchoolAccountService {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, payload['access_token'] as String);
+    await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
+    await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
 
@@ -121,8 +125,9 @@ class SchoolAccountService {
     await _registerToken(baseUrl, accessToken, token);
     await _tokenSubscription?.cancel();
     await _messageSubscription?.cancel();
-    _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-      _registerToken(baseUrl, accessToken, newToken);
+    _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      final fresh = await validAccessToken();
+      if (fresh != null) await _registerToken(baseUrl, fresh, newToken);
     });
     _messageSubscription = FirebaseMessaging.onMessage.listen((message) async {
       final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Поколение';
@@ -155,9 +160,9 @@ class SchoolAccountService {
 
   Future<int> refreshMySupplements() async {
     final prefs = await SharedPreferences.getInstance();
-    final accessToken = prefs.getString(_tokenKey);
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     final rawUser = prefs.getString(_userKey);
+    final accessToken = await validAccessToken();
     if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty || rawUser == null) return 0;
     try {
       final user = jsonDecode(rawUser);
@@ -195,8 +200,8 @@ class SchoolAccountService {
 
   Future<bool> setDopRemindersEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    final accessToken = prefs.getString(_tokenKey);
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    final accessToken = await validAccessToken();
     if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty) return false;
     final response = await http.put(
       _endpoint(baseUrl, 'notifications/preferences'),
@@ -207,10 +212,45 @@ class SchoolAccountService {
     return response.statusCode >= 200 && response.statusCode < 300;
   }
 
+  Future<String?> validAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final access = prefs.getString(_tokenKey);
+    if (access == null || access.isEmpty) return null;
+    final expiresAt = prefs.getInt(_expiresKey);
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (expiresAt == null || expiresAt > now + 60) return access;
+    return refreshSession();
+  }
+
+  Future<String?> refreshSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final refreshToken = prefs.getString(_refreshKey) ?? '';
+    final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    if (refreshToken.isEmpty || baseUrl.isEmpty) return null;
+    try {
+      final response = await http.post(
+        _endpoint(baseUrl, 'auth/refresh'),
+        headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final payload = jsonDecode(response.body);
+      if (payload is! Map || payload['access_token'] is! String || payload['refresh_token'] is! String) return null;
+      await prefs.setString(_tokenKey, payload['access_token'] as String);
+      await prefs.setString(_refreshKey, payload['refresh_token'] as String);
+      await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
+      if (payload['user'] != null) await prefs.setString(_userKey, jsonEncode(payload['user']));
+      return payload['access_token'] as String;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
-    final accessToken = prefs.getString(_tokenKey);
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    final accessToken = await validAccessToken();
+    final refreshToken = prefs.getString(_refreshKey) ?? '';
     if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty) {
       try {
         await http.delete(
@@ -219,11 +259,22 @@ class SchoolAccountService {
         ).timeout(const Duration(seconds: 5));
       } catch (_) {}
     }
+    if (refreshToken.isNotEmpty && baseUrl.isNotEmpty) {
+      try {
+        await http.post(
+          _endpoint(baseUrl, 'auth/logout'),
+          headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': refreshToken}),
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
     await _tokenSubscription?.cancel();
     await _messageSubscription?.cancel();
     _tokenSubscription = null;
     _messageSubscription = null;
     await prefs.remove(_tokenKey);
+    await prefs.remove(_refreshKey);
+    await prefs.remove(_expiresKey);
     await prefs.remove(_userKey);
   }
 }
