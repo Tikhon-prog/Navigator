@@ -63,7 +63,7 @@ PUBLIC_READ_SHEETS = frozenset({
 })
 
 app = FastAPI(
-    title="Navigator Backend",
+    title="Поколение — сервер школы",
     description="Backend школьного навигатора",
     version="1.0.0",
 )
@@ -107,7 +107,7 @@ def yandex_headers():
 
 def download_master_file():
     """
-    Получает Navigator_Master.xlsx непосредственно
+    Получает книгу школьных данных непосредственно
     с Яндекс Диска через OAuth.
     """
     global _cached_workbook_bytes, _cached_workbook_at
@@ -258,7 +258,7 @@ def read_sheet(sheet_name: str):
 @app.get("/")
 def root():
     return {
-        "name": "Navigator Backend",
+        "name": "Поколение — сервер школы",
         "version": "1.0.0",
         "status": "ok",
         "source": "Yandex Disk",
