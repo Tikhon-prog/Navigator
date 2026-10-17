@@ -80,7 +80,8 @@ def init_db() -> None:
           id TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           title TEXT NOT NULL, weekday INTEGER, time TEXT NOT NULL DEFAULT '',
           teacher TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '',
-          status TEXT NOT NULL DEFAULT 'active', updated_at TEXT NOT NULL
+          status TEXT NOT NULL DEFAULT 'active', updated_at TEXT NOT NULL,
+          source_key TEXT
         );
         CREATE TABLE IF NOT EXISTS devices (
           id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -107,6 +108,10 @@ def init_db() -> None:
         link_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_links)").fetchall()}
         if "subject" not in link_columns:
             db.execute("ALTER TABLE student_links ADD COLUMN subject TEXT NOT NULL DEFAULT ''")
+        supplement_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_supplements)").fetchall()}
+        if "source_key" not in supplement_columns:
+            db.execute("ALTER TABLE student_supplements ADD COLUMN source_key TEXT")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplement_source_key ON student_supplements(source_key) WHERE source_key IS NOT NULL")
     _bootstrap_admin()
 
 
