@@ -292,6 +292,25 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _syncDops() async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = Map<String, dynamic>.from(await _request('POST', 'management/sync/supplements') as Map);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Синхронизация ДОПов: обновлено ${result['imported_or_updated'] ?? 0}, пропущено ${result['skipped'] ?? 0}.'),
+          duration: const Duration(seconds: 6),
+        ));
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> _createUser() async {
     final login = TextEditingController();
     final password = TextEditingController();
@@ -552,6 +571,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     ]),
     const SizedBox(height: 12),
     Card(child: ListTile(leading: const Icon(Icons.security_rounded), title: const Text('Права доступа'), subtitle: Text(permissions.contains('*') ? 'Полный административный доступ' : permissions.isEmpty ? 'Специальные права не назначены' : permissions.join(' • ')))),
+    if (permissions.contains('*') || permissions.contains('dop.manage'))
+      Card(child: ListTile(
+        leading: Icon(Icons.sync_rounded, color: scheme.primary),
+        title: const Text('Синхронизировать ДОПы'),
+        subtitle: const Text('Импортировать записи учеников из источника, заданного в .env'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: busy ? null : _syncDops,
+      )),
     Card(child: ListTile(leading: const Icon(Icons.info_outline_rounded), title: const Text('Важно'), subtitle: const Text('Доступ к ученикам и дополнительным занятиям ограничивается назначениями. Экстренные сообщения не заменяют школьную систему тревоги.'))),
   ]);
 
