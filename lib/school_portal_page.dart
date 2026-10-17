@@ -367,6 +367,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               kind = v ?? 'targeted';
               if (kind == 'global' || kind == 'emergency') targetType = 'all';
               else if (kind == 'personal') targetType = 'user';
+              else if (targetType == 'all') {
+                targetType = isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position)
+                    ? 'class' : 'user';
+              }
               if (targetType != previousTarget) targetId.clear();
             }),
           ),
@@ -411,7 +415,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             )
           else if (targetType != 'all')
             TextField(controller: targetId,
-              decoration: InputDecoration(labelText: targetType == 'class' ? 'Класс, например 8А' : 'ID группы')),
+              decoration: InputDecoration(labelText: targetType == 'class' ? 'Класс, например 8А' : targetType == 'user' ? 'ID пользователя' : 'ID группы')),
           const SizedBox(height: 6),
           const Text('Экстренное оповещение — дополнительный канал, а не замена школьной системы тревоги.', style: TextStyle(fontSize: 12)),
         ]))),
