@@ -169,6 +169,51 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         }
         parsed.add(announcement);
       }
+      // Authenticated v2 feeds include targeted/personal notifications and
+      // leadership announcements. The public workbook feed remains available
+      // for offline-compatible school-wide announcements.
+      final schoolToken = (prefs.getString('school_access_token_v1') ?? '').trim();
+      if (schoolToken.isNotEmpty) {
+        final seen = parsed.map((item) => item.id).toSet();
+        for (final endpoint in const ['announcements', 'notifications']) {
+          try {
+            final secured = await http.get(
+              _v2Uri(base, endpoint),
+              headers: {'Accept': 'application/json', 'Authorization': 'Bearer $schoolToken'},
+            ).timeout(const Duration(seconds: 8));
+            if (secured.statusCode < 200 || secured.statusCode >= 300) continue;
+            final payload = jsonDecode(secured.body);
+            final secureRows = payload is Map ? payload['data'] : payload;
+            if (secureRows is! List) continue;
+            for (final row in secureRows) {
+              if (row is! Map) continue;
+              final source = Map<String, dynamic>.from(row);
+              final kind = (source['kind'] ?? '').toString().toLowerCase();
+              final audience = (source['audience'] ?? '').toString().toLowerCase();
+              final targetType = (source['target_type'] ?? '').toString().toLowerCase();
+              final mapped = <String, dynamic>{
+                ...source,
+                'published_at': source['created_at'] ?? source['published_at'] ?? '',
+                'target_class_id': targetType == 'class'
+                    ? source['target_id']
+                    : audience == 'class' ? source['class_id'] : '',
+                'severity': source['severity'] ?? (kind == 'emergency' ? 'emergency' : kind == 'warning' ? 'warning' : 'info'),
+                'expires_at': source['expires_at'] ?? '',
+              };
+              final item = SchoolAnnouncement.fromJson(mapped);
+              if (item.isExpired || seen.contains(item.id)) continue;
+              if (item.targetClass.isNotEmpty &&
+                  (_classId.isEmpty || !_sameClass(item.targetClass, _classId))) continue;
+              parsed.add(item);
+              seen.add(item.id);
+            }
+          } catch (_) {
+            // Keep already-loaded public/cache content if an authenticated feed
+            // is unavailable or the session has expired.
+          }
+        }
+      }
+
       parsed.sort((a, b) {
         final aDate = a.date;
         final bDate = b.date;
@@ -197,6 +242,19 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
             : 'Сервер недоступен. Показана последняя сохранённая копия.';
       });
     }
+  }
+
+  Uri _v2Uri(String raw, String endpoint) {
+    final parsed = Uri.parse(raw);
+    var path = parsed.path.replaceFirst(RegExp(r'/+$'), '');
+    if (path.endsWith('/api/v2')) {
+      path = '$path/$endpoint';
+    } else if (path.endsWith('/api')) {
+      path = '$path/v2/$endpoint';
+    } else {
+      path = '$path/api/v2/$endpoint';
+    }
+    return parsed.replace(path: path, query: null, fragment: '', userInfo: '');
   }
 
   Uri _announcementsUri(String raw, String classId) {
