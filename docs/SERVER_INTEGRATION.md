@@ -74,3 +74,53 @@ review local privacy/legal requirements with school leadership; test database mi
 and restore; decide how Firebase tokens are revoked; and replace SQLite with PostgreSQL
 if multiple app instances or higher write concurrency are needed. The current login
 throttle is process-local and is not a substitute for edge rate limiting.
+
+
+## School SSO
+
+The server now exposes `POST /api/v2/auth/sso`. The Android app should use the school's
+OIDC Authorization Code flow with PKCE through the official school identity provider,
+then send the resulting short-lived access token to this endpoint. Configure:
+
+- `NAVIGATOR_OIDC_ISSUER`: canonical issuer URL from the school identity provider.
+- `NAVIGATOR_OIDC_USERINFO_URL`: that provider's HTTPS UserInfo endpoint.
+
+The server calls UserInfo over TLS and uses the returned stable `sub` claim. It **does
+not auto-link by email or username**. An administrator must explicitly link a local
+Navigator account once using `POST /api/v2/admin/sso-identities` with
+`{"username":"existing-login","subject":"stable-oidc-subject"}`. This avoids
+account takeover through mismatched or unverified profile claims. Do not enable this
+until the school IT team supplies and approves the issuer/endpoints and mobile client
+registration. The legacy password login remains for local development/admin bootstrap,
+not as the assumed student login experience.
+
+## Multiple school-data sources
+
+Set `NAVIGATOR_DATA_SOURCE` to one of:
+
+- `yandex` (default): existing workbook and `YANDEX_OAUTH_TOKEN` flow.
+- `json`: read the allowlisted sheet names from `NAVIGATOR_DATA_JSON_PATH`, a local
+  UTF-8 JSON object whose values are arrays of row objects.
+- `http`: request `{NAVIGATOR_DATA_API_URL}/{SheetName}`; the endpoint may return
+  either a JSON array or an object with a `data` array. Optional bearer token:
+  `NAVIGATOR_DATA_API_TOKEN`.
+
+The current HTTP/JSON adapters cover the existing read-only sheet endpoints. Identity,
+relationships, personal notifications, and device tokens remain in the service database
+until a school-approved import/synchronization adapter is implemented. Keep the source
+token on the server; never put it in the APK. Use HTTPS for remote endpoints.
+
+## Scoped notifications and DOP reminders
+
+- `POST /api/v2/admin/notifications` supports `global`, `targeted`, `personal`,
+  `dop_reminder`, and `emergency` kinds; targets can be all users, a class, a group,
+  or a single user. Only admins can publish emergency items.
+- `POST /api/v2/admin/notification-groups` creates a target group.
+- `POST /api/v2/admin/notification-groups/{group_id}/members` adds an active account.
+- `GET /api/v2/notifications` returns only notifications visible to the signed-in user.
+- `scheduled_at` is stored and hides a notification until its due time. It is **not yet
+  a delivery scheduler**: a worker must be deployed to send due push notifications. This
+  API does not claim a scheduled reminder has been delivered.
+- These new notification records are not yet wired to FCM delivery. Existing broadcast
+  announcements can send FCM pushes when configured; per-user/group push fan-out and
+  delivery receipts remain follow-up work.
