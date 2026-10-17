@@ -394,11 +394,17 @@ def _target_user_ids(db: Session, alert: AlertRecord) -> set[str]:
         teacher_ids = set(db.scalars(select(TeacherAssignment.teacher_id).where(
             TeacherAssignment.class_id == alert.target_value
         )))
-        return student_ids | teacher_ids
+        mentor_ids = set(db.scalars(select(MentorAssignment.mentor_id).join(
+            ClassMembership, ClassMembership.student_id == MentorAssignment.student_id
+        ).where(ClassMembership.class_id == alert.target_value)))
+        return student_ids | teacher_ids | mentor_ids
     return set()
 
 
 def _alert_visible(db: Session, user: User, alert: AlertRecord) -> bool:
+    # School-level operators can review alerts for incident coordination.
+    if user.role in {"admin", "emergency_manager"}:
+        return True
     if alert.target_type == "all":
         return True
     if alert.target_type == "role":
@@ -411,10 +417,18 @@ def _alert_visible(db: Session, user: User, alert: AlertRecord) -> bool:
                 TeacherAssignment.teacher_id == user.id,
                 TeacherAssignment.class_id == alert.target_value,
             ).limit(1)) is not None
-        return user.role == "student" and db.scalar(select(ClassMembership.id).where(
-            ClassMembership.student_id == user.id,
-            ClassMembership.class_id == alert.target_value,
-        ).limit(1)) is not None
+        if user.role == "student":
+            return db.scalar(select(ClassMembership.id).where(
+                ClassMembership.student_id == user.id,
+                ClassMembership.class_id == alert.target_value,
+            ).limit(1)) is not None
+        if user.role == "mentor":
+            return db.scalar(select(MentorAssignment.id).join(
+                ClassMembership, ClassMembership.student_id == MentorAssignment.student_id
+            ).where(
+                MentorAssignment.mentor_id == user.id,
+                ClassMembership.class_id == alert.target_value,
+            ).limit(1)) is not None
     return False
 
 
