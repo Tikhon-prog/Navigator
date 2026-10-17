@@ -531,9 +531,12 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         for student_id, teacher_id, subject in sorted(assignment_keys):
             key_data = json.dumps([student_id, teacher_id, subject], ensure_ascii=False, separators=(",", ":"))
             source_key = "schedule:" + hashlib.sha256(key_data.encode()).hexdigest()
+            # Schedule-derived rows are rebuilt on each sync. If a manual
+            # teacher assignment already exists for the same student/subject,
+            # preserve it as manual (source_key=NULL) so future timetable syncs
+            # cannot silently delete a human-approved relationship.
             db.execute(
-                "INSERT INTO teacher_subject_assignments(student_id,staff_id,subject,created_at,source_key) VALUES(?,?,?,?,?) "
-                "ON CONFLICT(student_id,staff_id,subject) DO UPDATE SET created_at=excluded.created_at,source_key=excluded.source_key",
+                "INSERT OR IGNORE INTO teacher_subject_assignments(student_id,staff_id,subject,created_at,source_key) VALUES(?,?,?,?,?)",
                 (student_id, teacher_id, subject, _now(), source_key)
             )
         db.execute(
