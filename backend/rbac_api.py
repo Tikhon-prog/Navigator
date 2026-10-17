@@ -174,6 +174,8 @@ def management_create_user(body: ManagedUserCreate,
     position, _ = _position(actor["id"])
     if actor["role"] != "admin" and position not in {"director", "deputy"}:
         raise HTTPException(status_code=403, detail="Only school leadership can create accounts")
+    if actor["role"] != "admin" and body.role == "admin":
+        raise HTTPException(status_code=403, detail="Only an existing administrator can create another administrator")
     result = core.create_user(
         core.UserCreate(username=body.username, password=body.password, role=body.role,
                         display_name=body.display_name, class_id=body.class_id),
@@ -188,6 +190,10 @@ def patch_user(user_id: str, body: UserPatch,
     changes = body.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="No fields to update")
+    with core._db() as db:
+        target_role = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
+    if target_role and target_role["role"] == "admin" and actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only an existing administrator can modify administrator accounts")
     if "active" in changes and not changes["active"]:
         with core._db() as db:
             target = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
