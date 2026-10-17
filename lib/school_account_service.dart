@@ -462,9 +462,18 @@ class SchoolAccountService {
       }
     } catch (_) {}
     await prefs.remove('supplements_local');
-    // Personal notification payloads are not retained after logout. A fresh
-    // login may repopulate the account-scoped cache from the server.
+    // Keep account-isolated manual/intranet entries, but drop stale server rows
+    // which will be refreshed after the same account signs in again.
     if (currentUserId.isNotEmpty) {
+      final scopedDopKey = 'supplements_local_$currentUserId';
+      final scopedDops = prefs.getString(scopedDopKey);
+      if (scopedDops != null) {
+        try {
+          final rows = (jsonDecode(scopedDops) as List).where((item) =>
+              item is Map && !((item['id']?.toString() ?? '').startsWith('server_'))).toList();
+          await prefs.setString(scopedDopKey, jsonEncode(rows));
+        } catch (_) {}
+      }
       await prefs.remove('school_announcements_cache_v2_$currentUserId');
       await prefs.remove('school_supplements_cache_v1_$currentUserId');
       await prefs.remove('school_supplements_user_id_v1_$currentUserId');
