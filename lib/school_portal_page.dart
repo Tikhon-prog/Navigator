@@ -390,7 +390,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Закрыть')),
-          FilledButton.icon(onPressed: _createNotificationGroup, icon: const Icon(Icons.add_rounded), label: const Text('Создать группу')),
+          FilledButton.icon(onPressed: () async {
+            await _createNotificationGroup();
+            setDialogState(() {});
+          }, icon: const Icon(Icons.add_rounded), label: const Text('Создать группу')),
         ],
       )),
     );
@@ -589,7 +592,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               if (isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position))
                 const DropdownMenuItem(value: 'class', child: Text('Класс')),
               const DropdownMenuItem(value: 'user', child: Text('Один пользователь')),
-              if (isLead) const DropdownMenuItem(value: 'group', child: Text('Группа')),
+              if (isLead || canManageGroups) const DropdownMenuItem(value: 'group', child: Text('Группа')),
             ],
             onChanged: kind == 'global' || kind == 'emergency' || kind == 'personal'
                 ? null : (v) => setDialogState(() {
@@ -597,7 +600,20 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     targetId.clear();
                   }),
           ),
-          if (targetType == 'class' && classOptions.isNotEmpty)
+          if (targetType == 'group' && notificationGroups.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: notificationGroups.any((group) => group['id']?.toString() == targetId.text)
+                  ? targetId.text : null,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Группа рассылки'),
+              items: [for (final group in notificationGroups)
+                DropdownMenuItem(
+                  value: group['id'].toString(),
+                  child: Text('${group['name'] ?? 'Группа'} • ${group['member_count'] ?? 0} участников'),
+                )],
+              onChanged: (value) => setDialogState(() => targetId.text = value ?? ''),
+            )
+          else if (targetType == 'class' && classOptions.isNotEmpty)
             DropdownButtonFormField<String>(
               value: classOptions.contains(targetId.text) ? targetId.text : null,
               isExpanded: true,
