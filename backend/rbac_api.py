@@ -287,11 +287,17 @@ def readiness() -> dict[str, Any]:
     except Exception:
         raise HTTPException(status_code=503, detail="School data source is not ready")
     firebase = _firebase_status()
+    with core._db() as db:
+        active_admins = db.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1"
+        ).fetchone()["n"]
     return {
         "status": "ready",
         "source": os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
         "classes_available": len(classes),
         "schedule_rows_available": len(schedule),
+        "active_administrators": active_admins,
+        "administration_ready": active_admins > 0,
         "firebase_server_ready": firebase["server_ready"],
         "firebase_android_client_ready": firebase["android_client_ready"],
         "firebase_delivery_enabled": firebase["delivery_enabled"],
