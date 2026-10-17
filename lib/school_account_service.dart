@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_appauth/flutter_appauth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +12,7 @@ import 'local_notification_service.dart';
 
 class SchoolAccountService {
   static const _appAuth = FlutterAppAuth();
+  static const _secureStorage = FlutterSecureStorage();
   static const _tokenKey = 'school_access_token_v1';
   static const _userKey = 'school_user_v1';
   static const _refreshKey = 'school_refresh_token_v1';
@@ -18,6 +20,40 @@ class SchoolAccountService {
   static StreamSubscription<String>? _tokenSubscription;
   static StreamSubscription<RemoteMessage>? _messageSubscription;
   static Future<String?>? _refreshInFlight;
+
+  /// Reads a token from protected platform storage. Existing releases stored
+  /// tokens in SharedPreferences, so migrate them once and remove the legacy
+  /// plaintext copy immediately after a successful secure write.
+  static Future<String?> _readToken(String key) async {
+    try {
+      final secure = await _secureStorage.read(key: key);
+      if (secure != null && secure.isNotEmpty) return secure;
+    } catch (_) {
+      // Do not silently put newly issued credentials back into plaintext prefs.
+      rethrow;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(key);
+    if (legacy == null || legacy.isEmpty) return null;
+    await _secureStorage.write(key: key, value: legacy);
+    await prefs.remove(key);
+    return legacy;
+  }
+
+  static Future<void> _writeToken(String key, String value) async {
+    await _secureStorage.write(key: key, value: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(key);
+  }
+
+  static Future<void> _deleteToken(String key) async {
+    try {
+      await _secureStorage.delete(key: key);
+    } finally {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+    }
+  }
 
   static Uri _endpoint(String rawBase, String suffix) {
     final base = Uri.parse(rawBase.trim());
@@ -102,8 +138,8 @@ class SchoolAccountService {
       throw Exception('Резервный вход разрешён только техническому администратору. Используй школьный SSO.');
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, payload['access_token'] as String);
-    await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
+    await _writeToken(_tokenKey, payload['access_token'] as String);
+    await _writeToken(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(user));
     await prefs.remove('student_class_id');
@@ -166,7 +202,7 @@ class SchoolAccountService {
       throw const FormatException('Неверный ответ авторизации');
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, payload['access_token'] as String);
+    await _writeToken(_tokenKey, payload['access_token'] as String);
     await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
@@ -344,7 +380,7 @@ class SchoolAccountService {
 
   Future<String?> validAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final access = prefs.getString(_tokenKey);
+    final access = await _readToken(_tokenKey);
     if (access == null || access.isEmpty) return null;
     final expiresAt = prefs.getInt(_expiresKey);
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -362,7 +398,7 @@ class SchoolAccountService {
 
   Future<String?> _performRefreshSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString(_refreshKey) ?? '';
+    final refreshToken = (await _readToken(_refreshKey)) ?? '';
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     if (refreshToken.isEmpty || baseUrl.isEmpty) return null;
     try {
@@ -375,7 +411,7 @@ class SchoolAccountService {
       final payload = jsonDecode(response.body);
       if (payload is! Map || payload['access_token'] is! String || payload['refresh_token'] is! String) return null;
       await prefs.setString(_tokenKey, payload['access_token'] as String);
-      await prefs.setString(_refreshKey, payload['refresh_token'] as String);
+      await _writeToken(_refreshKey, payload['refresh_token'] as String);
       await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
       if (payload['user'] != null) await prefs.setString(_userKey, jsonEncode(payload['user']));
       return payload['access_token'] as String;
@@ -494,8 +530,8 @@ class SchoolAccountService {
       await prefs.remove(key);
     }
     await prefs.remove('dop_last_sync');
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_refreshKey);
+    await _deleteToken(_tokenKey);
+    await _deleteToken(_refreshKey);
     await prefs.remove(_expiresKey);
     await prefs.remove(_userKey);
     await prefs.remove('student_class_id');
