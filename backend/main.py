@@ -79,7 +79,7 @@ app.add_middleware(
     allow_credentials=False,
     # This backend currently exposes read-only endpoints only.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
 )
 
 
