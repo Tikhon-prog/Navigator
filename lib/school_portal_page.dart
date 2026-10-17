@@ -593,6 +593,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     ? 'class' : 'user';
               }
               if (targetType != previousTarget) targetId.clear();
+              if (kind == 'emergency') {
+                // Emergency alerts are dispatched immediately by policy.
+                scheduleMessage = false;
+                scheduledAt = null;
+              }
             }),
           ),
           const SizedBox(height: 8),
@@ -681,6 +686,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                   setDialogState(() { scheduleMessage = false; scheduledAt = null; });
                   return;
                 }
+                if (expiresAt != null && !expiresAt!.isAfter(selected)) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала продли срок действия сообщения.')));
+                  return;
+                }
                 setDialogState(() { scheduleMessage = true; scheduledAt = selected; });
               },
             ),
@@ -721,7 +730,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             if (title.text.trim().isEmpty || body.text.trim().isEmpty || (targetType != 'all' && targetId.text.trim().isEmpty)) return;
             if (scheduleMessage && scheduledAt == null) return;
             if (expireMessage && expiresAt == null) return;
-            if (scheduledAt != null && expiresAt != null && !expiresAt!.isAfter(scheduledAt!)) return;
+            if (scheduledAt != null && expiresAt != null && !expiresAt!.isAfter(scheduledAt!)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Срок действия должен быть позже времени отправки.')));
+              return;
+            }
             Navigator.pop(dialogContext, {
               'title': title.text.trim(), 'body': body.text.trim(), 'kind': kind,
               'target_type': targetType, 'target_id': targetType == 'all' ? '' : targetId.text.trim(),
