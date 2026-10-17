@@ -85,7 +85,16 @@ class _SupplementsPageState extends State<SupplementsPage> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('supplements_local');
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
+    final raw = prefs.getString(storageKey);
     if (raw != null) {
       try {
         items = (jsonDecode(raw) as List)
@@ -94,24 +103,20 @@ class _SupplementsPageState extends State<SupplementsPage> {
       } catch (_) {
         items = [];
       }
+    } else {
+      // Do not import legacy global personal data into an authenticated profile.
+      items = [];
     }
     student = await const NavigatorStudentProvider().load();
     lastSync = prefs.getString('dop_last_sync') ?? '';
     remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
-    final rawSchoolUser = prefs.getString('school_user_v1');
-    var currentSchoolUserId = '';
-    if (rawSchoolUser != null) {
-      try {
-        final account = jsonDecode(rawSchoolUser);
-        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString();
-      } catch (_) {}
-    }
-    final cachedSchoolUserId = prefs.getString('school_supplements_user_id_v1') ?? '';
-    if (cachedSchoolUserId != currentSchoolUserId) {
+    final cachedSchoolUserId = prefs.getString('school_supplements_user_id_v1_$currentSchoolUserId') ?? '';
+    if (currentSchoolUserId.isNotEmpty && cachedSchoolUserId.isNotEmpty &&
+        cachedSchoolUserId != currentSchoolUserId) {
       items = items.where((item) => !item.id.startsWith('server_')).toList();
-      await prefs.setString('supplements_local', jsonEncode(items.map((e) => e.toJson()).toList()));
-      await prefs.remove('school_supplements_cache_v1');
-      await prefs.remove('school_supplements_user_id_v1');
+      await prefs.setString(storageKey, jsonEncode(items.map((e) => e.toJson()).toList()));
+      await prefs.remove('school_supplements_cache_v1_$currentSchoolUserId');
+      await prefs.remove('school_supplements_user_id_v1_$currentSchoolUserId');
     }
     if (mounted) setState(() => loading = false);
     try { await _refreshServerSupplements(); } catch (_) {}
@@ -125,7 +130,16 @@ class _SupplementsPageState extends State<SupplementsPage> {
     final count = await service.refreshMySupplements();
     if (count == null) return;
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('school_supplements_cache_v1');
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    if (currentSchoolUserId.isEmpty) return;
+    final raw = prefs.getString('school_supplements_cache_v1_$currentSchoolUserId');
     if (raw == null) return;
     try {
       final serverItems = (jsonDecode(raw) as List)
@@ -140,8 +154,17 @@ class _SupplementsPageState extends State<SupplementsPage> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
+    var currentSchoolUserId = '';
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
     await prefs.setString(
-      'supplements_local',
+      storageKey,
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
     if (remindersEnabled) {
@@ -194,11 +217,26 @@ class _SupplementsPageState extends State<SupplementsPage> {
     final result = await showDialog<DopStudent>(context: context, builder: (_) => _DopStudentDialog(initial: student));
     if (result == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_last_name', result.lastName);
-    await prefs.setString('student_first_name', result.firstName);
-    await prefs.setString('student_class_number', result.classNumber);
-    await prefs.setString('student_class_letter', result.classLetter);
-    await prefs.setString('student_class_name', result.className);
+    var currentSchoolUserId = '';
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    for (final entry in <String, String>{
+      'student_last_name': result.lastName,
+      'student_first_name': result.firstName,
+      'student_class_number': result.classNumber,
+      'student_class_letter': result.classLetter,
+      'student_class_name': result.className,
+    }.entries) {
+      await prefs.setString(
+        studentProfilePreferenceKey(entry.key, userId: currentSchoolUserId),
+        entry.value,
+      );
+    }
     student = result;
     if (mounted) setState(() {});
   }
