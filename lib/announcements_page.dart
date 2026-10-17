@@ -78,6 +78,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
   bool _loading = true;
   bool _refreshing = false;
   bool _serverConfigured = false;
+  bool _connectionFailed = false;
   String _status = 'Проверяю подключение…';
   String _classId = '';
 
@@ -128,6 +129,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     if (!isSecureApiBaseUrl(base)) {
       if (mounted) setState(() {
         _serverConfigured = false;
+        _connectionFailed = true;
         _loading = false;
         _refreshing = false;
         _status = 'Адрес сервера должен использовать HTTPS без логина, пароля и параметров.';
@@ -169,6 +171,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       if (mounted) setState(() {
         _items = parsed;
         _serverConfigured = true;
+        _connectionFailed = false;
         _loading = false;
         _refreshing = false;
         _status = 'Обновлено с сервера • ${parsed.length}';
@@ -176,6 +179,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     } catch (_) {
       if (mounted) setState(() {
         _serverConfigured = true;
+        _connectionFailed = true;
         _loading = false;
         _refreshing = false;
         _status = _items.isEmpty
@@ -197,7 +201,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     path = '$path/announcements';
     return parsed.replace(
       path: path,
-      queryParameters: classId.isEmpty ? null : {'class_id': _normalizeClass(classId)},
+      queryParameters: classId.isEmpty ? null : {'class_id': classId},
       fragment: '',
       userInfo: '',
     );
@@ -278,15 +282,17 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                             Icon(_serverConfigured ? Icons.cloud_off_rounded : Icons.campaign_outlined, size: 44, color: scheme.onSurfaceVariant),
                             const SizedBox(height: 12),
                             Text(
-                              _serverConfigured ? 'Объявлений пока нет' : 'Нет подключённого источника',
+                              _connectionFailed ? 'Не удалось загрузить объявления' : _serverConfigured ? 'Объявлений пока нет' : 'Нет подключённого источника',
                               style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _serverConfigured
-                                  ? 'Когда школа опубликует объявление, оно появится здесь.'
-                                  : 'В «Настройках → Кабинет школы → Синхронизация» можно указать адрес API. Без сервера Поколение продолжит работать офлайн.',
+                              _connectionFailed
+                                  ? 'Проверь адрес API и подключение к школьной сети, затем нажми «Повторить».'
+                                  : _serverConfigured
+                                      ? 'Когда школа опубликует объявление, оно появится здесь.'
+                                      : 'В «Настройки → Кабинет школы → Синхронизация» можно указать адрес API. Без сервера Поколение продолжит работать офлайн.',
                               style: TextStyle(color: scheme.onSurfaceVariant, height: 1.45),
                               textAlign: TextAlign.center,
                             ),
