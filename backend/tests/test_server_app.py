@@ -104,12 +104,18 @@ class NavigatorServerApiTests(unittest.TestCase):
             "room": "317",
         })
         self.assertEqual(created.status_code, 201, created.text)
+        lesson = self.client.post("/api/v1/admin/schedule", headers=self.admin_headers, json={
+            "class_id": "8A", "weekday": 3, "lesson_number": 2,
+            "start_time": "10:00", "subject": "Информатика", "room": "311",
+        })
+        self.assertEqual(lesson.status_code, 201, lesson.text)
 
         mentor_headers = self.token_for("mentor-one")
         mentees = self.client.get("/api/v1/mentees", headers=mentor_headers)
         self.assertEqual(mentees.status_code, 200, mentees.text)
         self.assertEqual([x["student"]["id"] for x in mentees.json()["data"]], [student["id"]])
         self.assertEqual(mentees.json()["data"][0]["supplements"][0]["title"], "Робототехника")
+        self.assertEqual(mentees.json()["data"][0]["schedule"][0]["subject"], "Информатика")
 
         forbidden = self.client.get(
             f"/api/v1/students/{stranger['id']}/supplements", headers=mentor_headers
@@ -125,6 +131,11 @@ class NavigatorServerApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/students", headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual([x["id"] for x in response.json()["data"]], [student["id"]])
+        filtered = self.client.get("/api/v1/students?class_id=8A", headers=headers)
+        self.assertEqual(filtered.status_code, 200, filtered.text)
+        self.assertEqual([x["id"] for x in filtered.json()["data"]], [student["id"]])
+        forbidden_class = self.client.get("/api/v1/students?class_id=8B", headers=headers)
+        self.assertEqual(forbidden_class.status_code, 403)
         self.assertEqual(self.client.get(f"/api/v1/students/{stranger['id']}/schedule",
             headers=headers).status_code, 403)
 
