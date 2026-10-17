@@ -58,10 +58,46 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api._decode_token(token + "tampered")
 
+    def test_non_admin_password_login_is_disabled_by_default(self):
+        from starlette.requests import Request
+        request = Request({
+            "type": "http", "method": "POST", "path": "/api/v2/auth/login",
+            "scheme": "http", "server": ("testserver", 80),
+            "client": ("127.0.0.1", 12345), "query_string": b"", "headers": [],
+        })
+        with patch.dict(os.environ, {"NAVIGATOR_ALLOW_NON_SSO_PASSWORD_LOGIN": "false"}):
+            with self.assertRaises(HTTPException) as raised:
+                api.login(api.LoginBody(username="student1", password="correct horse battery"), request)
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_admin_password_login_remains_available_for_technical_recovery(self):
+        from starlette.requests import Request
+        request = Request({
+            "type": "http", "method": "POST", "path": "/api/v2/auth/login",
+            "scheme": "http", "server": ("testserver", 80),
+            "client": ("127.0.0.1", 12346), "query_string": b"", "headers": [],
+        })
+        result = api.login(api.LoginBody(username="admin", password="correct horse battery"), request)
+        self.assertEqual(result["user"]["role"], "admin")
+        self.assertEqual(api._decode_token(result["access_token"])["auth_method"], "password")
+
+    def test_password_session_for_student_is_revoked_when_local_login_is_disabled(self):
+        with api._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+        session = api._issue_session(user, auth_method="password")
+        with patch.dict(os.environ, {"NAVIGATOR_ALLOW_NON_SSO_PASSWORD_LOGIN": "false"}):
+            with self.assertRaises(HTTPException) as raised:
+                api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
+        self.assertEqual(raised.exception.status_code, 403)
+        with api._db() as db:
+            row = db.execute("SELECT revoked_at FROM refresh_tokens WHERE token_hash=?",
+                             (__import__("hashlib").sha256(session["refresh_token"].encode()).hexdigest(),)).fetchone()
+        self.assertIsNotNone(row["revoked_at"])
+
     def test_refresh_token_rotates_and_cannot_be_reused(self):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
-        session = api._issue_session(user)
+        session = api._issue_session(user, auth_method="sso")
         rotated = api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
         self.assertNotEqual(session["refresh_token"], rotated["refresh_token"])
         self.assertNotEqual(session["access_token"], rotated["access_token"])
