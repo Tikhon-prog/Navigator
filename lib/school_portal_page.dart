@@ -313,7 +313,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     final targetId = TextEditingController();
     String kind = 'targeted';
     final isLead = isLeadership;
-    String targetType = isLead || position == 'homeroom_teacher' ? 'class' : 'user';
+    String targetType = isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) ? 'class' : 'user';
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
@@ -343,7 +343,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             decoration: const InputDecoration(labelText: 'Кому'),
             items: [
               if (isLead) const DropdownMenuItem(value: 'all', child: Text('Вся школа')),
-              if (isLead || position == 'homeroom_teacher')
+              if (isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position))
                 const DropdownMenuItem(value: 'class', child: Text('Класс')),
               const DropdownMenuItem(value: 'user', child: Text('Один пользователь')),
               if (isLead) const DropdownMenuItem(value: 'group', child: Text('Группа')),
