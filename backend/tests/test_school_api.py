@@ -91,6 +91,26 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
 
+    def test_logout_can_revoke_current_device_when_access_token_is_expired(self):
+        with api._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+        with patch.object(api, "TOKEN_TTL_SECONDS", -1):
+            session = api._issue_session(user)
+        device_token = "fcm-test-token-that-is-long-enough-for-device-revocation"
+        with api._db() as db:
+            db.execute(
+                "INSERT INTO devices(id,user_id,fcm_token,platform,active,updated_at) VALUES(?,?,?,?,1,?)",
+                ("device1", "student1", device_token, "android", api._utc_now()),
+            )
+        result = api.logout_session(
+            api.RefreshBody(refresh_token=session["refresh_token"], device_token=device_token),
+            authorization="Bearer " + session["access_token"],
+        )
+        self.assertEqual(result["status"], "logged_out")
+        with api._db() as db:
+            device = db.execute("SELECT active FROM devices WHERE id='device1'").fetchone()
+        self.assertEqual(device["active"], 0)
+
     def test_old_access_token_stays_invalid_after_account_reactivation(self):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
