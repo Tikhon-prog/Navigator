@@ -7,8 +7,6 @@ For production, set APP_ENV=production, NAVIGATOR_JWT_SECRET, DATABASE_URL,
 BOOTSTRAP_ADMIN_KEY and (optionally) FIREBASE_SERVICE_ACCOUNT_JSON in the host's
 secret manager. Never put secrets in the Flutter app or source control.
 """
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
