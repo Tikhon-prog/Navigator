@@ -13,6 +13,7 @@ import 'local_notification_service.dart';
 import 'security_service.dart';
 import 'supplements_page.dart';
 import 'school_account_service.dart';
+import 'school_portal_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1995,20 +1996,23 @@ class SettingsPage extends StatelessWidget {
     final current = await service.currentUser();
     if (!context.mounted) return;
     if (current != null) {
-      final signOut = await showDialog<bool>(
+      final action = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Школьная учётная запись'),
           content: Text('Вход выполнен: ${current['display_name'] ?? current['username'] ?? 'учётная запись'}\nРоль: ${current['role'] ?? 'не указана'}'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Закрыть')),
-            FilledButton.tonal(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Выйти')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, 'close'), child: const Text('Закрыть')),
+            OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'signout'), child: const Text('Выйти')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, 'portal'), child: const Text('Открыть кабинет')),
           ],
         ),
       );
-      if (signOut == true) {
+      if (action == 'signout') {
         await service.signOut();
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
+      } else if (action == 'portal' && context.mounted) {
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
       }
       return;
     }
@@ -2028,6 +2032,7 @@ class SettingsPage extends StatelessWidget {
           content: Text('Вход выполнен: ${user['display_name'] ?? user['username'] ?? 'учётная запись'}.${result['push_registered'] == true ? ' Уведомления подключены.' : ' Push-уведомления пока не настроены.'}'),
           duration: const Duration(seconds: 5),
         ));
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
       }
     } catch (error) {
       if (context.mounted) {
