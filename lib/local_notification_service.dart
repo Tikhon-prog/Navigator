@@ -71,6 +71,10 @@ class LocalNotificationService {
 
   Future<void> cancelAll() => plugin.cancelAll();
 
+  Future<void> cancelDopReminders() async {
+    await _cancelNotificationRange(2000, 2999);
+  }
+
   Future<void> showIncomingNotification({
     required String title,
     required String body,
