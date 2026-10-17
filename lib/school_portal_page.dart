@@ -556,8 +556,16 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         .toList()
       ..sort();
     String kind = 'targeted';
+    bool scheduleMessage = false;
+    bool expireMessage = false;
+    DateTime? scheduledAt;
+    DateTime? expiresAt;
     final isLead = isLeadership;
     String targetType = isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) ? 'class' : 'user';
+    String dateTimeLabel(DateTime value) {
+      String two(int v) => v.toString().padLeft(2, '0');
+      return '${two(value.day)}.${two(value.month)}.${value.year} ${two(value.hour)}:${two(value.minute)}';
+    }
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
@@ -643,14 +651,83 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             TextField(controller: targetId,
               decoration: InputDecoration(labelText: targetType == 'class' ? 'Класс, например 8А' : targetType == 'user' ? 'ID пользователя' : 'ID группы')),
           const SizedBox(height: 6),
+          if (kind != 'emergency')
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: scheduleMessage,
+              title: const Text('Запланировать отправку', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(scheduledAt == null ? 'Отправить сразу' : dateTimeLabel(scheduledAt!)),
+              onChanged: (enabled) async {
+                if (!enabled) {
+                  setDialogState(() { scheduleMessage = false; scheduledAt = null; });
+                  return;
+                }
+                final now = DateTime.now();
+                final date = await showDatePicker(
+                  context: dialogContext,
+                  initialDate: now.add(const Duration(minutes: 2)),
+                  firstDate: DateTime(now.year, now.month, now.day),
+                  lastDate: DateTime(now.year + 3),
+                );
+                if (date == null || !dialogContext.mounted) return;
+                final pickedTime = await showTimePicker(
+                  context: dialogContext,
+                  initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5))),
+                );
+                if (pickedTime == null || !dialogContext.mounted) return;
+                final selected = DateTime(date.year, date.month, date.day, pickedTime.hour, pickedTime.minute);
+                if (!selected.isAfter(DateTime.now().add(const Duration(seconds: 5)))) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Выбери время в будущем.')));
+                  setDialogState(() { scheduleMessage = false; scheduledAt = null; });
+                  return;
+                }
+                setDialogState(() { scheduleMessage = true; scheduledAt = selected; });
+              },
+            ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: expireMessage,
+            title: const Text('Скрыть после даты'),
+            subtitle: Text(expiresAt == null ? 'Без срока действия' : dateTimeLabel(expiresAt!)),
+            onChanged: (enabled) async {
+              if (!enabled) {
+                setDialogState(() { expireMessage = false; expiresAt = null; });
+                return;
+              }
+              final now = DateTime.now();
+              final initial = scheduledAt != null && scheduledAt!.isAfter(now)
+                  ? scheduledAt!.add(const Duration(days: 1)) : now.add(const Duration(days: 7));
+              final date = await showDatePicker(
+                context: dialogContext,
+                initialDate: DateTime(initial.year, initial.month, initial.day),
+                firstDate: DateTime(now.year, now.month, now.day),
+                lastDate: DateTime(now.year + 5),
+              );
+              if (date == null || !dialogContext.mounted) return;
+              final selected = DateTime(date.year, date.month, date.day, 23, 59, 59);
+              if (scheduledAt != null && !selected.isAfter(scheduledAt!)) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Срок действия должен быть позже времени отправки.')));
+                setDialogState(() { expireMessage = false; expiresAt = null; });
+                return;
+              }
+              setDialogState(() { expireMessage = true; expiresAt = selected; });
+            },
+          ),
           const Text('Экстренное оповещение — дополнительный канал, а не замена школьной системы тревоги.', style: TextStyle(fontSize: 12)),
         ]))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
             if (title.text.trim().isEmpty || body.text.trim().isEmpty || (targetType != 'all' && targetId.text.trim().isEmpty)) return;
-            Navigator.pop(dialogContext, {'title': title.text.trim(), 'body': body.text.trim(), 'kind': kind,
-              'target_type': targetType, 'target_id': targetType == 'all' ? '' : targetId.text.trim()});
+            if (scheduleMessage && scheduledAt == null) return;
+            if (expireMessage && expiresAt == null) return;
+            if (scheduledAt != null && expiresAt != null && !expiresAt!.isAfter(scheduledAt!)) return;
+            Navigator.pop(dialogContext, {
+              'title': title.text.trim(), 'body': body.text.trim(), 'kind': kind,
+              'target_type': targetType, 'target_id': targetType == 'all' ? '' : targetId.text.trim(),
+              if (scheduledAt != null) 'scheduled_at': scheduledAt!.toUtc().toIso8601String(),
+              if (expiresAt != null) 'expires_at': expiresAt!.toUtc().toIso8601String(),
+            });
           }, child: const Text('Отправить')),
         ],
       )),
@@ -662,6 +739,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         'title': result['title'], 'body': result['body'], 'kind': result['kind'],
         'target_type': result['target_type'],
         if ((result['target_id'] ?? '').isNotEmpty) 'target_id': result['target_id'],
+        if ((result['scheduled_at'] ?? '').isNotEmpty) 'scheduled_at': result['scheduled_at'],
+        if ((result['expires_at'] ?? '').isNotEmpty) 'expires_at': result['expires_at'],
       };
       await _request('POST', 'admin/notifications', body: payload);
     });
