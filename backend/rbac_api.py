@@ -546,6 +546,16 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                 ensure_ascii=False, separators=(",", ":")
             )
             source_key = "workbook:" + student["id"] + ":" + (("id:" + external_id) if external_id else hashlib.sha256(stable_payload.encode()).hexdigest())
+            existing = db.execute(
+                "SELECT id,title,weekday,time,teacher,room,status FROM student_supplements WHERE source_key=?",
+                (source_key,)
+            ).fetchone()
+            if existing and (
+                existing["title"] != title or existing["weekday"] != weekday or
+                str(existing["time"] or "") != time_value or str(existing["teacher"] or "") != teacher or
+                str(existing["room"] or "") != room or str(existing["status"] or "") != status
+            ):
+                _cancel_pending_dop_reminders(db, existing["id"])
             db.execute(
                 "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at,source_key) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_key) WHERE source_key IS NOT NULL DO UPDATE SET "
