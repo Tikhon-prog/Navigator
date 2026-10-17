@@ -46,6 +46,11 @@ class NotificationScopeTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_personal_notification_is_visible_only_to_recipient(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("active-dop", "student1", "Robotics", 3, "15:00", "Teacher", "317", "active", core._utc_now()),
+            )
         body = notifications.NotificationBody(
             title="DOP reminder", body="Robotics starts at 15:00",
             kind="dop_reminder", target_type="user", target_id="student1",
