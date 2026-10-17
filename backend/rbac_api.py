@@ -78,18 +78,30 @@ def _init() -> None:
 _auto_sync_task: asyncio.Task | None = None
 
 
+def _auto_sync_interval() -> int:
+    raw = os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300").strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 300
+    if value <= 0:
+        return 0
+    return max(60, min(86400, value))
+
+
 @router.on_event("startup")
 async def init_roles() -> None:
     global _auto_sync_task
     _init()
-    interval = int(os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300"))
-    if interval > 0 and (_auto_sync_task is None or _auto_sync_task.done()):
+    if _auto_sync_interval() > 0 and (_auto_sync_task is None or _auto_sync_task.done()):
         _auto_sync_task = asyncio.create_task(_auto_sync_loop())
 
 
 async def _auto_sync_loop() -> None:
     while True:
-        interval = max(60, int(os.getenv("NAVIGATOR_AUTO_SYNC_INTERVAL_SECONDS", "300")))
+        interval = _auto_sync_interval()
+        if interval == 0:
+            return
         try:
             with core._db() as db:
                 sync_actor = db.execute(
