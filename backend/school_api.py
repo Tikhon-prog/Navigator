@@ -182,9 +182,13 @@ def _b64(data: bytes) -> str:
 
 
 def _signing_key() -> bytes:
-    if len(TOKEN_SECRET) < 32:
-        raise HTTPException(status_code=503, detail="Server authentication is not configured")
-    return TOKEN_SECRET.encode("utf-8")
+    secret = TOKEN_SECRET.strip()
+    normalized = secret.lower()
+    placeholders = ("replace", "change-me", "changeme", "your-secret", "example", "placeholder", "set-me")
+    if len(secret) < 32 or any(marker in normalized for marker in placeholders):
+        # A copied example value must never enable a predictable JWT signing key.
+        raise HTTPException(status_code=503, detail="Server authentication secret is missing or still a placeholder")
+    return secret.encode("utf-8")
 
 
 def _make_token(user: sqlite3.Row) -> str:
