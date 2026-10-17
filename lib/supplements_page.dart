@@ -98,6 +98,19 @@ class _SupplementsPageState extends State<SupplementsPage> {
     student = await const NavigatorStudentProvider().load();
     lastSync = prefs.getString('dop_last_sync') ?? '';
     remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString();
+      } catch (_) {}
+    }
+    final cachedSchoolUserId = prefs.getString('school_supplements_user_id_v1') ?? '';
+    if (cachedSchoolUserId != currentSchoolUserId) {
+      items = items.where((item) => !item.id.startsWith('server_')).toList();
+      await prefs.setString('supplements_local', jsonEncode(items.map((e) => e.toJson()).toList());
+    }
     if (mounted) setState(() => loading = false);
     try { await _refreshServerSupplements(); } catch (_) {}
     if (remindersEnabled) {
@@ -108,7 +121,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
   Future<void> _refreshServerSupplements() async {
     final service = SchoolAccountService();
     final count = await service.refreshMySupplements();
-    if (count <= 0) return;
+    if (count == null) return;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('school_supplements_cache_v1');
     if (raw == null) return;
