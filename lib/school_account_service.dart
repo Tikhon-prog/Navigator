@@ -144,14 +144,15 @@ class SchoolAccountService {
       ),
     );
     final providerToken = result?.accessToken;
-    if (providerToken == null || providerToken.isEmpty) {
-      throw Exception('Школьный провайдер не вернул токен доступа.');
+    final providerIdToken = result?.idToken;
+    if (providerToken == null || providerToken.isEmpty || providerIdToken == null || providerIdToken.isEmpty) {
+      throw Exception('Школьный провайдер не вернул необходимые OIDC-токены.');
     }
 
     final response = await http.post(
       _endpoint(baseUrl, 'auth/sso'),
       headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
-      body: jsonEncode({'access_token': providerToken}),
+      body: jsonEncode({'access_token': providerToken, 'id_token': providerIdToken}),
     ).timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final message = response.statusCode == 403
