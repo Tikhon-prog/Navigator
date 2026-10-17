@@ -2,7 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
-/// Надёжный локальный планировщик уведомлений Navigator.
+/// Надёжный локальный планировщик уведомлений «Поколение».
 /// Расписание школы хранится в локальном времени школы (Москва/Краснодар).
 class LocalNotificationService {
   static final LocalNotificationService _instance = LocalNotificationService._();
@@ -71,7 +71,7 @@ class LocalNotificationService {
           importance: Importance.high,
           priority: Priority.high,
           category: AndroidNotificationCategory.reminder,
-          ticker: 'Navigator',
+          ticker: 'Поколение',
           autoCancel: true,
         ),
       ),
