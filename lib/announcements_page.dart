@@ -198,7 +198,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       final schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
       if (schoolToken.isNotEmpty) {
         final seen = parsed.map((item) => item.id).toSet();
-        for (final endpoint in const ['announcements', 'notifications']) {
+        for (final endpoint in const ['announcements', 'notifications', 'announcements/workbook']) {
           try {
             final secured = await http.get(
               _v2Uri(base, endpoint),
@@ -220,7 +220,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                 'published_at': source['created_at'] ?? source['published_at'] ?? '',
                 'target_class_id': targetType == 'class'
                     ? source['target_id']
-                    : audience == 'class' ? source['class_id'] : '',
+                    : audience == 'class' ? source['class_id'] : (source['target_class_id'] ?? source['class_id'] ?? ''),
                 'target_user_id': targetType == 'user' ? source['target_id'] : '',
                 'severity': source['severity'] ?? (kind == 'emergency' ? 'emergency' : kind == 'warning' ? 'warning' : 'info'),
                 'expires_at': source['expires_at'] ?? '',
