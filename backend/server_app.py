@@ -498,7 +498,7 @@ def create_app(
             raise HTTPException(status_code=403, detail="Bootstrap is disabled or key is invalid")
         if db.scalar(select(User.id).limit(1)) is not None:
             raise HTTPException(status_code=409, detail="Initial administrator already exists")
-        login = body.login.strip()
+        login = body.login.strip().casefold()
         if not login:
             raise HTTPException(status_code=422, detail="Login is required")
         user = User(login=login, display_name=body.display_name.strip(), role="admin",
@@ -523,7 +523,7 @@ def create_app(
         now = utcnow()
         if attempt and _normalise_dt(attempt.locked_until) and _normalise_dt(attempt.locked_until) > now:
             raise HTTPException(status_code=429, detail="Too many attempts. Try again later")
-        user = db.scalar(select(User).where(User.login.ilike(login_name)).limit(1))
+        user = db.scalar(select(User).where(User.login == login_name).limit(1))
         valid = False
         if user is not None and user.active:
             try:
@@ -596,7 +596,7 @@ def create_app(
     @app.post("/api/v1/admin/users", status_code=status.HTTP_201_CREATED)
     def create_user(body: UserCreate, actor: Annotated[User, Depends(require_roles("admin"))],
                     db: Annotated[Session, Depends(get_db)]):
-        user = User(login=body.login.strip(), display_name=body.display_name.strip(), role=body.role,
+        user = User(login=body.login.strip().casefold(), display_name=body.display_name.strip(), role=body.role,
                     password_hash=ph.hash(body.password), active=body.active)
         db.add(user)
         try:
