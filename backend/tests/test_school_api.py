@@ -76,6 +76,20 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
 
+    def test_logout_revokes_access_and_refresh_tokens(self):
+        with api._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+        session = api._issue_session(user)
+        api.logout_session(
+            api.RefreshBody(refresh_token=session["refresh_token"]),
+            authorization="Bearer " + session["access_token"],
+        )
+        with self.assertRaises(HTTPException) as raised:
+            api.current_user("Bearer " + session["access_token"])
+        self.assertEqual(raised.exception.status_code, 401)
+        with self.assertRaises(HTTPException):
+            api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
+
     def test_mentor_only_sees_linked_students(self):
         actor = {"id": "mentor1", "role": "mentor", "class_id": None}
         result = api.list_students(actor)
