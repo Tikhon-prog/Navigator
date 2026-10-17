@@ -2109,6 +2109,45 @@ class SettingsPage extends StatelessWidget {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(account: account)));
   }
 
+  Future<void> _serverAdminLogin(BuildContext context, String baseUrl) async {
+    final login = TextEditingController();
+    final password = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Технический вход администратора'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Только для первого запуска и восстановления доступа. Для обычной работы используй школьный SSO.'),
+          const SizedBox(height: 12),
+          TextField(controller: login, autofocus: true, decoration: const InputDecoration(labelText: 'Логин администратора')),
+          TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Пароль администратора')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (login.text.trim().isEmpty || password.text.isEmpty) return;
+            Navigator.pop(dialogContext, {'username': login.text.trim(), 'password': password.text});
+          }, child: const Text('Войти')),
+        ],
+      ),
+    );
+    login.dispose(); password.dispose();
+    if (result == null) return;
+    try {
+      final session = await SchoolAccountService().signInAsServerAdmin(
+        baseUrl, username: result['username']!, password: result['password']!,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Технический вход выполнен.')));
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+      }
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', '')), duration: const Duration(seconds: 6)),
+      );
+    }
+  }
+
   Future<void> _schoolAccount(BuildContext context) async {
     final service = SchoolAccountService();
     final current = await service.currentUser();
@@ -2140,6 +2179,23 @@ class SettingsPage extends StatelessWidget {
     final baseUrl = (prefs.getString('navigator_api_url') ?? '').trim();
     if (!enabled || baseUrl.isEmpty) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала настрой адрес API в «Кабинет школы → Сервер».')));
+      return;
+    }
+    final loginMethod = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Вход в Поколение'),
+        content: const Text('Выбери школьный вход. Технический вход нужен только администратору для первоначальной настройки или восстановления доступа.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, 'cancel'), child: const Text('Отмена')),
+          OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'admin'), child: const Text('Технический вход')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, 'sso'), child: const Text('Школьный SSO')),
+        ],
+      ),
+    );
+    if (!context.mounted || loginMethod == null || loginMethod == 'cancel') return;
+    if (loginMethod == 'admin') {
+      await _serverAdminLogin(context, baseUrl);
       return;
     }
     try {
