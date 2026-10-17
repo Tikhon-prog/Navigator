@@ -21,6 +21,8 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   try { await LocalNotificationService().initialize(); } catch (_) {}
   runApp(const PokolenieApp());
+  // Re-register FCM token/listeners in the background after a prior SSO login.
+  unawaited(SchoolAccountService().restoreSession());
 }
 
 enum AppThemeType { yellow, turquoise, darkBlue, violet, coral, green }
