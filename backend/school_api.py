@@ -1,4 +1,4 @@
-"""Authenticated school API for Navigator.
+"""Authenticated school API for «Поколение».
 
 The existing workbook-backed API remains read-only. This router adds a separate,
 SQLite-backed service for identities, mentor/teacher scopes, student supplements,
@@ -310,7 +310,7 @@ def startup() -> None:
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "navigator-school-api-v2"}
+    return {"status": "ok", "service": "pokolenie-school-api-v2"}
 
 
 @router.post("/auth/login")
