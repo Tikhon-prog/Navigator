@@ -60,7 +60,7 @@ def init_db() -> None:
           id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
           password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','student','mentor','teacher')),
           display_name TEXT NOT NULL, class_id TEXT, active INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT NOT NULL
+          token_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS refresh_tokens (
           id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -116,6 +116,9 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);
         """)
         # Backward-compatible migration for databases created by earlier builds.
+        user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        if "token_version" not in user_columns:
+            db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
         link_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_links)").fetchall()}
         if "subject" not in link_columns:
             db.execute("ALTER TABLE student_links ADD COLUMN subject TEXT NOT NULL DEFAULT ''")
@@ -177,7 +180,7 @@ def _signing_key() -> bytes:
 def _make_token(user: sqlite3.Row) -> str:
     now = int(time.time())
     header = _b64(b'{"alg":"HS256","typ":"JWT"}')
-    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "iat": now, "exp": now + TOKEN_TTL_SECONDS}, separators=(",", ":")).encode())
+    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "ver": int(user["token_version"] or 0), "iat": now, "exp": now + TOKEN_TTL_SECONDS}, separators=(",", ":")).encode())
     message = f"{header}.{payload}"
     signature = _b64(hmac.new(_signing_key(), message.encode(), hashlib.sha256).digest())
     return f"{message}.{signature}"
@@ -213,8 +216,8 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
         ).fetchone()
         if revoked:
             raise HTTPException(status_code=401, detail="Access token has been revoked")
-        user = db.execute("SELECT id,username,role,display_name,class_id,active FROM users WHERE id=?", (claims.get("sub"),)).fetchone()
-    if not user or not user["active"] or user["role"] != claims.get("role"):
+        user = db.execute("SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?", (claims.get("sub"),)).fetchone()
+    if not user or not user["active"] or user["role"] != claims.get("role") or int(claims.get("ver", 0)) != int(user["token_version"]):
         raise HTTPException(status_code=401, detail="Account is inactive or token is no longer valid")
     return dict(user)
 
@@ -273,7 +276,7 @@ def refresh_session(body: RefreshBody) -> dict[str, Any]:
              (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat())
         )
         user = db.execute(
-            "SELECT id,username,role,display_name,class_id,active FROM users WHERE id=?",
+            "SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?",
             (row["id"],)
         ).fetchone()
     result = _issue_access_with_refresh(user, new_refresh)
