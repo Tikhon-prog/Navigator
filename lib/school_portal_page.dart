@@ -292,7 +292,9 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     final password = TextEditingController();
     final name = TextEditingController();
     final classId = TextEditingController();
+    final scopeClass = TextEditingController();
     String role = 'teacher';
+    String staffPosition = '';
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
@@ -310,6 +312,26 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             ],
             onChanged: (v) => setDialogState(() => role = v ?? 'teacher')),
           if (role == 'student') TextField(controller: classId, decoration: const InputDecoration(labelText: 'Класс ученика')),
+          if (role != 'student') ...[
+            DropdownButtonFormField<String>(
+              value: staffPosition,
+              decoration: const InputDecoration(labelText: 'Должность / дополнительные права'),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('Обычный сотрудник')),
+                if (isAdmin) const DropdownMenuItem(value: 'director', child: Text('Директор')),
+                if (isAdmin) const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
+                const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
+                const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
+                const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
+                const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
+                const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
+                const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
+              ],
+              onChanged: (v) => setDialogState(() => staffPosition = v ?? ''),
+            ),
+            if (staffPosition == 'homeroom_teacher')
+              TextField(controller: scopeClass, decoration: const InputDecoration(labelText: 'Закреплённый класс')),
+          ],
           const SizedBox(height: 8),
           const Text('Для школьного SSO администратор отдельно связывает логин с неизменяемым идентификатором школьной учётной записи.', style: TextStyle(fontSize: 12)),
         ]))),
@@ -317,13 +339,16 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
             if (name.text.trim().isEmpty || login.text.trim().length < 3 || password.text.length < 14 || (role == 'student' && classId.text.trim().isEmpty)) return;
+            if (role == 'student' && staffPosition.isNotEmpty) return;
+            if (staffPosition == 'homeroom_teacher' && scopeClass.text.trim().isEmpty) return;
             Navigator.pop(dialogContext, {'display_name': name.text.trim(), 'username': login.text.trim(),
-              'password': password.text, 'role': role, 'class_id': classId.text.trim()});
+              'password': password.text, 'role': role, 'class_id': classId.text.trim(),
+              'position': staffPosition, 'scope_class': scopeClass.text.trim()});
           }, child: const Text('Создать')),
         ],
       )),
     );
-    login.dispose(); password.dispose(); name.dispose(); classId.dispose();
+    login.dispose(); password.dispose(); name.dispose(); classId.dispose(); scopeClass.dispose();
     if (result == null) return;
     await _withBusy(() async {
       await _request('POST', 'management/users', body: {
@@ -331,6 +356,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         'password': result['password'], 'role': result['role'],
         if ((result['class_id'] ?? '').isNotEmpty) 'class_id': result['class_id'],
       });
+      if ((result['position'] ?? '').isNotEmpty) {
+        await _request('PUT', 'admin/staff-positions', body: {
+          'username': result['username'], 'position': result['position'],
+          if ((result['scope_class'] ?? '').isNotEmpty) 'scope_class': result['scope_class'],
+        });
+      }
     });
   }
 
