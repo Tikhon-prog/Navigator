@@ -68,6 +68,41 @@ class SchoolPositionTests(unittest.TestCase):
                 rbac_api.readiness()
             self.assertEqual(raised.exception.status_code, 503)
 
+    def test_password_reset_revokes_refresh_tokens_and_registered_devices(self):
+        with core._db() as db:
+            user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+            db.execute(
+                "UPDATE staff_positions SET position='director',scope_class=NULL WHERE user_id='teacher1'"
+            )
+            db.execute(
+                "INSERT INTO devices(id,user_id,fcm_token,platform,active,updated_at) VALUES(?,?,?,?,1,?)",
+                ("reset-device", "student1", "reset-device-token-000000000001", "android", core._utc_now()),
+            )
+        session = core._issue_session(user)
+        result = rbac_api.reset_user_password(
+            "student1",
+            rbac_api.PasswordResetBody(password="new-reset-password-long-enough"),
+            {"id": "teacher1", "role": "teacher"},
+        )
+        self.assertEqual(result["status"], "password_reset")
+        with core._db() as db:
+            after = db.execute("SELECT token_version FROM users WHERE id='student1'").fetchone()
+            refresh = db.execute("SELECT revoked_at FROM refresh_tokens WHERE token_hash=?",
+                                  (__import__("hashlib").sha256(session["refresh_token"].encode()).hexdigest(),)).fetchone()
+            device = db.execute("SELECT active FROM devices WHERE id='reset-device'").fetchone()
+        self.assertEqual(after["token_version"], 1)
+        self.assertIsNotNone(refresh["revoked_at"])
+        self.assertEqual(device["active"], 0)
+
+    def test_director_cannot_reset_technical_admin_password(self):
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.reset_user_password(
+                "admin1",
+                rbac_api.PasswordResetBody(password="new-reset-password-long-enough"),
+                {"id": "teacher1", "role": "teacher"},
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
     def test_class_labels_normalize_cyrillic_and_latin_lookalikes(self):
         self.assertEqual(core.normalize_class_id("8А"), core.normalize_class_id("8A"))
         self.assertEqual(core.normalize_class_id(" 10-Б "), core.normalize_class_id("10-B"))
