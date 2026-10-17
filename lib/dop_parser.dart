@@ -216,7 +216,7 @@ class DopParser {
 
     if (student == null) {
       throw const DopParserException(
-        'Не найдены данные ученика в Navigator storage.',
+        'В хранилище профиля «Поколение» не найдены данные ученика.',
       );
     }
 
