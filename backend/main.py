@@ -10,12 +10,15 @@ import openpyxl
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Load secrets before importing modules that read environment variables at import time.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from .school_api import router as school_services_router
 from .sso_api import router as school_sso_router
 from .notification_api import router as notification_router
 from .data_sources import load_configured_sheet
-from dotenv import load_dotenv
 
 
 
