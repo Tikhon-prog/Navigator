@@ -100,7 +100,10 @@ async def _worker_loop() -> None:
 def _recipient_tokens(db, row) -> list[str]:
     target_type, target_id = row["target_type"], row["target_id"]
     if target_type == "all":
-        result = db.execute("SELECT fcm_token FROM devices WHERE active=1")
+        result = db.execute(
+            "SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id "
+            "WHERE d.active=1 AND u.active=1"
+        )
     elif target_type == "class":
         result = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.class_id=? AND u.active=1", (target_id,))
     elif target_type == "user":
