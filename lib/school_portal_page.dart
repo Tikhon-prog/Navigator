@@ -380,6 +380,56 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _syncTeacherAssignments() async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = Map<String, dynamic>.from(await _request('POST', 'management/sync/teacher-assignments') as Map);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Назначения учителей: импортировано ${result['imported'] ?? 0}, пропущено ${result['skipped'] ?? 0}.'),
+          duration: const Duration(seconds: 6),
+        ));
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _linkScheduleTeacherName(Map<String, dynamic> account) async {
+    final sourceName = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Сопоставить имя учителя в расписании'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Аккаунт: ${account['display_name'] ?? account['username'] ?? ''}'),
+          const SizedBox(height: 8),
+          TextField(controller: sourceName, decoration: const InputDecoration(
+            labelText: 'Имя из BaseSchedule', helperText: 'Точное значение столбца «Учитель»',
+          )),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (sourceName.text.trim().isEmpty) return;
+            Navigator.pop(dialogContext, sourceName.text.trim());
+          }, child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    sourceName.dispose();
+    if (result == null) return;
+    await _withBusy(() async {
+      await _request('PUT', 'admin/schedule-teacher-aliases', body: {
+        'source_name': result, 'staff_id': account['id'],
+      });
+    });
+  }
+
   Future<void> _syncDops() async {
     if (busy) return;
     setState(() => busy = true);
@@ -667,6 +717,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: busy ? null : _syncDops,
       )),
+    if (permissions.contains('*') || permissions.contains('assignments.manage'))
+      Card(child: ListTile(
+        leading: Icon(Icons.assignment_ind_rounded, color: scheme.primary),
+        title: const Text('Синхронизировать назначения учителей'),
+        subtitle: const Text('Связать учеников с учителями по классу и предмету из BaseSchedule'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: busy ? null : _syncTeacherAssignments,
+      )),
     Card(child: ListTile(leading: const Icon(Icons.info_outline_rounded), title: const Text('Важно'), subtitle: const Text('Доступ к ученикам и дополнительным занятиям ограничивается назначениями. Экстренные сообщения не заменяют школьную систему тревоги.'))),
   ]);
 
@@ -715,6 +773,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
         if (isAdmin)
           IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
+        if ((permissions.contains('*') || permissions.contains('assignments.manage')) && account['role'] == 'teacher')
+          IconButton(tooltip: 'Сопоставить имя в расписании', onPressed: busy ? null : () => _linkScheduleTeacherName(account), icon: const Icon(Icons.badge_outlined)),
         if (canManageUsers && account['role'] != 'admin')
           IconButton(
             tooltip: (account['active'] == true || account['active'] == 1) ? 'Отключить аккаунт' : 'Включить аккаунт',
