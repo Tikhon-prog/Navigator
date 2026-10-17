@@ -29,8 +29,10 @@ class SchoolApiTests(unittest.TestCase):
                        ("student1", "student", api._hash_password("correct horse battery"), "student", "Student", "8A", api._utc_now()))
             db.execute("INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
                        ("student2", "otherstudent", api._hash_password("correct horse battery"), "student", "Other Student", "8B", api._utc_now()))
-            db.execute("INSERT INTO student_links(student_id,staff_id,link_type,created_at) VALUES(?,?,?,?)",
-                       ("student1", "mentor1", "mentor", api._utc_now()))
+            db.execute("INSERT INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
+                       ("student1", "mentor1", "mentor", "", api._utc_now()))
+            db.execute("INSERT INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
+                       ("student1", "teacher1", "teacher", "Mathematics", api._utc_now()))
             db.execute("INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                        ("dop1", "student1", "Robotics", 3, "15:00", "Mentor", "317", "active", api._utc_now()))
 
@@ -60,7 +62,7 @@ class SchoolApiTests(unittest.TestCase):
         result = api.list_students(actor)
         self.assertEqual([x["id"] for x in result["data"]], ["student1"])
 
-    def test_teacher_sees_only_their_class_or_explicit_links(self):
+    def test_teacher_sees_only_explicit_subject_assignments(self):
         actor = {"id": "teacher1", "role": "teacher", "class_id": "8A"}
         result = api.list_students(actor)
         self.assertEqual([x["id"] for x in result["data"]], ["student1"])
