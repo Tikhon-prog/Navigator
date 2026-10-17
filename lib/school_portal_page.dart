@@ -916,7 +916,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
         if ((permissions.contains('*') || permissions.contains('assignments.manage')) && account['role'] == 'teacher')
           IconButton(tooltip: 'Сопоставить имя в расписании', onPressed: busy ? null : () => _linkScheduleTeacherName(account), icon: const Icon(Icons.badge_outlined)),
-        if (canManageUsers && const {'teacher', 'mentor'}.contains(account['role']) &&
+        if (canManageUsers && account['id']?.toString() != user['id']?.toString() &&
+            const {'teacher', 'mentor'}.contains(account['role']) &&
             (isAdmin || !const {'director', 'deputy'}.contains(account['position'])))
           IconButton(tooltip: 'Изменить должность', onPressed: busy ? null : () => _assignPosition(account), icon: const Icon(Icons.manage_accounts_outlined)),
         if (canManageUsers && account['role'] != 'admin')
