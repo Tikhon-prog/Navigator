@@ -2249,7 +2249,11 @@ class SettingsPage extends StatelessWidget {
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Технический вход выполнен.')));
-        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        if (user['role'] == 'student') {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+        } else {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        }
       }
     } catch (error) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
@@ -2271,7 +2275,10 @@ class SettingsPage extends StatelessWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, 'close'), child: const Text('Закрыть')),
             OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'signout'), child: const Text('Выйти')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, 'portal'), child: const Text('Открыть кабинет')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, 'portal'),
+              child: Text(current['role'] == 'student' ? 'Мои оповещения' : 'Открыть кабинет'),
+            ),
           ],
         ),
       );
@@ -2279,7 +2286,11 @@ class SettingsPage extends StatelessWidget {
         await service.signOut();
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
       } else if (action == 'portal' && context.mounted) {
-        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        if (current['role'] == 'student') {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+        } else {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        }
       }
       return;
     }
