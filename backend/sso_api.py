@@ -88,9 +88,6 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
     auto_provision = os.getenv("NAVIGATOR_OIDC_AUTO_PROVISION", "false").strip().lower() in {"1", "true", "yes", "on"}
     role_claim = os.getenv("NAVIGATOR_OIDC_ROLE_CLAIM", "role").strip()
     raw_role = claims.get(role_claim)
-    if isinstance(raw_role, list):
-        raw_role = next((value for value in raw_role if isinstance(value, str)), "")
-    role_text = str(raw_role or "").strip().lower()
     role_aliases = {
         "student": "student", "students": "student", "ученик": "student", "ученица": "student",
         "teacher": "teacher", "teachers": "teacher", "учитель": "teacher", "педагог": "teacher",
@@ -102,6 +99,9 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         "librarian": "librarian", "библиотекарь": "librarian",
         "admin": "admin", "administrator": "admin", "администратор": "admin",
     }
+    if isinstance(raw_role, list):
+        raw_role = next((value for value in raw_role if isinstance(value, str) and value.strip().lower() in role_aliases), "")
+    role_text = str(raw_role or "").strip().lower()
     mapped_role = role_aliases.get(role_text)
     class_claim = os.getenv("NAVIGATOR_OIDC_CLASS_CLAIM", "class_id").strip()
     class_id = str(claims.get(class_claim) or "").strip() or None
@@ -109,9 +109,20 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
     display_name = str(claims.get(display_claim) or claims.get("given_name") or username).strip()[:160]
 
     with core._db() as db:
-        existing = db.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE AND active=1", (username,)).fetchone()
+        existing = db.execute(
+            "SELECT u.*,p.position,p.scope_class FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.username=? COLLATE NOCASE AND u.active=1", (username,)
+        ).fetchone()
         if existing:
-            if not auto_link:
+            if not auto_link or not mapped_role:
+                return None
+            expected_base = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
+            if existing["role"] != expected_base:
+                return None
+            position_roles = {"director", "deputy", "homeroom_teacher", "dop_coordinator", "mentor_coordinator", "librarian"}
+            if mapped_role in position_roles and existing["position"] != mapped_role:
+                return None
+            if mapped_role == "student" and class_id and existing["class_id"] != class_id:
                 return None
             try:
                 db.execute("INSERT INTO sso_identities(issuer,subject,user_id,linked_at) VALUES(?,?,?,?)",
