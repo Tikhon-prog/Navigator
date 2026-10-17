@@ -66,12 +66,40 @@ void main() {
       expect(result.nodes.every((node) => node.floor == 2), isTrue);
     });
 
+    test('main entrance remains on the first floor when another map floor is selected', () {
+      final result = RouteEngine.build('104', startFloor: 3);
+
+      expect(result, isNotNull);
+      expect(result!.startFloor, 1);
+      expect(result.changesFloor, isFalse);
+      expect(result.nodes.every((node) => node.floor == 1), isTrue);
+    });
+
+    test('main entrance to another floor reports the real origin', () {
+      final result = RouteEngine.build('201', startFloor: 3);
+
+      expect(result, isNotNull);
+      expect(result!.startFloor, 1);
+      expect(result.nodes.first.floor, 1);
+      expect(result.destination.floor, 2);
+      expect(result.changesFloor, isTrue);
+    });
+
+    test('unknown route destination returns null rather than throwing', () {
+      expect(RouteEngine.build('not-a-real-room'), isNull);
+    });
+
+    test('unknown route origin returns null rather than throwing', () {
+      expect(RouteEngine.build('201', startLocationId: 'not-a-real-room'), isNull);
+    });
+
     test('same room produces a zero-distance route', () {
       final result = RouteEngine.build('311', startFloor: 3, startLocationId: '311');
 
       expect(result, isNotNull);
       expect(result!.distance, 0);
       expect(result.changesFloor, isFalse);
+      expect(RouteEngine.instructions(result).single.text, contains('Вы уже находитесь'));
     });
   });
 
