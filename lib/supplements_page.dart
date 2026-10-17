@@ -99,9 +99,28 @@ class _SupplementsPageState extends State<SupplementsPage> {
     lastSync = prefs.getString('dop_last_sync') ?? '';
     remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
     if (mounted) setState(() => loading = false);
+    try { await _refreshServerSupplements(); } catch (_) {}
     if (remindersEnabled) {
       try { await _refreshDopReminders(); } catch (_) {}
     }
+  }
+
+  Future<void> _refreshServerSupplements() async {
+    final service = SchoolAccountService();
+    final count = await service.refreshMySupplements();
+    if (count <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('school_supplements_cache_v1');
+    if (raw == null) return;
+    try {
+      final serverItems = (jsonDecode(raw) as List)
+          .map((e) => Supplement.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      final localItems = items.where((e) => !e.id.startsWith('server_')).toList();
+      items = [...localItems, ...serverItems];
+      if (mounted) setState(() {});
+      await _save();
+    } catch (_) {}
   }
 
   Future<void> _save() async {
