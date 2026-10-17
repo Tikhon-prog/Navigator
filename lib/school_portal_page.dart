@@ -637,7 +637,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     await _withBusy(() async {
       if ((result['position'] ?? '').isEmpty) {
         if (currentPosition.isNotEmpty) {
-          await _request('DELETE', 'admin/staff-positions/${Uri.encodeComponent(username)}');
+          await _request('DELETE', 'admin/staff-positions/$username');
         }
       } else {
         await _request('PUT', 'admin/staff-positions', body: {
