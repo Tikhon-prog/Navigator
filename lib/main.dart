@@ -184,15 +184,31 @@ class SchoolScheduleCatalog {
     final base = (prefs.getString('navigator_api_url') ?? '').trim();
     if (!NavigatorApiConfig(baseUrl: base).enabled) return 0;
     // Use the configured URL rather than a compile-time API address.
-    final response = await OnlineDataService(NavigatorApiConfig(baseUrl: base)).get('data/BaseSchedule');
+    final service = OnlineDataService(NavigatorApiConfig(baseUrl: base));
+    final response = await service.get('data/BaseSchedule');
     if (response == null) return 0;
     final rawRows = response['data'];
     if (rawRows is! List) return 0;
+    final classNames = <String, String>{};
+    try {
+      final classPayload = await service.get('data/Classes');
+      final classRows = classPayload?['data'];
+      if (classRows is List) {
+        for (final rawClass in classRows.whereType<Map>()) {
+          final item = Map<String, dynamic>.from(rawClass);
+          final id = _rowText(item, ['id', 'class_id', 'code']);
+          final name = _rowText(item, ['name', 'class_name', 'title', 'класс']);
+          if (id.isNotEmpty && name.isNotEmpty) classNames[id] = name;
+        }
+      }
+    } catch (_) {}
     final variantsByClass = <String, List<Map<String, dynamic>>>{};
     for (final raw in rawRows) {
       if (raw is! Map) continue;
       final row = Map<String, dynamic>.from(raw);
-      final className = _rowText(row, ['class_id', 'class_name', 'class', 'класс']);
+      final classRef = _rowText(row, ['class_id', 'class', 'класс_id']);
+      final classLabel = _rowText(row, ['class_name', 'class_label', 'class_display_name', 'класс']);
+      final className = classLabel.isNotEmpty ? classLabel : (classNames[classRef] ?? classRef);
       final subject = _rowText(row, ['subject', 'discipline', 'lesson', 'предмет', 'дисциплина']);
       final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
       final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'время']);
@@ -226,8 +242,28 @@ class SchoolScheduleCatalog {
   }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
   static List<String> classesForGrade(String grade) => List<String>.from(((_data?['class_order'] as Map?)?[grade] as List?) ?? const []);
+  static String _normalizeClassName(String value) {
+    const lookalikes = <String, String>{
+      'А': 'A', 'В': 'B', 'С': 'C', 'Е': 'E', 'Н': 'H', 'К': 'K',
+      'М': 'M', 'О': 'O', 'Р': 'P', 'Т': 'T', 'Х': 'X', 'У': 'Y',
+    };
+    return value.trim().toUpperCase().replaceAll(' ', '').split('')
+        .map((letter) => lookalikes[letter] ?? letter).join();
+  }
+
   static List<Map<String, dynamic>> variants(String className) {
-    final raw = ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
+    final classes = _data?['classes'] as Map? ?? const {};
+    dynamic classData = classes[className];
+    if (classData == null) {
+      final wanted = _normalizeClassName(className);
+      for (final entry in classes.entries) {
+        if (_normalizeClassName(entry.key.toString()) == wanted) {
+          classData = entry.value;
+          break;
+        }
+      }
+    }
+    final raw = (classData as Map?)?['variants'];
     return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
   }
   static String baseSubject(String value) {
