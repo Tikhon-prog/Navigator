@@ -40,7 +40,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   bool get canReadUsers => permissions.contains('*') || permissions.contains('staff.read');
   bool get canSeeStaffList => canReadUsers || permissions.contains('assignments.manage');
   bool get canReadAudit => permissions.contains('*') || permissions.contains('audit.read');
-  bool get canSendNotifications => isLeadership || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) || user['role'] == 'teacher';
+  bool get canSendNotifications =>
+      isLeadership ||
+      const {'homeroom_teacher', 'dop_coordinator'}.contains(position) ||
+      user['role'] == 'teacher' ||
+      user['role'] == 'mentor';
   bool get canReadStudents => user['role'] != 'student' && user['role'] != null;
 
   @override
