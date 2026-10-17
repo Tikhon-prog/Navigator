@@ -130,6 +130,44 @@ class NotificationScopeTests(unittest.TestCase):
             result = notifications.list_notifications({"id": "teacher1", "role": "teacher", "class_id": None})
         self.assertEqual([row["title"] for row in result["data"]], ["Class notice"])
 
+    def test_group_manager_can_create_group_and_add_active_member(self):
+        actor = {"id": "admin1", "role": "admin"}
+        group = notifications.create_group(notifications.GroupBody(name="Math Olympiad"), actor)
+        result = notifications.add_group_member(
+            group["id"], notifications.GroupMemberBody(user_id="student1"), actor
+        )
+        self.assertEqual(result["status"], "added")
+        members = notifications.list_group_members(group["id"], actor)
+        self.assertEqual([item["id"] for item in members["data"]], ["student1"])
+
+    def test_assignment_coordinator_can_manage_groups_but_teacher_cannot(self):
+        manager = {"id": "teacher1", "role": "teacher", "class_id": "8A"}
+        with patch("backend.rbac_api._position", return_value=("mentor_coordinator", None)):
+            group = notifications.create_group(notifications.GroupBody(name="Mentor Cohort"), manager)
+            self.assertEqual(group["name"], "Mentor Cohort")
+        with patch("backend.rbac_api._position", return_value=(None, None)):
+            with self.assertRaises(HTTPException) as raised:
+                notifications.create_group(notifications.GroupBody(name="Unauthorized"), manager)
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_group_notification_is_visible_only_to_members(self):
+        admin = {"id": "admin1", "role": "admin"}
+        group = notifications.create_group(notifications.GroupBody(name="Private group"), admin)
+        notifications.add_group_member(group["id"], notifications.GroupMemberBody(user_id="student1"), admin)
+        body = notifications.NotificationBody(
+            title="Group notice", body="Only members see this",
+            kind="targeted", target_type="group", target_id=group["id"],
+        )
+        notifications.create_notification(body, admin)
+        self.assertEqual(
+            [item["title"] for item in notifications.list_notifications({"id": "student1", "role": "student", "class_id": "8A"})],
+            ["Group notice"],
+        )
+        self.assertEqual(
+            notifications.list_notifications({"id": "student2", "role": "student", "class_id": "8B"})["data"],
+            [],
+        )
+
     def test_teacher_cannot_broadcast_to_everyone(self):
         body = notifications.NotificationBody(title="Message", body="Test")
         with self.assertRaises(HTTPException) as raised:
