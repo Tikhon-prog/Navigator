@@ -75,7 +75,7 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS refresh_tokens (
           id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
-          revoked_at TEXT, last_used_at TEXT
+          revoked_at TEXT, last_used_at TEXT, auth_method TEXT NOT NULL DEFAULT 'password'
         );
         CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id,expires_at);
         CREATE TABLE IF NOT EXISTS revoked_access_tokens (
@@ -132,6 +132,9 @@ def init_db() -> None:
         user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "token_version" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+        refresh_columns = {row["name"] for row in db.execute("PRAGMA table_info(refresh_tokens)").fetchall()}
+        if "auth_method" not in refresh_columns:
+            db.execute("ALTER TABLE refresh_tokens ADD COLUMN auth_method TEXT NOT NULL DEFAULT 'password'")
         link_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_links)").fetchall()}
         if "subject" not in link_columns:
             db.execute("ALTER TABLE student_links ADD COLUMN subject TEXT NOT NULL DEFAULT ''")
@@ -194,10 +197,14 @@ def _signing_key() -> bytes:
     return secret.encode("utf-8")
 
 
-def _make_token(user: sqlite3.Row) -> str:
+def _allow_non_sso_password_login() -> bool:
+    return os.getenv("NAVIGATOR_ALLOW_NON_SSO_PASSWORD_LOGIN", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _make_token(user: sqlite3.Row | dict[str, Any], auth_method: str = "password") -> str:
     now = int(time.time())
     header = _b64(b'{"alg":"HS256","typ":"JWT"}')
-    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "ver": int(user["token_version"] or 0), "iat": now, "exp": now + TOKEN_TTL_SECONDS}, separators=(",", ":")).encode())
+    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "ver": int(user["token_version"] or 0), "auth_method": auth_method, "iat": now, "exp": now + TOKEN_TTL_SECONDS}, separators=(",", ":")).encode())
     message = f"{header}.{payload}"
     signature = _b64(hmac.new(_signing_key(), message.encode(), hashlib.sha256).digest())
     return f"{message}.{signature}"
@@ -236,10 +243,13 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
         user = db.execute("SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?", (claims.get("sub"),)).fetchone()
     if not user or not user["active"] or user["role"] != claims.get("role") or int(claims.get("ver", 0)) != int(user["token_version"]):
         raise HTTPException(status_code=401, detail="Account is inactive or token is no longer valid")
+    auth_method = str(claims.get("auth_method", "password"))
+    if user["role"] != "admin" and auth_method != "sso" and not _allow_non_sso_password_login():
+        raise HTTPException(status_code=401, detail="This account must use the school's single sign-on")
     return {key: user[key] for key in ("id", "username", "role", "display_name", "class_id", "active")}
 
 
-def _issue_session(user: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+def _issue_session(user: sqlite3.Row | dict[str, Any], auth_method: str = "password") -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     refresh_token = secrets.token_urlsafe(48)
     token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
@@ -247,12 +257,12 @@ def _issue_session(user: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         db.execute("DELETE FROM revoked_access_tokens WHERE expires_at<=?", (now.isoformat(),))
         db.execute("DELETE FROM refresh_tokens WHERE expires_at<=?", (now.isoformat(),))
         db.execute(
-            "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)",
+            "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at,auth_method) VALUES(?,?,?,?,?,?)",
             (secrets.token_urlsafe(12), user["id"], token_hash, now.isoformat(),
-             (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat())
+             (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat(), auth_method)
         )
     return {
-        "access_token": _make_token(user),
+        "access_token": _make_token(user, auth_method),
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": TOKEN_TTL_SECONDS,
