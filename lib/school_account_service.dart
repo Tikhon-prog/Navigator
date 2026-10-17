@@ -32,6 +32,32 @@ class SchoolAccountService {
     return base.replace(path: path, query: null, fragment: '', userInfo: '');
   }
 
+  static Uri _sheetUri(String rawBase, String sheet) {
+    final base = Uri.parse(rawBase.trim());
+    var path = base.path.replaceFirst(RegExp(r'/+$'), '');
+    if (path.endsWith('/api/v2')) path = path.substring(0, path.length - '/api/v2'.length);
+    path = path.endsWith('/api') ? '$path/data/$sheet' : '$path/api/data/$sheet';
+    return base.replace(path: path, query: null, fragment: '', userInfo: '');
+  }
+
+  Future<String> _resolveClassName(String baseUrl, String classId) async {
+    try {
+      final response = await http.get(_sheetUri(baseUrl, 'Classes'),
+          headers: const {'Accept': 'application/json'}).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return classId;
+      final payload = jsonDecode(response.body);
+      final rows = payload is Map ? payload['data'] : null;
+      if (rows is! List) return classId;
+      for (final raw in rows.whereType<Map>()) {
+        final id = (raw['id'] ?? raw['class_id'] ?? raw['code'] ?? '').toString().trim();
+        if (id != classId) continue;
+        final name = (raw['name'] ?? raw['class_name'] ?? raw['title'] ?? raw['класс'] ?? '').toString().trim();
+        if (name.isNotEmpty) return name;
+      }
+    } catch (_) {}
+    return classId;
+  }
+
   Future<Map<String, dynamic>> _getConfig(String baseUrl) async {
     final response = await http.get(
       _endpoint(baseUrl, 'public/config'),
@@ -95,8 +121,9 @@ class SchoolAccountService {
     final userData = payload['user'];
     if (userData is Map && userData['class_id'] != null && userData['class_id'].toString().trim().isNotEmpty) {
       final classId = userData['class_id'].toString().trim();
+      final className = await _resolveClassName(baseUrl, classId);
       await prefs.setString('student_class_id', classId);
-      await prefs.setString('student_class_name', classId);
+      await prefs.setString('student_class_name', className);
     }
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
     // Keep server-side reminder scheduling aligned with the user's local choice.
