@@ -262,5 +262,28 @@ class NavigatorServerApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/admin/users",
             headers=self.admin_headers).status_code, 200)
 
+
+    def test_class_alert_is_visible_to_assigned_students_teachers_and_mentors_only(self):
+        mentor, other_mentor, teacher, student, _stranger = self.set_up_school_graph()
+        response = self.client.post("/api/v1/alerts", headers=self.admin_headers, json={
+            "title": "Сообщение для 8А", "body": "Обновили кабинет.",
+            "severity": "info", "target_type": "class", "target_value": "8A",
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        alert_id = response.json()["id"]
+
+        mentor_alerts = self.client.get("/api/v1/alerts", headers=self.token_for("mentor-one"))
+        self.assertIn(alert_id, [item["id"] for item in mentor_alerts.json()["data"]])
+        other_mentor_alerts = self.client.get("/api/v1/alerts", headers=self.token_for("mentor-two"))
+        self.assertNotIn(alert_id, [item["id"] for item in other_mentor_alerts.json()["data"]])
+
+        student_alerts = self.client.get("/api/v1/alerts", headers=self.token_for("student-one"))
+        self.assertIn(alert_id, [item["id"] for item in student_alerts.json()["data"]])
+        stranger_alerts = self.client.get("/api/v1/alerts", headers=self.token_for("student-two"))
+        self.assertNotIn(alert_id, [item["id"] for item in stranger_alerts.json()["data"]])
+
+        teacher_alerts = self.client.get("/api/v1/alerts", headers=self.token_for("teacher-one"))
+        self.assertIn(alert_id, [item["id"] for item in teacher_alerts.json()["data"]])
+
 if __name__ == "__main__":
     unittest.main()
