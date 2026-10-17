@@ -86,6 +86,21 @@ class TeacherAssignmentSyncTests(unittest.TestCase):
         self.assertEqual(schedule_links, [])
         self.assertEqual([(row["student_id"], row["staff_id"]) for row in manual_links], [("student1", "teacher2")])
 
+    def test_split_groups_across_different_days_are_not_auto_expanded_to_whole_class(self):
+        rows = [
+            {"class_id": "class8a", "class_name": "8A", "subject": "English",
+             "weekday": 1, "time": "08:30", "group": 1, "teacher": "Teacher One"},
+            {"class_id": "class8a", "class_name": "8A", "subject": "English",
+             "weekday": 3, "time": "09:30", "group": 2, "teacher": "Teacher Two"},
+        ]
+        result = self._run_sync(rows)
+        self.assertEqual(result["split_subjects"], 1)
+        with core._db() as db:
+            schedule_links = db.execute(
+                "SELECT 1 FROM teacher_subject_assignments WHERE subject='English' AND source_key LIKE 'schedule:%'"
+            ).fetchall()
+        self.assertEqual(schedule_links, [])
+
     def test_incomplete_source_preserves_previous_schedule_assignments(self):
         rows = [
             {"class_id": "class8a", "class_name": "8A", "subject": "English",
