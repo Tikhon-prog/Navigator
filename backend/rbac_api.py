@@ -183,6 +183,10 @@ class UserPatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     class_id: str | None = Field(default=None, max_length=40)
     active: bool | None = None
+
+
+class PasswordResetBody(BaseModel):
+    password: str = Field(min_length=14, max_length=256)
     password: str | None = Field(default=None, min_length=14, max_length=256)
 
 
@@ -451,6 +455,33 @@ def patch_user(user_id: str, body: UserPatch,
         ).fetchone()
     core._audit(actor["id"], "user.updated", user_id, {"fields": sorted(changes)})
     return {"user": dict(row)}
+
+
+@router.post("/management/users/{user_id}/reset-password")
+def reset_user_password(user_id: str, body: PasswordResetBody,
+                        actor: dict[str, Any] = Depends(require_permission("staff.manage"))) -> dict[str, str]:
+    position, _ = _position(actor["id"])
+    with core._db() as db:
+        target = db.execute("SELECT id,role,active FROM users WHERE id=?", (user_id,)).fetchone()
+        if not target or not target["active"]:
+            raise HTTPException(status_code=404, detail="Active account not found")
+        if actor["role"] != "admin" and target["role"] == "admin":
+            raise HTTPException(status_code=403, detail="Only an administrator can reset another administrator's password")
+        if actor["role"] != "admin" and target["id"] == actor["id"]:
+            raise HTTPException(status_code=403, detail="Use the school SSO or contact the technical administrator to recover your own account")
+        db.execute(
+            "UPDATE users SET password_hash=?,token_version=token_version+1 WHERE id=?",
+            (core._hash_password(body.password), user_id)
+        )
+        db.execute(
+            "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
+            (_now(), _now(), user_id)
+        )
+        # A password reset forces every device to authenticate again; do not
+        # continue sending private notifications to an old/stale installation.
+        db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=?", (_now(), user_id))
+    core._audit(actor["id"], "user.password_reset", user_id, {"source": "school_portal"})
+    return {"status": "password_reset", "user_id": user_id, "sessions_revoked": "true"}
 
 
 @router.put("/admin/staff-positions")
