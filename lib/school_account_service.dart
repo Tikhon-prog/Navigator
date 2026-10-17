@@ -93,6 +93,10 @@ class SchoolAccountService {
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
+    // Keep server-side reminder scheduling aligned with the user's local choice.
+    try {
+      await setDopRemindersEnabled(prefs.getBool('dop_reminders_enabled') ?? false);
+    } catch (_) {}
 
     var pushRegistered = false;
     try {
