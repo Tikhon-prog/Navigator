@@ -587,6 +587,67 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _assignPosition(Map<String, dynamic> account) async {
+    final username = (account['username'] ?? '').toString();
+    final currentPosition = (account['position'] ?? '').toString();
+    if (!isAdmin && const {'director', 'deputy'}.contains(currentPosition)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Высшие должности может менять только технический администратор.')));
+      return;
+    }
+    final scopeClass = TextEditingController(text: (account['scope_class'] ?? '').toString());
+    String position = currentPosition;
+    final allowed = <String>{'', 'teacher', 'mentor', 'homeroom_teacher', 'dop_coordinator', 'mentor_coordinator', 'librarian'};
+    if (isAdmin) allowed.addAll({'director', 'deputy'});
+    if (!allowed.contains(position)) position = '';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
+        title: Text('Должность: ${account['display_name'] ?? username}'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          DropdownButtonFormField<String>(
+            value: position,
+            decoration: const InputDecoration(labelText: 'Должность'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Без отдельной должности')),
+              const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
+              const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
+              const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
+              const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
+              const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
+              const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
+              if (isAdmin) const DropdownMenuItem(value: 'director', child: Text('Директор')),
+              if (isAdmin) const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
+            ],
+            onChanged: (value) => setDialogState(() => position = value ?? ''),
+          ),
+          if (position == 'homeroom_teacher')
+            TextField(controller: scopeClass, decoration: const InputDecoration(labelText: 'Закреплённый класс')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (position == 'homeroom_teacher' && scopeClass.text.trim().isEmpty) return;
+            Navigator.pop(dialogContext, {'position': position, 'scope_class': scopeClass.text.trim()});
+          }, child: const Text('Сохранить')),
+        ],
+      )),
+    );
+    scopeClass.dispose();
+    if (result == null) return;
+    await _withBusy(() async {
+      if ((result['position'] ?? '').isEmpty) {
+        if (currentPosition.isNotEmpty) {
+          await _request('DELETE', 'admin/staff-positions/${Uri.encodeComponent(username)}');
+        }
+      } else {
+        await _request('PUT', 'admin/staff-positions', body: {
+          'username': username, 'position': result['position'],
+          if ((result['scope_class'] ?? '').isNotEmpty) 'scope_class': result['scope_class'],
+        });
+      }
+    });
+  }
+
   Future<void> _assignStudent(Map<String, dynamic> student) async {
     final subject = TextEditingController();
     String assignmentType = 'mentor';
@@ -855,6 +916,9 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
         if ((permissions.contains('*') || permissions.contains('assignments.manage')) && account['role'] == 'teacher')
           IconButton(tooltip: 'Сопоставить имя в расписании', onPressed: busy ? null : () => _linkScheduleTeacherName(account), icon: const Icon(Icons.badge_outlined)),
+        if (canManageUsers && const {'teacher', 'mentor'}.contains(account['role']) &&
+            (isAdmin || !const {'director', 'deputy'}.contains(account['position'])))
+          IconButton(tooltip: 'Изменить должность', onPressed: busy ? null : () => _assignPosition(account), icon: const Icon(Icons.manage_accounts_outlined)),
         if (canManageUsers && account['role'] != 'admin')
           IconButton(
             tooltip: (account['active'] == true || account['active'] == 1) ? 'Отключить аккаунт' : 'Включить аккаунт',
