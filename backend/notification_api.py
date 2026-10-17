@@ -326,7 +326,7 @@ def add_group_member(group_id: str, body: GroupMemberBody,
 def create_notification(body: NotificationBody,
                        actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
     from . import rbac_api
-    position, scope_class = rbac_api._position(actor["id"])
+    position, scope_class = (None, None) if actor["role"] == "admin" else rbac_api._position(actor["id"])
     is_school_leadership = actor["role"] == "admin" or position in {"director", "deputy"}
     can_manage_dop = actor["role"] == "admin" or position in {"director", "deputy", "dop_coordinator"}
     can_class_broadcast = is_school_leadership or position in {"homeroom_teacher", "dop_coordinator"}
