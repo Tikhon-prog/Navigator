@@ -183,10 +183,6 @@ class UserPatch(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     class_id: str | None = Field(default=None, max_length=40)
     active: bool | None = None
-
-
-class PasswordResetBody(BaseModel):
-    password: str = Field(min_length=14, max_length=256)
     password: str | None = Field(default=None, min_length=14, max_length=256)
 
 
