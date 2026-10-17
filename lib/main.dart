@@ -16,9 +16,32 @@ import 'school_account_service.dart';
 import 'school_portal_page.dart';
 import 'online_data_service.dart';
 
+const String _configuredApiBase = String.fromEnvironment('POKOLENIE_API_BASE_URL');
+
+Future<void> _seedOnlineSettings() async {
+  final base = _configuredApiBase.trim();
+  if (!NavigatorApiConfig(baseUrl: base).enabled) return;
+  final prefs = await SharedPreferences.getInstance();
+  final savedBase = (prefs.getString('navigator_api_url') ?? '').trim();
+  // A build-time URL is a default for new installs. Respect a user's explicit
+  // existing configuration (including disabling online mode).
+  if (savedBase.isEmpty) {
+    await prefs.setString('navigator_api_url', base);
+    if (prefs.getBool('navigator_api_enabled') == null) {
+      await prefs.setBool('navigator_api_enabled', true);
+    }
+  }
+  final selectedBase = (prefs.getString('navigator_api_url') ?? base).trim();
+  if ((prefs.getString('school_api_base_url_v1') ?? '').trim().isEmpty &&
+      NavigatorApiConfig(baseUrl: selectedBase).enabled) {
+    await prefs.setString('school_api_base_url_v1', selectedBase);
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  try { await _seedOnlineSettings(); } catch (_) {}
   try { await LocalNotificationService().initialize(); } catch (_) {}
   runApp(const PokolenieApp());
   // Re-register FCM token/listeners in the background after a prior SSO login.
