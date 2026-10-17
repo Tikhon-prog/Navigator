@@ -146,7 +146,7 @@ def _enqueue_dop_reminders() -> int:
             "WHERE s.status='active' AND s.weekday BETWEEN 1 AND 7"
         ).fetchall()
         for record in records:
-            match = re.search(r"(\\d{1,2}):(\\d{2})", str(record["time"] or ""))
+            match = re.search(r"(\d{1,2}):(\d{2})", str(record["time"] or ""))
             if not match:
                 continue
             hour, minute = int(match.group(1)), int(match.group(2))
