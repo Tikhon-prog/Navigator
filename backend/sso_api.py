@@ -32,6 +32,8 @@ def _userinfo(access_token: str) -> dict[str, Any]:
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").rstrip("/")
     if not endpoint or not issuer:
         raise HTTPException(status_code=503, detail="School SSO is not configured")
+    if not issuer.startswith("https://") and not issuer.startswith("http://localhost"):
+        raise HTTPException(status_code=503, detail="SSO issuer must use HTTPS")
     if not endpoint.startswith("https://") and not endpoint.startswith("http://localhost"):
         raise HTTPException(status_code=503, detail="SSO userinfo endpoint must use HTTPS")
     try:
