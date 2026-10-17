@@ -97,6 +97,20 @@ async def init_roles() -> None:
         _auto_sync_task = asyncio.create_task(_auto_sync_loop())
 
 
+def _record_sync_failure(source: str, exc: Exception) -> None:
+    # Log only exception class and source. Provider exceptions may contain
+    # upstream URLs or other operational details and must not leak into an API.
+    with core._db() as db:
+        db.execute(
+            "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
+            (source, 0, 0, _now(), json.dumps({
+                "status": "failed",
+                "error_type": type(exc).__name__,
+                "note": "Automatic sync failed; inspect server logs and source configuration.",
+            }))
+        )
+
+
 async def _auto_sync_loop() -> None:
     while True:
         interval = _auto_sync_interval()
@@ -109,13 +123,41 @@ async def _auto_sync_loop() -> None:
                     "WHERE u.active=1 AND (u.role='admin' OR p.position IN ('director','deputy')) "
                     "ORDER BY CASE WHEN u.role='admin' THEN 0 ELSE 1 END,u.created_at LIMIT 1"
                 ).fetchone()
-            if sync_actor:
-                actor = {"id": sync_actor["id"], "role": sync_actor["role"]}
-                await asyncio.to_thread(sync_supplements, actor)
-                await asyncio.to_thread(sync_teacher_assignments, actor)
-        except Exception:
-            # Keep the API alive if an external data source is unavailable.
-            pass
+        except Exception as exc:
+            try:
+                _record_sync_failure("automatic_sync:bootstrap", exc)
+            except Exception:
+                pass
+            sync_actor = None
+        if sync_actor:
+            actor = {"id": sync_actor["id"], "role": sync_actor["role"]}
+            for name, sync_fn in (
+                ("supplements", sync_supplements),
+                ("teacher_assignments", sync_teacher_assignments),
+            ):
+                try:
+                    await asyncio.to_thread(sync_fn, actor)
+                except Exception as exc:
+                    try:
+                        _record_sync_failure(
+                            os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+                            + ":automatic:" + name,
+                            exc,
+                        )
+                    except Exception:
+                        pass
+        else:
+            # Database may be ready before the bootstrap administrator was created.
+            # Record a visible state so the portal won't imply sync is working.
+            try:
+                with core._db() as db:
+                    active_admins = db.execute(
+                        "SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1"
+                    ).fetchone()["n"]
+                if active_admins == 0:
+                    _record_sync_failure("automatic_sync:setup", RuntimeError("administrator_not_bootstrapped"))
+            except Exception:
+                pass
         await asyncio.sleep(interval)
 
 
@@ -788,9 +830,21 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
 @router.get("/management/sync/status")
 def sync_status(actor: dict[str, Any] = Depends(require_permission("dop.read_all"))) -> dict[str, Any]:
     with core._db() as db:
-        row = db.execute("SELECT source,imported,skipped,created_at,result_json FROM school_sync_runs ORDER BY id DESC LIMIT 1").fetchone()
-    return {"last_run": dict(row) if row else None,
-            "configured_source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()}
+        rows = db.execute(
+            "SELECT source,imported,skipped,created_at,result_json FROM school_sync_runs ORDER BY id DESC LIMIT 50"
+        ).fetchall()
+    parsed = [dict(row) for row in rows]
+    latest = parsed[0] if parsed else None
+    def last_matching(predicate):
+        return next((row for row in parsed if predicate(row["source"])), None)
+    return {
+        "last_run": latest,
+        "last_supplements": last_matching(lambda source: "supplements" in source),
+        "last_teacher_assignments": last_matching(lambda source: "teacher_assignments" in source),
+        "last_failure": last_matching(lambda source: "automatic" in source),
+        "configured_source": os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
+        "automatic_sync_interval_seconds": _auto_sync_interval(),
+    }
 
 
 @router.get("/announcements/workbook")
