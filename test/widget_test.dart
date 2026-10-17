@@ -4,9 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:navigator/main.dart';
 
 void main() {
-  testWidgets('Navigator app mounts its Material application', (tester) async {
+  testWidgets('Поколение app mounts its Material application', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const NavigatorApp());
+    await tester.pumpWidget(const PokolenieApp());
     await tester.pump();
     expect(find.byType(MaterialApp), findsOneWidget);
   });
