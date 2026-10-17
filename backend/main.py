@@ -75,9 +75,11 @@ app.include_router(school_sso_router)
 app.include_router(notification_router)
 app.include_router(school_rbac_router)
 
+_cors_origins = [origin.strip() for origin in os.getenv("NAVIGATOR_ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins or ["*"],
     allow_credentials=False,
     # This backend currently exposes read-only endpoints only.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
