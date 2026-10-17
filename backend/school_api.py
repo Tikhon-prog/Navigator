@@ -275,9 +275,13 @@ def _issue_session(user: sqlite3.Row | dict[str, Any], auth_method: str = "passw
 def refresh_session(body: RefreshBody) -> dict[str, Any]:
     token_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
     now = datetime.now(timezone.utc)
+    blocked_local_login = False
+    user = None
+    new_refresh = ""
+    auth_method = "password"
     with _db() as db:
         row = db.execute(
-            "SELECT r.id AS refresh_id,r.expires_at,r.revoked_at,u.* FROM refresh_tokens r "
+            "SELECT r.id AS refresh_id,r.expires_at,r.revoked_at,r.auth_method,u.* FROM refresh_tokens r "
             "JOIN users u ON u.id=r.user_id WHERE r.token_hash=?",
             (token_hash,)
         ).fetchone()
@@ -289,31 +293,46 @@ def refresh_session(body: RefreshBody) -> dict[str, Any]:
             raise HTTPException(status_code=401, detail="Refresh token expiry is invalid")
         if expires <= now:
             raise HTTPException(status_code=401, detail="Refresh token has expired")
-        changed = db.execute(
-            "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=? AND revoked_at IS NULL",
-            (now.isoformat(), now.isoformat(), row["refresh_id"])
-        )
-        if changed.rowcount != 1:
-            raise HTTPException(status_code=401, detail="Refresh token has already been rotated")
-        new_refresh = secrets.token_urlsafe(48)
-        new_hash = hashlib.sha256(new_refresh.encode("utf-8")).hexdigest()
-        db.execute(
-            "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)",
-            (secrets.token_urlsafe(12), row["id"], new_hash, now.isoformat(),
-             (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat())
-        )
-        user = db.execute(
-            "SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?",
-            (row["id"],)
-        ).fetchone()
-    result = _issue_access_with_refresh(user, new_refresh)
-    _audit(user["id"], "auth.token_refreshed")
+        auth_method = str(row["auth_method"] or "password")
+        if row["role"] != "admin" and auth_method != "sso" and not _allow_non_sso_password_login():
+            # Commit the revocation before returning an error; raising inside the
+            # DB context manager would roll this update back.
+            db.execute(
+                "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=? AND revoked_at IS NULL",
+                (now.isoformat(), now.isoformat(), row["refresh_id"])
+            )
+            blocked_local_login = True
+        else:
+            changed = db.execute(
+                "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=? AND revoked_at IS NULL",
+                (now.isoformat(), now.isoformat(), row["refresh_id"])
+            )
+            if changed.rowcount != 1:
+                raise HTTPException(status_code=401, detail="Refresh token has already been rotated")
+            new_refresh = secrets.token_urlsafe(48)
+            new_hash = hashlib.sha256(new_refresh.encode("utf-8")).hexdigest()
+            db.execute(
+                "INSERT INTO refresh_tokens(id,user_id,token_hash,created_at,expires_at,auth_method) VALUES(?,?,?,?,?,?)",
+                (secrets.token_urlsafe(12), row["id"], new_hash, now.isoformat(),
+                 (now + timedelta(seconds=REFRESH_TTL_SECONDS)).isoformat(), auth_method)
+            )
+            user = db.execute(
+                "SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?",
+                (row["id"],)
+            ).fetchone()
+    if blocked_local_login:
+        raise HTTPException(status_code=403, detail="This account must use the school's single sign-on")
+    assert user is not None
+    result = _issue_access_with_refresh(user, new_refresh, auth_method=auth_method)
+    _audit(user["id"], "auth.token_refreshed", details={"auth_method": auth_method})
     return result
 
 
-def _issue_access_with_refresh(user: sqlite3.Row | dict[str, Any], refresh_token: str) -> dict[str, Any]:
+def _issue_access_with_refresh(
+    user: sqlite3.Row | dict[str, Any], refresh_token: str, *, auth_method: str = "password"
+) -> dict[str, Any]:
     return {
-        "access_token": _make_token(user),
+        "access_token": _make_token(user, auth_method),
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": TOKEN_TTL_SECONDS,
@@ -548,8 +567,11 @@ def login(body: LoginBody, request: Request) -> dict[str, Any]:
     if not user or not user["active"] or not _verify_password(body.password, user["password_hash"]):
         _audit(None, "auth.login_failed", None, {"username": body.username[:120]})
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    result = _issue_session(user)
-    _audit(user["id"], "auth.login")
+    if user["role"] != "admin" and not _allow_non_sso_password_login():
+        _audit(user["id"], "auth.password_login_blocked")
+        raise HTTPException(status_code=403, detail="Use the school's single sign-on for this account")
+    result = _issue_session(user, auth_method="password")
+    _audit(user["id"], "auth.login", details={"auth_method": "password"})
     return result
 
 
