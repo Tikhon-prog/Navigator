@@ -213,7 +213,7 @@ def create_notification(body: NotificationBody,
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
-            if actor["role"] == "teacher":
+            if actor["role"] == "teacher" and not is_school_leadership:
                 linked = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
                                     (body.target_id, actor["id"])).fetchone()
                 if target["role"] != "student" or not linked:
