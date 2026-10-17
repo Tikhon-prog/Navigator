@@ -11,6 +11,7 @@ from backend import rbac_api
 
 class SchoolApiTests(unittest.TestCase):
     def setUp(self):
+        api.login._attempts = {}
         self.tmp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {"NAVIGATOR_TOKEN_SECRET": "test-secret-that-is-long-enough-for-hmac-signing"})
         self.env.start()
@@ -108,7 +109,7 @@ class SchoolApiTests(unittest.TestCase):
     def test_logout_revokes_refresh_token(self):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
-        session = api._issue_session(user)
+        session = api._issue_session(user, auth_method="sso")
         self.assertEqual(api.logout_session(api.RefreshBody(refresh_token=session["refresh_token"]))["status"], "logged_out")
         with self.assertRaises(HTTPException):
             api.refresh_session(api.RefreshBody(refresh_token=session["refresh_token"]))
@@ -116,7 +117,7 @@ class SchoolApiTests(unittest.TestCase):
     def test_logout_revokes_access_and_refresh_tokens(self):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
-        session = api._issue_session(user)
+        session = api._issue_session(user, auth_method="sso")
         api.logout_session(
             api.RefreshBody(refresh_token=session["refresh_token"]),
             authorization="Bearer " + session["access_token"],
@@ -131,7 +132,7 @@ class SchoolApiTests(unittest.TestCase):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
         with patch.object(api, "TOKEN_TTL_SECONDS", -1):
-            session = api._issue_session(user)
+            session = api._issue_session(user, auth_method="sso")
         device_token = "fcm-test-token-that-is-long-enough-for-device-revocation"
         with api._db() as db:
             db.execute(
@@ -150,7 +151,7 @@ class SchoolApiTests(unittest.TestCase):
     def test_old_access_token_stays_invalid_after_account_reactivation(self):
         with api._db() as db:
             user = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
-        session = api._issue_session(user)
+        session = api._issue_session(user, auth_method="sso")
         with api._db() as db:
             db.execute("UPDATE users SET active=0,token_version=token_version+1 WHERE id='student1'")
             db.execute("UPDATE users SET active=1 WHERE id='student1'")
