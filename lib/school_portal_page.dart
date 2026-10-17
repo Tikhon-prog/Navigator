@@ -1119,6 +1119,13 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
 
   Widget _notificationList(ColorScheme scheme) => ListView(padding: const EdgeInsets.all(12), children: [
     if (canSendNotifications) Card(child: ListTile(leading: Icon(Icons.add_alert_rounded, color: scheme.primary), title: const Text('Создать оповещение'), subtitle: const Text('Общее, целевое или личное сообщение с проверкой прав'), onTap: _composeNotification)),
+    if (canManageGroups) Card(child: ListTile(
+      leading: Icon(Icons.groups_rounded, color: scheme.primary),
+      title: const Text('Группы рассылки'),
+      subtitle: Text(notificationGroups.isEmpty ? 'Создать группы и назначить участников' : '${notificationGroups.length} групп • управление составом и получателями'),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: _manageNotificationGroups,
+    )),
     if (notifications.isEmpty) const Card(child: ListTile(title: Text('Новых оповещений нет.'))),
     for (final n in notifications) Card(child: ListTile(
       leading: Icon(n['kind'] == 'emergency' ? Icons.warning_amber_rounded : Icons.campaign_rounded,
