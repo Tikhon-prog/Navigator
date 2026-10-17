@@ -629,12 +629,18 @@ class RouteEngine {
   static double _cross(Offset a, Offset b) => a.dx * b.dy - a.dy * b.dx;
 
   static Offset _project(Offset p, Offset a, Offset b) {
-    final v = b - a;
+    // Projection must be perpendicular in source-map pixels. The map is 7016×4960,
+    // so projecting directly in normalized 0..1 coordinates distorts the angle.
+    final pp = Offset(p.dx * _mapW, p.dy * _mapH);
+    final aa = Offset(a.dx * _mapW, a.dy * _mapH);
+    final bb = Offset(b.dx * _mapW, b.dy * _mapH);
+    final v = bb - aa;
     final len2 = v.dx * v.dx + v.dy * v.dy;
     if (len2 <= 1e-12) return a;
-    final t = ((p.dx - a.dx) * v.dx + (p.dy - a.dy) * v.dy) / len2;
+    final t = (((pp.dx - aa.dx) * v.dx) + ((pp.dy - aa.dy) * v.dy)) / len2;
     final clamped = t.clamp(0.0, 1.0);
-    return Offset(a.dx + v.dx * clamped, a.dy + v.dy * clamped);
+    final projected = Offset(aa.dx + v.dx * clamped, aa.dy + v.dy * clamped);
+    return Offset(projected.dx / _mapW, projected.dy / _mapH);
   }
 
   static Offset? _intersection(Offset a, Offset b, Offset c, Offset d) {
