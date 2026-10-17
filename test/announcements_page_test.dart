@@ -12,7 +12,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Новости школы'), findsOneWidget);
-    expect(find.text('Нет подключённого источника'), findsOneWidget);
+    expect(find.textContaining('Сервер ещё не настроен'), findsOneWidget);
   });
 
   testWidgets('announcements screen shows cached school-wide notices offline', (tester) async {
