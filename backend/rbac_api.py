@@ -516,8 +516,10 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                 skipped += 1
                 continue
             student = db.execute(
-                "SELECT id FROM users WHERE role='student' AND active=1 AND (id=? OR username=? COLLATE NOCASE)",
-                (student_ref, student_ref),
+                "SELECT u.id FROM users u LEFT JOIN sso_identities s ON s.user_id=u.id "
+                "WHERE u.role='student' AND u.active=1 AND "
+                "(u.id=? OR u.username=? COLLATE NOCASE OR s.subject=?) LIMIT 1",
+                (student_ref, student_ref, student_ref),
             ).fetchone()
             if not student:
                 # Exact display-name matching is permitted only if unambiguous.
