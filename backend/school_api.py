@@ -328,6 +328,13 @@ def logout_session(body: RefreshBody,
             db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE id=?",
                        (_utc_now(), _utc_now(), row["id"]))
             actor_id = row["user_id"]
+            if body.device_token:
+                device_update = db.execute(
+                    "UPDATE devices SET active=0,updated_at=? WHERE user_id=? AND fcm_token=? AND active=1",
+                    (_utc_now(), actor_id, body.device_token),
+                )
+                if device_update.rowcount:
+                    _audit(actor_id, "device.unregistered", None, {"count": device_update.rowcount, "source": "logout"})
         if access_claims and (actor_id is None or access_claims.get("sub") == actor_id):
             token_digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
             expiry = datetime.fromtimestamp(int(access_claims["exp"]), timezone.utc).isoformat(timespec="microseconds")
@@ -366,6 +373,10 @@ class LoginBody(BaseModel):
 
 class RefreshBody(BaseModel):
     refresh_token: str = Field(min_length=32, max_length=512)
+    # Logout may still be requested with an expired access token. Accept the
+    # current device token alongside the refresh token so the server can revoke
+    # that one installation without affecting the account's other devices.
+    device_token: str | None = Field(default=None, min_length=20, max_length=4096)
 
 
 class UserCreate(BaseModel):
