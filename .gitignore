@@ -30,3 +30,7 @@ __pycache__/
 *.log
 hs_err_pid*
 replay_pid*
+
+# Local server database files
+backend/navigator_server.sqlite3
+backend/*.sqlite3
