@@ -1076,6 +1076,80 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _resetUserPassword(Map<String, dynamic> account) async {
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Сброс локального пароля'),
+          content: SizedBox(width: 420, child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Аккаунт: ${account['display_name'] ?? account['username'] ?? ''}'),
+              const SizedBox(height: 10),
+              TextField(
+                controller: password,
+                obscureText: true,
+                autofocus: true,
+                maxLength: 256,
+                decoration: const InputDecoration(
+                  labelText: 'Новый локальный пароль',
+                  helperText: 'Не короче 14 символов',
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              TextField(
+                controller: confirmation,
+                obscureText: true,
+                maxLength: 256,
+                decoration: const InputDecoration(labelText: 'Повтори пароль'),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'После сброса все активные сеансы и push-регистрации этого аккаунта будут отозваны. Для школьного входа ученик или сотрудник всё равно сможет использовать SSO.',
+                style: TextStyle(fontSize: 12, height: 1.4),
+              ),
+            ],
+          )),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+            FilledButton(
+              onPressed: password.text.length >= 14 && password.text == confirmation.text
+                  ? () => Navigator.pop(dialogContext, password.text)
+                  : null,
+              child: const Text('Сбросить'),
+            ),
+          ],
+        ),
+      ),
+    );
+    password.dispose();
+    confirmation.dispose();
+    if (result == null || result.length < 14) return;
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await _request('POST', 'management/users/${account['id']}/reset-password', body: {'password': result});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Пароль обновлён. Все старые сеансы и push-регистрации отозваны.')),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> _toggleUser(Map<String, dynamic> account) async {
     final active = account['active'] == true || account['active'] == 1;
     await _withBusy(() async {
@@ -1286,7 +1360,15 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             const {'teacher', 'mentor'}.contains(account['role']) &&
             (isAdmin || !const {'director', 'deputy'}.contains(account['position'])))
           IconButton(tooltip: 'Изменить должность', onPressed: busy ? null : () => _assignPosition(account), icon: const Icon(Icons.manage_accounts_outlined)),
-        if (canManageUsers && account['role'] != 'admin')
+        if (canManageUsers && account['id']?.toString() != user['id']?.toString() &&
+            (account['role'] != 'admin' || isAdmin))
+          IconButton(
+            tooltip: 'Сбросить локальный пароль и отозвать сеансы',
+            onPressed: busy ? null : () => _resetUserPassword(account),
+            icon: const Icon(Icons.lock_reset_rounded),
+          ),
+        if (canManageUsers && account['id']?.toString() != user['id']?.toString() &&
+            (account['role'] != 'admin' || isAdmin))
           IconButton(
             tooltip: (account['active'] == true || account['active'] == 1) ? 'Отключить аккаунт' : 'Включить аккаунт',
             onPressed: busy ? null : () => _toggleUser(account),
