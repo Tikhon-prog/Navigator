@@ -1,5 +1,7 @@
 import os
 import tempfile
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -61,6 +63,35 @@ class NotificationScopeTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             notifications.create_notification(body, {"id": "teacher1", "role": "teacher"})
         self.assertEqual(raised.exception.status_code, 403)
+
+    def test_student_can_opt_in_to_server_dop_reminders(self):
+        actor = {"id": "student1", "role": "student", "class_id": "8A"}
+        saved = notifications.set_notification_preferences(
+            notifications.NotificationPreferencesBody(dop_reminders_enabled=True), actor
+        )
+        self.assertTrue(saved["dop_reminders_enabled"])
+        self.assertTrue(notifications.get_notification_preferences(actor)["dop_reminders_enabled"])
+
+    def test_opted_in_student_gets_idempotent_future_dop_reminder(self):
+        actor = {"id": "student1", "role": "student", "class_id": "8A"}
+        notifications.set_notification_preferences(
+            notifications.NotificationPreferencesBody(dop_reminders_enabled=True), actor
+        )
+        tomorrow = datetime.now(ZoneInfo("Europe/Moscow")).date() + timedelta(days=1)
+        start_time = (datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(days=1, hours=2)).strftime("%H:%M")
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("dop-reminder-1", "student1", "Робототехника", tomorrow.isoweekday(), start_time, "Учитель", "317", "active", core._utc_now()),
+            )
+        self.assertGreaterEqual(notifications._enqueue_dop_reminders(), 1)
+        with core._db() as db:
+            first = db.execute("SELECT COUNT(*) AS n FROM dop_reminder_occurrences WHERE supplement_id='dop-reminder-1'").fetchone()["n"]
+        notifications._enqueue_dop_reminders()
+        with core._db() as db:
+            second = db.execute("SELECT COUNT(*) AS n FROM dop_reminder_occurrences WHERE supplement_id='dop-reminder-1'").fetchone()["n"]
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 1)
 
     def test_teacher_cannot_broadcast_to_everyone(self):
         body = notifications.NotificationBody(title="Message", body="Test")
