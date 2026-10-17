@@ -55,6 +55,19 @@ class SchoolPositionTests(unittest.TestCase):
         result = rbac_api.management_students(actor)
         self.assertEqual(result["data"], [])
 
+    def test_readiness_requires_authentication_and_nonempty_classes_and_schedule(self):
+        with patch("backend.main.read_sheet", side_effect=lambda sheet: (
+            [{"id": "8A", "name": "8A"}] if sheet == "Classes" else
+            [{"class_id": "8A", "subject": "Math"}] if sheet == "BaseSchedule" else []
+        )):
+            self.assertEqual(rbac_api.readiness()["status"], "ready")
+        with patch("backend.main.read_sheet", side_effect=lambda sheet: (
+            [{"id": "8A", "name": "8A"}] if sheet == "Classes" else []
+        )):
+            with self.assertRaises(HTTPException) as raised:
+                rbac_api.readiness()
+            self.assertEqual(raised.exception.status_code, 503)
+
     def test_class_labels_normalize_cyrillic_and_latin_lookalikes(self):
         self.assertEqual(core.normalize_class_id("8А"), core.normalize_class_id("8A"))
         self.assertEqual(core.normalize_class_id(" 10-Б "), core.normalize_class_id("10-B"))
