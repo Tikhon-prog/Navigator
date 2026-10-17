@@ -297,8 +297,47 @@ class NotificationBody(BaseModel):
     expires_at: str | None = Field(default=None, max_length=50)
 
 
+def _can_manage_groups(actor: dict[str, Any]) -> bool:
+    if actor.get("role") == "admin":
+        return True
+    from . import rbac_api
+    return rbac_api._has(actor, "assignments.manage")
+
+
+def require_group_manager(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    if not _can_manage_groups(actor):
+        raise HTTPException(status_code=403, detail="Notification-group management permission required")
+    return actor
+
+
+@router.get("/admin/notification-groups")
+def list_groups(actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, Any]:
+    with core._db() as db:
+        rows = db.execute(
+            "SELECT g.id,g.name,g.created_at,COUNT(m.user_id) AS member_count "
+            "FROM notification_groups g LEFT JOIN notification_group_members m ON m.group_id=g.id "
+            "GROUP BY g.id,g.name,g.created_at ORDER BY g.name"
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
+@router.get("/admin/notification-groups/{group_id}/members")
+def list_group_members(group_id: str,
+                       actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, Any]:
+    with core._db() as db:
+        group = db.execute("SELECT id,name FROM notification_groups WHERE id=?", (group_id,)).fetchone()
+        if not group:
+            raise HTTPException(status_code=404, detail="Notification group not found")
+        rows = db.execute(
+            "SELECT u.id,u.username,u.role,u.display_name,u.class_id FROM notification_group_members m "
+            "JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND u.active=1 ORDER BY u.display_name",
+            (group_id,)
+        ).fetchall()
+    return {"group": dict(group), "data": [dict(row) for row in rows]}
+
+
 @router.post("/admin/notification-groups", status_code=201)
-def create_group(body: GroupBody, actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
+def create_group(body: GroupBody, actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
     group_id = secrets.token_urlsafe(12)
     try:
         with core._db() as db:
@@ -311,7 +350,7 @@ def create_group(body: GroupBody, actor: dict[str, Any] = Depends(core.require_r
 
 @router.post("/admin/notification-groups/{group_id}/members", status_code=201)
 def add_group_member(group_id: str, body: GroupMemberBody,
-                     actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
+                     actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
     with core._db() as db:
         group = db.execute("SELECT id FROM notification_groups WHERE id=?", (group_id,)).fetchone()
         user = db.execute("SELECT id FROM users WHERE id=? AND active=1", (body.user_id,)).fetchone()
@@ -320,6 +359,31 @@ def add_group_member(group_id: str, body: GroupMemberBody,
         db.execute("INSERT OR IGNORE INTO notification_group_members(group_id,user_id) VALUES(?,?)", (group_id, body.user_id))
     core._audit(actor["id"], "notification_group.member_added", group_id, {"user_id": body.user_id})
     return {"status": "added", "group_id": group_id, "user_id": body.user_id}
+
+
+@router.delete("/admin/notification-groups/{group_id}/members/{user_id}")
+def remove_group_member(group_id: str, user_id: str,
+                        actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
+    with core._db() as db:
+        cur = db.execute(
+            "DELETE FROM notification_group_members WHERE group_id=? AND user_id=?",
+            (group_id, user_id)
+        )
+    if not cur.rowcount:
+        raise HTTPException(status_code=404, detail="Group membership not found")
+    core._audit(actor["id"], "notification_group.member_removed", group_id, {"user_id": user_id})
+    return {"status": "removed", "group_id": group_id, "user_id": user_id}
+
+
+@router.delete("/admin/notification-groups/{group_id}")
+def delete_group(group_id: str,
+                 actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
+    with core._db() as db:
+        cur = db.execute("DELETE FROM notification_groups WHERE id=?", (group_id,))
+    if not cur.rowcount:
+        raise HTTPException(status_code=404, detail="Notification group not found")
+    core._audit(actor["id"], "notification_group.deleted", group_id)
+    return {"status": "deleted", "group_id": group_id}
 
 
 @router.post("/admin/notifications", status_code=201)
