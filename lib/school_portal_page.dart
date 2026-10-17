@@ -334,9 +334,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               if (isLead) const DropdownMenuItem(value: 'emergency', child: Text('Экстренное')),
             ],
             onChanged: (v) => setDialogState(() {
+              final previousTarget = targetType;
               kind = v ?? 'targeted';
               if (kind == 'global' || kind == 'emergency') targetType = 'all';
               else if (kind == 'personal') targetType = 'user';
+              if (targetType != previousTarget) targetId.clear();
             }),
           ),
           const SizedBox(height: 8),
@@ -351,7 +353,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               if (isLead) const DropdownMenuItem(value: 'group', child: Text('Группа')),
             ],
             onChanged: kind == 'global' || kind == 'emergency' || kind == 'personal'
-                ? null : (v) => setDialogState(() => targetType = v ?? 'class'),
+                ? null : (v) => setDialogState(() {
+                    targetType = v ?? 'class';
+                    targetId.clear();
+                  }),
           ),
           if (targetType == 'user' && students.isNotEmpty)
             DropdownButtonFormField<String>(
