@@ -32,6 +32,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   bool get isAdmin => user['role'] == 'admin';
   bool get isLeadership => isAdmin || const {'director', 'deputy'}.contains(position);
   bool get canManageUsers => permissions.contains('*') || permissions.contains('staff.manage');
+  bool get canManageDop => permissions.contains('*') || permissions.contains('dop.manage');
   bool get canReadUsers => permissions.contains('*') || permissions.contains('staff.read');
   bool get canSendNotifications => isLeadership || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) || user['role'] == 'teacher';
   bool get canReadStudents => user['role'] != 'student' && user['role'] != null;
@@ -188,7 +189,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       final profile = Map<String, dynamic>.from((result['student'] as Map?) ?? student);
       final supplements = (result['supplements'] as List?) ?? (result['data'] as List?) ?? const [];
       if (!mounted) return;
-      await showDialog<void>(
+      final action = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(profile['display_name']?.toString() ?? 'Ученик'),
@@ -213,12 +214,71 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                 ),
             ],
           ))),
-          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Закрыть'))],
+          actions: [
+            if (canManageDop)
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.pop(dialogContext, 'add_dop'),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Добавить ДОП'),
+              ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, 'close'), child: const Text('Закрыть')),
+          ],
         ),
       );
+      if (action == 'add_dop' && canManageDop && mounted) {
+        await _addSupplement(id);
+        if (mounted) await _openStudent(student);
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
     }
+  }
+
+  Future<void> _addSupplement(String studentId) async {
+    final title = TextEditingController();
+    final time = TextEditingController();
+    final teacher = TextEditingController();
+    final room = TextEditingController();
+    int weekday = 1;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
+        title: const Text('Добавить дополнительное занятие'),
+        content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: title, decoration: const InputDecoration(labelText: 'Название занятия')),
+          DropdownButtonFormField<int>(
+            value: weekday,
+            decoration: const InputDecoration(labelText: 'День недели'),
+            items: const [
+              DropdownMenuItem(value: 1, child: Text('Понедельник')),
+              DropdownMenuItem(value: 2, child: Text('Вторник')),
+              DropdownMenuItem(value: 3, child: Text('Среда')),
+              DropdownMenuItem(value: 4, child: Text('Четверг')),
+              DropdownMenuItem(value: 5, child: Text('Пятница')),
+              DropdownMenuItem(value: 6, child: Text('Суббота')),
+              DropdownMenuItem(value: 7, child: Text('Воскресенье')),
+            ],
+            onChanged: (v) => setDialogState(() => weekday = v ?? 1),
+          ),
+          TextField(controller: time, decoration: const InputDecoration(labelText: 'Время начала', hintText: '15:30')),
+          TextField(controller: teacher, decoration: const InputDecoration(labelText: 'Педагог / наставник')),
+          TextField(controller: room, decoration: const InputDecoration(labelText: 'Кабинет / место')),
+        ]))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (title.text.trim().isEmpty) return;
+            Navigator.pop(dialogContext, {'title': title.text.trim(), 'weekday': weekday,
+              'time': time.text.trim(), 'teacher': teacher.text.trim(), 'room': room.text.trim()});
+          }, child: const Text('Сохранить')),
+        ],
+      )),
+    );
+    title.dispose(); time.dispose(); teacher.dispose(); room.dispose();
+    if (result == null) return;
+    await _withBusy(() async {
+      await _request('POST', 'management/students/$studentId/supplements', body: result);
+    });
   }
 
   Future<void> _composeNotification() async {
