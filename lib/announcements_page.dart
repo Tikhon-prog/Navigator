@@ -102,7 +102,16 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     final enabled = prefs.getBool('navigator_api_enabled') ?? false;
     final storedClassId = (prefs.getString('student_class_id') ?? '').trim();
     final storedClassName = (prefs.getString('student_class_name') ?? '').trim();
-    _classId = storedClassId.isNotEmpty ? storedClassId : storedClassName;
+    var schoolClass = '';
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final schoolUser = jsonDecode(rawSchoolUser);
+        if (schoolUser is Map) schoolClass = (schoolUser['class_id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    _classId = storedClassId.isNotEmpty ? storedClassId
+        : storedClassName.isNotEmpty ? storedClassName : schoolClass;
 
     final cached = prefs.getString(_cacheKey);
     if (_items.isEmpty && cached != null) {
