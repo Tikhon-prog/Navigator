@@ -7,6 +7,8 @@ configured HTTPS userinfo endpoint and only accepts explicitly linked subjects.
 from __future__ import annotations
 
 import os
+import re
+import secrets
 from typing import Any
 
 import requests
@@ -72,6 +74,81 @@ def init_sso_tables() -> None:
         """)
 
 
+def _link_or_provision(claims: dict[str, Any], issuer: str):
+    """Optionally map a trusted school claim to an existing account or provision one."""
+    username_claim = os.getenv("NAVIGATOR_OIDC_USERNAME_CLAIM", "preferred_username").strip()
+    username = claims.get(username_claim)
+    if not isinstance(username, str) or not username.strip():
+        return None
+    username = username.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.@-]{3,120}", username):
+        return None
+
+    auto_link = os.getenv("NAVIGATOR_OIDC_AUTO_LINK_USERNAME", "false").strip().lower() in {"1", "true", "yes", "on"}
+    auto_provision = os.getenv("NAVIGATOR_OIDC_AUTO_PROVISION", "false").strip().lower() in {"1", "true", "yes", "on"}
+    role_claim = os.getenv("NAVIGATOR_OIDC_ROLE_CLAIM", "role").strip()
+    raw_role = claims.get(role_claim)
+    if isinstance(raw_role, list):
+        raw_role = next((value for value in raw_role if isinstance(value, str)), "")
+    role_text = str(raw_role or "").strip().lower()
+    role_aliases = {
+        "student": "student", "students": "student", "ученик": "student", "ученица": "student",
+        "teacher": "teacher", "teachers": "teacher", "учитель": "teacher", "педагог": "teacher",
+        "mentor": "mentor", "наставник": "mentor",
+        "director": "director", "principal": "director", "директор": "director",
+        "deputy": "deputy", "vice_principal": "deputy", "завуч": "deputy",
+        "homeroom_teacher": "homeroom_teacher", "class_teacher": "homeroom_teacher", "классный руководитель": "homeroom_teacher",
+        "dop_coordinator": "dop_coordinator", "mentor_coordinator": "mentor_coordinator",
+        "librarian": "librarian", "библиотекарь": "librarian",
+        "admin": "admin", "administrator": "admin", "администратор": "admin",
+    }
+    mapped_role = role_aliases.get(role_text)
+    class_claim = os.getenv("NAVIGATOR_OIDC_CLASS_CLAIM", "class_id").strip()
+    class_id = str(claims.get(class_claim) or "").strip() or None
+    display_claim = os.getenv("NAVIGATOR_OIDC_DISPLAY_NAME_CLAIM", "name").strip()
+    display_name = str(claims.get(display_claim) or claims.get("given_name") or username).strip()[:160]
+
+    with core._db() as db:
+        existing = db.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE AND active=1", (username,)).fetchone()
+        if existing:
+            if not auto_link:
+                return None
+            try:
+                db.execute("INSERT INTO sso_identities(issuer,subject,user_id,linked_at) VALUES(?,?,?,?)",
+                           (issuer, claims["sub"], existing["id"], core._utc_now()))
+            except Exception:
+                return None
+            return existing
+
+        if not auto_provision or not mapped_role:
+            return None
+        if mapped_role == "admin" and os.getenv("NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+            return None
+        if mapped_role == "student" and not class_id:
+            return None
+        if mapped_role == "homeroom_teacher" and not class_id:
+            return None
+
+        base_role = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
+        user_id = secrets.token_urlsafe(12)
+        random_password = secrets.token_urlsafe(48)
+        db.execute(
+            "INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
+            (user_id, username, core._hash_password(random_password), base_role, display_name, class_id, core._utc_now())
+        )
+        position = mapped_role if mapped_role in {"director", "deputy", "homeroom_teacher", "dop_coordinator", "mentor_coordinator", "librarian"} else None
+        if position:
+            from . import rbac_api
+            rbac_api._init()
+            db.execute(
+                "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?)",
+                (user_id, position, class_id if position == "homeroom_teacher" else None, None, core._utc_now())
+            )
+        db.execute("INSERT INTO sso_identities(issuer,subject,user_id,linked_at) VALUES(?,?,?,?)",
+                   (issuer, claims["sub"], user_id, core._utc_now()))
+        return db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+
 @router.post("/auth/sso")
 def sso_login(body: SsoLoginBody) -> dict[str, Any]:
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").rstrip("/")
@@ -83,8 +160,11 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
             (issuer, claims["sub"]),
         ).fetchone()
     if not identity:
-        # Never auto-link by email/username: that can let an unverified claim take over an account.
-        raise HTTPException(status_code=403, detail="SSO identity is not linked; ask the school administrator")
+        # Auto-link/provision is opt-in and uses only claims returned by the trusted
+        # configured IdP's HTTPS UserInfo endpoint, never a client-supplied profile.
+        identity = _link_or_provision(claims, issuer)
+    if not identity:
+        raise HTTPException(status_code=403, detail="SSO identity is not linked or auto-provisioning claims are incomplete; ask the school administrator")
     result = core._issue_session(identity)
     core._audit(identity["id"], "auth.sso_login")
     return result
