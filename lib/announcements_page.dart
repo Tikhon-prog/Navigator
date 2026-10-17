@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_security.dart';
+import 'school_account_service.dart';
 
 class SchoolAnnouncement {
   final String id;
@@ -172,7 +173,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       // Authenticated v2 feeds include targeted/personal notifications and
       // leadership announcements. The public workbook feed remains available
       // for offline-compatible school-wide announcements.
-      final schoolToken = (prefs.getString('school_access_token_v1') ?? '').trim();
+      final schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
       if (schoolToken.isNotEmpty) {
         final seen = parsed.map((item) => item.id).toSet();
         for (final endpoint in const ['announcements', 'notifications']) {
