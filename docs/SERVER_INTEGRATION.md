@@ -11,8 +11,9 @@ supplements, registered devices, announcements, and audit events in SQLite.
   records, publishes announcements, and reads the audit log.
 - `mentor`: can list and inspect only students explicitly linked to that mentor,
   including their supplement records.
-- `teacher`: can inspect only students explicitly linked to them, with a subject label
-  recorded on each assignment. Use `GET /api/v2/teachers/me/subjects` for the subject roster.
+- `teacher`: can inspect only students explicitly assigned to them by subject, using
+  `GET /api/v2/teachers/me/subjects`. Teacher detail responses omit the student's full
+  private DOP schedule; mentors and the student themself retain that view.
 - `student`: can inspect only their own record (the public endpoint is intentionally
   narrower than staff access).
 
@@ -58,7 +59,8 @@ Example emergency notice body:
 ## Emergency-notification limitations
 
 The API sends a Firebase Cloud Messaging notification when Firebase is configured and
-valid device tokens exist. It does not trigger or replace the school's PA/loudspeaker
+valid device tokens exist. Device tokens are sent in batches of up to 500, matching FCM's
+multicast limit; the API records a partial result when some deliveries succeed and others fail. It does not trigger or replace the school's PA/loudspeaker
 system, fire-alarm hardware, 112, or any official emergency process. Push delivery is
 best-effort; mobile OS settings, network coverage, battery restrictions, and provider
 latency can delay or suppress it. Never rely on the app as the only alarm channel.
