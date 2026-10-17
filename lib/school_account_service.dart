@@ -346,7 +346,11 @@ class SchoolAccountService {
       try {
         await http.post(
           _endpoint(baseUrl, 'auth/logout'),
-          headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            if (accessToken != null && accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+          },
           body: jsonEncode({'refresh_token': refreshToken}),
         ).timeout(const Duration(seconds: 5));
       } catch (_) {}
