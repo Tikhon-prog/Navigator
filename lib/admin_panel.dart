@@ -320,7 +320,8 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         final readiness = jsonDecode(response.body);
         final source = readiness is Map ? readiness['source']?.toString() ?? 'unknown' : 'unknown';
         final classes = readiness is Map ? readiness['classes_available']?.toString() ?? '?' : '?';
-        setState(() => apiStatus = 'Сервер готов. Источник: $source • классов: $classes.');
+        final scheduleRows = readiness is Map ? readiness['schedule_rows_available']?.toString() ?? '?' : '?';
+        setState(() => apiStatus = 'Сервер готов. Источник: $source • классов: $classes • строк расписания: $scheduleRows.');
       } else if (response.statusCode == 503) {
         setState(() => apiStatus = 'Сервер запущен, но не готов: настрой NAVIGATOR_TOKEN_SECRET и источник школьных данных в .env.');
       } else {
