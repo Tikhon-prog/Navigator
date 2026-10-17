@@ -33,7 +33,7 @@ class SchoolAuthConfigurationTests(unittest.TestCase):
 
 class BackendAccessTests(unittest.TestCase):
     def test_generic_endpoint_rejects_private_sheets_without_reading_source(self):
-        for sheet_name in ("Admins", "AuditLog", "Devices", "Settings"):
+        for sheet_name in ("Admins", "AuditLog", "Devices", "Settings", "Supplements"):
             with self.subTest(sheet_name=sheet_name):
                 with patch.object(main, "read_sheet") as read_sheet:
                     with self.assertRaises(HTTPException) as raised:
@@ -61,6 +61,20 @@ class BackendAccessTests(unittest.TestCase):
             result = main.get_sheet_data("Classes")
         self.assertEqual(result, {"sheet": "Classes", "data": expected})
         read_sheet.assert_called_once_with("Classes")
+
+    def test_legacy_supplement_endpoint_fails_closed(self):
+        with patch.object(main, "read_sheet") as read_sheet:
+            with self.assertRaises(HTTPException) as raised:
+                main.get_supplements()
+        self.assertEqual(raised.exception.status_code, 403)
+        read_sheet.assert_not_called()
+
+    def test_internal_sync_reader_can_still_read_supplements(self):
+        expected = [{"student_id": "student-123", "title": "Robotics"}]
+        with patch.object(main, "load_configured_sheet", return_value=expected) as read_configured:
+            result = main.read_sheet("Supplements")
+        self.assertEqual(result, expected)
+        read_configured.assert_called_once_with("Supplements")
 
     def test_settings_and_devices_are_not_public(self):
         for endpoint in (main.get_settings, main.get_devices):
