@@ -162,7 +162,14 @@ def _enqueue_dop_reminders() -> int:
                 if remind_utc <= now_utc or remind_utc > horizon:
                     continue
                 starts_iso = starts_utc.isoformat()
+                exists = db.execute(
+                    "SELECT 1 FROM dop_reminder_occurrences WHERE supplement_id=? AND student_id=? AND starts_at=?",
+                    (record["supplement_id"], record["student_id"], starts_iso)
+                ).fetchone()
+                if exists:
+                    continue
                 notification_id = secrets.token_urlsafe(12)
+                db.execute("SAVEPOINT dop_reminder_occurrence")
                 try:
                     db.execute(
                         "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,scheduled_at,expires_at,delivery_status) "
@@ -177,9 +184,11 @@ def _enqueue_dop_reminders() -> int:
                         "INSERT INTO dop_reminder_occurrences(id,supplement_id,student_id,starts_at,notification_id) VALUES(?,?,?,?,?)",
                         (secrets.token_urlsafe(12), record["supplement_id"], record["student_id"], starts_iso, notification_id)
                     )
+                    db.execute("RELEASE SAVEPOINT dop_reminder_occurrence")
                     inserted += 1
                 except Exception:
-                    # Unique occurrence constraints make repeated polling idempotent.
+                    db.execute("ROLLBACK TO SAVEPOINT dop_reminder_occurrence")
+                    db.execute("RELEASE SAVEPOINT dop_reminder_occurrence")
                     continue
     return inserted
 
