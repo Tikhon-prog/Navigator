@@ -53,15 +53,15 @@ _cached_workbook_at = 0.0
 # ============================================================
 
 # Only these sheets are intended for unauthenticated, read-only school app access.
-# Never expose Admins, Devices, AuditLog, or Settings through generic endpoints.
+# Supplements contains student-linked records and is internal-only.
 PUBLIC_READ_SHEETS = frozenset({
     "Classes",
     "BaseSchedule",
-    "Supplements",
     "Rooms",
     "Places",
     "Announcements",
 })
+INTERNAL_READ_SHEETS = PUBLIC_READ_SHEETS | {"Supplements"}
 
 app = FastAPI(
     title="Поколение — сервер школы",
@@ -196,8 +196,9 @@ def normalize_value(value: Any):
 
 
 def read_sheet(sheet_name: str):
-    # Enforce the allowlist here too, so future callers cannot bypass route guards.
-    if sheet_name not in PUBLIC_READ_SHEETS:
+    # Internal sync workers may read Supplements, but public endpoints must
+    # validate against PUBLIC_READ_SHEETS before calling this helper.
+    if sheet_name not in INTERNAL_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
 
     configured_data = load_configured_sheet(sheet_name)
@@ -447,23 +448,14 @@ def get_class_schedule(
 # ============================================================
 
 @app.get("/api/supplements")
-def get_supplements(
-    weekday: int | None = Query(None, ge=1, le=7),
-):
-
-    data = read_sheet("Supplements")
-
-    if weekday is not None:
-
-        data = [
-            item
-            for item in data
-            if str(item.get("weekday")) == str(weekday)
-        ]
-
-    return {
-        "data": data
-    }
+def get_supplements():
+    # This legacy endpoint used to return every student's DOP rows anonymously.
+    # Personal DOP records are now available only through authenticated,
+    # role-scoped /api/v2 endpoints after the approved import/sync process.
+    raise HTTPException(
+        status_code=403,
+        detail="Student DOP data is private; use authenticated /api/v2 student endpoints",
+    )
 
 
 # ============================================================
