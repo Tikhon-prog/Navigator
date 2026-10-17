@@ -683,16 +683,30 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
 
 
 @router.post("/admin/announcements", status_code=201)
-def create_announcement(body: AnnouncementBody, actor: dict[str, Any] = Depends(require_roles("admin"))) -> dict[str, Any]:
+def create_announcement(body: AnnouncementBody,
+                        actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    from . import rbac_api
+    position, scope_class = rbac_api._position(actor["id"])
+    leadership = actor["role"] == "admin" or position in {"director", "deputy"}
+    if not leadership and not (position == "homeroom_teacher" and body.audience == "class"):
+        raise HTTPException(status_code=403, detail="Announcement publishing is not permitted for this school position")
     if body.severity not in {"info", "warning", "emergency"}:
         raise HTTPException(status_code=422, detail="severity must be info, warning or emergency")
     if body.audience not in ANNOUNCEMENT_AUDIENCES:
         raise HTTPException(status_code=422, detail="Unsupported audience")
+    if body.severity == "emergency" and not leadership:
+        raise HTTPException(status_code=403, detail="Only school leadership may publish emergency announcements")
     if body.audience == "class" and not body.class_id:
         raise HTTPException(status_code=422, detail="class_id is required for class audience")
+    if position == "homeroom_teacher" and normalize_class_id(body.class_id) != normalize_class_id(scope_class):
+        raise HTTPException(status_code=403, detail="Homeroom teachers may publish only to their assigned class")
     if body.expires_at:
         try:
-            datetime.fromisoformat(body.expires_at.replace("Z", "+00:00"))
+            expiry = datetime.fromisoformat(body.expires_at.replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if expiry <= datetime.now(timezone.utc):
+                raise HTTPException(status_code=422, detail="expires_at must be in the future")
         except ValueError:
             raise HTTPException(status_code=422, detail="expires_at must be an ISO-8601 timestamp")
     announcement_id = secrets.token_urlsafe(12)
@@ -701,20 +715,28 @@ def create_announcement(body: AnnouncementBody, actor: dict[str, Any] = Depends(
         db.execute("INSERT INTO announcements(id,title,body,severity,audience,class_id,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
                    (announcement_id, body.title, body.body, body.severity, body.audience, body.class_id, actor["id"], created_at, body.expires_at))
         if body.audience == "all":
-            device_rows = db.execute("SELECT fcm_token FROM devices WHERE active=1").fetchall()
+            device_rows = db.execute(
+                "SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.active=1"
+            ).fetchall()
+            tokens = [row["fcm_token"] for row in device_rows]
         elif body.audience == "class":
-            device_rows = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.class_id=?", (body.class_id,)).fetchall()
+            device_rows = db.execute(
+                "SELECT d.fcm_token,u.class_id FROM devices d JOIN users u ON u.id=d.user_id "
+                "WHERE d.active=1 AND u.active=1 AND u.role='student' AND u.class_id IS NOT NULL"
+            ).fetchall()
+            wanted_class = normalize_class_id(body.class_id)
+            tokens = [row["fcm_token"] for row in device_rows
+                      if normalize_class_id(row["class_id"]) == wanted_class]
         else:
             target_role = {"students": "student"}.get(body.audience, body.audience)
-            device_rows = db.execute("SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id WHERE d.active=1 AND u.role=?", (target_role,)).fetchall()
-        tokens = [row["fcm_token"] for row in device_rows]
+            device_rows = db.execute(
+                "SELECT d.fcm_token FROM devices d JOIN users u ON u.id=d.user_id "
+                "WHERE d.active=1 AND u.active=1 AND u.role=?", (target_role,)
+            ).fetchall()
+            tokens = [row["fcm_token"] for row in device_rows]
     push_status, sent_count = _send_push(tokens, body.title, body.body, {"announcement_id": announcement_id, "severity": body.severity})
     with _db() as db:
         db.execute("UPDATE announcements SET push_status=? WHERE id=?", (push_status, announcement_id))
-        if push_status in {"sent", "partial", "failed"}:
-            # Token-level response handling is intentionally isolated to avoid
-            # persisting provider details or exposing device tokens in the audit log.
-            pass
     _audit(actor["id"], "announcement.created", announcement_id, {"severity": body.severity, "audience": body.audience, "push_status": push_status, "sent_count": sent_count})
     return {"id": announcement_id, "title": body.title, "body": body.body, "severity": body.severity, "audience": body.audience, "class_id": body.class_id, "created_at": created_at, "push_status": push_status, "sent_count": sent_count}
 
