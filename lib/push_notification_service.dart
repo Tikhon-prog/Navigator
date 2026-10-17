@@ -115,7 +115,7 @@ class PushNotificationService {
         )
         .timeout(const Duration(seconds: 10));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('Device registration failed: HTTP \${response.statusCode}');
+      throw StateError('Device registration failed: HTTP ${response.statusCode}');
     }
   }
 
