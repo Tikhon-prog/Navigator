@@ -686,7 +686,7 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
 def create_announcement(body: AnnouncementBody,
                         actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     from . import rbac_api
-    position, scope_class = rbac_api._position(actor["id"])
+    position, scope_class = (None, None) if actor["role"] == "admin" else rbac_api._position(actor["id"])
     leadership = actor["role"] == "admin" or position in {"director", "deputy"}
     if not leadership and not (position == "homeroom_teacher" and body.audience == "class"):
         raise HTTPException(status_code=403, detail="Announcement publishing is not permitted for this school position")
