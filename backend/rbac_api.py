@@ -258,6 +258,29 @@ def remove_position(user_id: str, actor: dict[str, Any] = Depends(core.require_r
     return {"status": "removed"}
 
 
+@router.get("/management/staff")
+def management_staff(actor: dict[str, Any] = Depends(require_permission("assignments.manage"))) -> dict[str, Any]:
+    with core._db() as db:
+        rows = db.execute(
+            "SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active,p.position,p.scope_class "
+            "FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.active=1 AND u.role IN ('teacher','mentor','admin') ORDER BY u.display_name LIMIT 1000"
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
+@router.get("/management/audit")
+def management_audit(limit: int = 100,
+                     actor: dict[str, Any] = Depends(require_permission("audit.read"))) -> dict[str, Any]:
+    limit = max(1, min(limit, 500))
+    with core._db() as db:
+        rows = db.execute(
+            "SELECT id,actor_id,action,target_id,details_json,created_at FROM audit_log ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
 @router.get("/management/dashboard")
 def management_dashboard(actor: dict[str, Any] = Depends(require_permission("dashboard.read"))) -> dict[str, Any]:
     position, scope_class = _require_position_actor(actor, "dashboard.read")
