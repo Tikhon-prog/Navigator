@@ -60,6 +60,28 @@ class SsoProvisioningTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(position["position"], "mentor_coordinator")
 
+    def test_mentor_coordinator_is_provisioned_as_teacher_with_separate_position(self):
+        user = sso_api._link_or_provision({
+            "sub": "school-mentor-coordinator-001", "preferred_username": "mentor.coordinator",
+            "role": "mentor_coordinator", "name": "Mentor Coordinator",
+        }, "https://idp.school.example")
+        self.assertIsNotNone(user)
+        self.assertEqual(user["role"], "teacher")
+        with core._db() as db:
+            position = db.execute("SELECT position FROM staff_positions WHERE user_id=?", (user["id"],)).fetchone()
+        self.assertEqual(position["position"], "mentor_coordinator")
+
+    def test_dop_coordinator_is_provisioned_with_valid_base_role(self):
+        user = sso_api._link_or_provision({
+            "sub": "school-dop-coordinator-001", "preferred_username": "dop.coordinator",
+            "role": "dop_coordinator", "name": "DOP Coordinator",
+        }, "https://idp.school.example")
+        self.assertIsNotNone(user)
+        self.assertEqual(user["role"], "teacher")
+        with core._db() as db:
+            position = db.execute("SELECT position FROM staff_positions WHERE user_id=?", (user["id"],)).fetchone()
+        self.assertEqual(position["position"], "dop_coordinator")
+
     def test_admin_auto_provision_is_disabled_by_default(self):
         user = sso_api._link_or_provision({
             "sub": "school-admin-001", "preferred_username": "new.admin",
