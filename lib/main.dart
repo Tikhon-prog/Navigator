@@ -182,8 +182,7 @@ class SchoolScheduleCatalog {
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool('navigator_api_enabled') ?? false)) return 0;
     final base = (prefs.getString('navigator_api_url') ?? '').trim();
-    if (!isSecureApiBaseUrl(base)) return 0;
-    final payload = await const OnlineDataService(NavigatorApiConfig()).get('data/BaseSchedule');
+    if (!NavigatorApiConfig(baseUrl: base).enabled) return 0;
     // Use the configured URL rather than a compile-time API address.
     final response = await OnlineDataService(NavigatorApiConfig(baseUrl: base)).get('data/BaseSchedule');
     if (response == null) return 0;
@@ -215,7 +214,7 @@ class SchoolScheduleCatalog {
     }
     for (final entry in variantsByClass.entries) {
       classes[entry.key] = {'variants': entry.value};
-      final grade = RegExp(r'^\\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
+      final grade = RegExp(r'^\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
       final list = List<String>.from(classOrder[grade] as List? ?? const <String>[]);
       if (!list.contains(entry.key)) list.add(entry.key);
       list.sort();
@@ -1419,6 +1418,7 @@ class _SchedulePageState extends State<SchedulePage> {
   }
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
+    try { await SchoolScheduleCatalog.refreshOnline(); } catch (_) {}
     classId = p.getString('student_class_name') ?? '';
     final groups = <String,int>{};
     if (classId.isNotEmpty) {
