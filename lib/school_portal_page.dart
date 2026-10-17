@@ -1073,12 +1073,36 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     ]),
     const SizedBox(height: 12),
     Card(child: ListTile(leading: const Icon(Icons.security_rounded), title: const Text('Права доступа'), subtitle: Text(permissions.contains('*') ? 'Полный административный доступ' : permissions.isEmpty ? 'Специальные права не назначены' : permissions.join(' • ')))),
-    if (syncStatus.isNotEmpty)
+    if (syncStatus.isNotEmpty) ...[
       Card(child: ListTile(
         leading: const Icon(Icons.sync_rounded),
         title: const Text('Источник школьных данных'),
-        subtitle: Text('Источник: ${syncStatus['configured_source'] ?? 'не указан'}\nПоследняя синхронизация: ${(syncStatus['last_run'] as Map?)?['created_at'] ?? 'ещё не выполнялась'}'),
+        subtitle: Text(
+          'Источник: ${syncStatus['configured_source'] ?? 'не указан'}'
+          '\nАвтосинхронизация: ${(syncStatus['automatic_sync_interval_seconds'] as num?) == null || (syncStatus['automatic_sync_interval_seconds'] as num) <= 0 ? 'выключена' : 'каждые ${syncStatus['automatic_sync_interval_seconds']} с'}'
+          '\nПоследний запуск: ${(syncStatus['last_run'] as Map?)?['created_at'] ?? 'ещё не выполнялась'}',
+        ),
       )),
+      for (final entry in [
+        ('ДОПы', syncStatus['last_supplements']),
+        ('Назначения учителей', syncStatus['last_teacher_assignments']),
+        ('Автоматическая синхронизация', syncStatus['last_failure']),
+      ])
+        if (entry.$2 is Map)
+          Card(child: ListTile(
+            leading: Icon(
+              (((entry.$2 as Map)['result_json']?.toString() ?? '').contains('failed'))
+                  ? Icons.warning_amber_rounded
+                  : Icons.check_circle_outline_rounded,
+            ),
+            title: Text(entry.$1, style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(
+              'Последний запуск: ${(entry.$2 as Map)['created_at'] ?? '—'}'
+              '\nИсточник: ${(entry.$2 as Map)['source'] ?? '—'}'
+              '\nИмпортировано: ${(entry.$2 as Map)['imported'] ?? 0} • пропущено: ${(entry.$2 as Map)['skipped'] ?? 0}',
+            ),
+          )),
+    ],
     if (permissions.contains('*') || permissions.contains('dop.manage'))
       Card(child: ListTile(
         leading: Icon(Icons.sync_rounded, color: scheme.primary),
