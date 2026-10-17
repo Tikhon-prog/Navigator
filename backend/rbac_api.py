@@ -649,17 +649,25 @@ def list_workbook_announcements(actor: dict[str, Any] = Depends(core.current_use
 @router.get("/management/dashboard")
 def management_dashboard(actor: dict[str, Any] = Depends(require_permission("dashboard.read"))) -> dict[str, Any]:
     position, scope_class = _require_position_actor(actor, "dashboard.read")
+    leadership = position in {"director", "deputy", "administrator"}
+    can_count_dops = leadership or position == "dop_coordinator"
     with core._db() as db:
+        active_students = db.execute(
+            "SELECT class_id FROM users WHERE role='student' AND active=1"
+        ).fetchall()
+        student_count = sum(
+            1 for row in active_students
+            if position != "homeroom_teacher"
+            or core.normalize_class_id(row["class_id"]) == core.normalize_class_id(scope_class)
+        )
         counts = {
-            "students": db.execute("SELECT COUNT(*) AS n FROM users WHERE role='student' AND active=1" +
-                                   (" AND class_id=?" if position == "homeroom_teacher" else ""),
-                                   (scope_class,) if position == "homeroom_teacher" else ()).fetchone()["n"],
-            "staff": db.execute("SELECT COUNT(*) AS n FROM users WHERE role IN ('teacher','mentor','admin') AND active=1").fetchone()["n"],
-            "active_dop_records": db.execute("SELECT COUNT(*) AS n FROM student_supplements WHERE status='active'").fetchone()["n"],
-            "announcements": db.execute("SELECT COUNT(*) AS n FROM announcements WHERE expires_at IS NULL OR expires_at>?", (_now(),)).fetchone()["n"],
+            "students": student_count,
+            # School-wide totals are hidden from class teachers and coordinators
+            # who do not need them to fulfil their assigned duties.
+            "staff": db.execute("SELECT COUNT(*) AS n FROM users WHERE role IN ('teacher','mentor','admin') AND active=1").fetchone()["n"] if leadership else None,
+            "active_dop_records": db.execute("SELECT COUNT(*) AS n FROM student_supplements WHERE status='active'").fetchone()["n"] if can_count_dops else None,
+            "announcements": db.execute("SELECT COUNT(*) AS n FROM announcements WHERE expires_at IS NULL OR expires_at>?", (_now(),)).fetchone()["n"] if leadership else None,
         }
-    if position == "homeroom_teacher":
-        counts["active_dop_records"] = None
     return {"position": position, "scope_class": scope_class, "counts": counts}
 
 
@@ -671,18 +679,21 @@ def management_students(actor: dict[str, Any] = Depends(core.current_user)) -> d
     if position in {"director", "deputy", "dop_coordinator", "mentor_coordinator", "librarian", "administrator"}:
         sql = "SELECT id,display_name,class_id,active FROM users WHERE role='student' AND active=1 ORDER BY class_id,display_name"
         params: tuple[Any, ...] = ()
+        with core._db() as db:
+            rows = db.execute(sql, params).fetchall()
+        return {"data": [dict(row) for row in rows], "scope": "school"}
     elif position == "homeroom_teacher":
-        sql = "SELECT id,display_name,class_id,active FROM users WHERE role='student' AND active=1 AND class_id=? ORDER BY display_name"
-        params = (scope_class,)
+        with core._db() as db:
+            rows = db.execute("SELECT id,display_name,class_id,active FROM users WHERE role='student' AND active=1 ORDER BY display_name").fetchall()
+        scoped = [dict(row) for row in rows
+                  if core.normalize_class_id(row["class_id"]) == core.normalize_class_id(scope_class)]
+        return {"data": scoped, "scope": scope_class or "assigned_class"}
     elif actor["role"] == "teacher":
         return core.list_students(actor)
     elif actor["role"] == "mentor":
         return core.list_students(actor)
     else:
         raise HTTPException(status_code=403, detail="Student directory is not available for this account")
-    with core._db() as db:
-        rows = db.execute(sql, params).fetchall()
-    return {"data": [dict(row) for row in rows], "scope": scope_class or "school"}
 
 
 @router.get("/management/students/{student_id}/supplements")
@@ -694,7 +705,7 @@ def management_student_supplements(student_id: str, actor: dict[str, Any] = Depe
         if position == "homeroom_teacher":
             with core._db() as db:
                 student = db.execute("SELECT class_id FROM users WHERE id=? AND role='student' AND active=1", (student_id,)).fetchone()
-            if not student or student["class_id"] != scope_class:
+            if not student or core.normalize_class_id(student["class_id"]) != core.normalize_class_id(scope_class):
                 raise HTTPException(status_code=404, detail="Student not found")
         elif actor["role"] in {"mentor", "teacher"}:
             return core.get_student(student_id, actor)
