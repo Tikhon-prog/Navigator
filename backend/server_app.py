@@ -159,6 +159,12 @@ class LoginAttempt(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BootstrapState(Base):
+    __tablename__ = "bootstrap_state"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(String(160), default="true")
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -551,7 +557,7 @@ def create_app(
     def bootstrap(body: BootstrapBody, request: Request, db: Annotated[Session, Depends(get_db)]):
         if not bootstrap_key or not secrets.compare_digest(body.bootstrap_key, bootstrap_key):
             raise HTTPException(status_code=403, detail="Bootstrap is disabled or key is invalid")
-        if db.scalar(select(User.id).limit(1)) is not None:
+        if db.scalar(select(User.id).limit(1)) is not None or db.get(BootstrapState, "admin-created") is not None:
             raise HTTPException(status_code=409, detail="Initial administrator already exists")
         login = body.login.strip().casefold()
         if not login:
@@ -559,6 +565,8 @@ def create_app(
         user = User(login=login, display_name=body.display_name.strip(), role="admin",
                     password_hash=ph.hash(body.password), active=True)
         try:
+            # The primary-key marker serializes concurrent first-run requests across workers.
+            db.add(BootstrapState(key="admin-created", value="true"))
             db.add(user)
             db.flush()
             _audit(db, user.id, "bootstrap_admin_created", "user", user.id)
@@ -651,11 +659,14 @@ def create_app(
         else:
             query = select(User).where(User.id == "__no_students__")
         if class_id:
-            query = query.join(ClassMembership, ClassMembership.student_id == User.id).where(ClassMembership.class_id == class_id)
             if user.role == "teacher":
                 assigned = select(TeacherAssignment.class_id).where(TeacherAssignment.teacher_id == user.id)
                 if class_id not in set(db.scalars(assigned)):
                     raise HTTPException(status_code=403, detail="Class is not assigned to this teacher")
+                # The teacher query already joins ClassMembership; add a filter instead of a duplicate join.
+                query = query.where(ClassMembership.class_id == class_id)
+            else:
+                query = query.join(ClassMembership, ClassMembership.student_id == User.id).where(ClassMembership.class_id == class_id)
         found = list(db.scalars(query.distinct().order_by(User.display_name)))
         return {"data": [_user_json(item) for item in found]}
 
