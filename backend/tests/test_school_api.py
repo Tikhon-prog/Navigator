@@ -31,8 +31,8 @@ class SchoolApiTests(unittest.TestCase):
                        ("student2", "otherstudent", api._hash_password("correct horse battery"), "student", "Other Student", "8B", api._utc_now()))
             db.execute("INSERT INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
                        ("student1", "mentor1", "mentor", "", api._utc_now()))
-            db.execute("INSERT INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
-                       ("student1", "teacher1", "teacher", "Mathematics", api._utc_now()))
+            db.execute("INSERT INTO teacher_subject_assignments(student_id,staff_id,subject,created_at) VALUES(?,?,?,?)",
+                       ("student1", "teacher1", "Mathematics", api._utc_now()))
             db.execute("INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                        ("dop1", "student1", "Robotics", 3, "15:00", "Mentor", "317", "active", api._utc_now()))
 
