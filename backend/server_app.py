@@ -794,6 +794,41 @@ def create_app(
         db.refresh(item)
         return _schedule_json(item)
 
+
+    @app.patch("/api/v1/admin/schedule/{record_id}")
+    def update_schedule(record_id: str, body: ScheduleUpdate,
+                       actor: Annotated[User, Depends(require_roles("admin"))],
+                       db: Annotated[Session, Depends(get_db)]):
+        item = db.get(ScheduleRecord, record_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Schedule record not found")
+        changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+        if "class_id" in changes and db.get(SchoolClass, changes["class_id"]) is None:
+            raise HTTPException(status_code=422, detail="Unknown class")
+        if "subject" in changes:
+            changes["subject"] = changes["subject"].strip()
+            if not changes["subject"]:
+                raise HTTPException(status_code=422, detail="Subject cannot be empty")
+        for key, value in changes.items():
+            setattr(item, key, value)
+        item.updated_at = utcnow()
+        _audit(db, actor.id, "schedule_updated", "schedule", item.id,
+               {"changed_fields": sorted(changes.keys())})
+        db.commit()
+        db.refresh(item)
+        return _schedule_json(item)
+
+    @app.delete("/api/v1/admin/schedule/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_schedule(record_id: str, actor: Annotated[User, Depends(require_roles("admin"))],
+                        db: Annotated[Session, Depends(get_db)]):
+        item = db.get(ScheduleRecord, record_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Schedule record not found")
+        _audit(db, actor.id, "schedule_deleted", "schedule", item.id, {"class_id": item.class_id})
+        db.delete(item)
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @app.post("/api/v1/admin/supplements", status_code=status.HTTP_201_CREATED)
     def add_supplement(body: SupplementBody, actor: Annotated[User, Depends(require_roles("admin"))],
                        db: Annotated[Session, Depends(get_db)]):
@@ -806,6 +841,44 @@ def create_app(
         db.commit()
         db.refresh(item)
         return _supplement_json(item)
+
+
+    @app.patch("/api/v1/admin/supplements/{record_id}")
+    def update_supplement(record_id: str, body: SupplementUpdate,
+                          actor: Annotated[User, Depends(require_roles("admin"))],
+                          db: Annotated[Session, Depends(get_db)]):
+        item = db.get(SupplementRecord, record_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Supplement record not found")
+        changes = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+        if "student_id" in changes:
+            student = db.get(User, changes["student_id"])
+            if student is None or student.role != "student":
+                raise HTTPException(status_code=422, detail="Supplement must be attached to a student")
+        if "title" in changes:
+            changes["title"] = changes["title"].strip()
+            if not changes["title"]:
+                raise HTTPException(status_code=422, detail="Supplement title cannot be empty")
+        for key, value in changes.items():
+            setattr(item, key, value)
+        item.updated_at = utcnow()
+        _audit(db, actor.id, "supplement_updated", "supplement", item.id,
+               {"changed_fields": sorted(changes.keys())})
+        db.commit()
+        db.refresh(item)
+        return _supplement_json(item)
+
+    @app.delete("/api/v1/admin/supplements/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_supplement(record_id: str, actor: Annotated[User, Depends(require_roles("admin"))],
+                          db: Annotated[Session, Depends(get_db)]):
+        item = db.get(SupplementRecord, record_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Supplement record not found")
+        _audit(db, actor.id, "supplement_deleted", "supplement", item.id,
+               {"student_id": item.student_id})
+        db.delete(item)
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/v1/students/{student_id}/supplements")
     def student_supplements(student_id: str, user: Annotated[User, Depends(current_user)],
