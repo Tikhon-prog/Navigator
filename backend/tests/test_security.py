@@ -7,7 +7,28 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from backend import main
+from backend import school_api
 from backend.yandex_cloud_function import index
+
+
+class SchoolAuthConfigurationTests(unittest.TestCase):
+    def test_placeholder_signing_secret_is_rejected(self):
+        candidates = [
+            "REPLACE_WITH_RANDOM_SECRET_AT_LEAST_32_CHARS",
+            "example-secret-that-is-long-enough-but-not-real",
+            "short",
+        ]
+        for secret in candidates:
+            with self.subTest(secret=secret):
+                with patch.object(school_api, "TOKEN_SECRET", secret):
+                    with self.assertRaises(HTTPException) as raised:
+                        school_api._signing_key()
+                    self.assertEqual(raised.exception.status_code, 503)
+
+    def test_long_random_looking_signing_secret_is_accepted(self):
+        secret = "6f0a9c2e84b713d5f091ac67e3280d5d71c09b4a88e1c7f3"
+        with patch.object(school_api, "TOKEN_SECRET", secret):
+            self.assertEqual(school_api._signing_key(), secret.encode("utf-8"))
 
 
 class BackendAccessTests(unittest.TestCase):
