@@ -12,8 +12,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# Load secrets before importing modules that read environment variables at import time.
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+BASE_DIR = Path(__file__).resolve().parent
+# Load both supported .env locations before importing modules that capture
+# authentication/database settings at import time. Root .env takes precedence.
+load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR / ".env")
 
 from .school_api import router as school_services_router
 from .sso_api import router as school_sso_router
@@ -29,9 +32,6 @@ from .data_sources import load_configured_sheet
 # ============================================================
 # CONFIG
 # ============================================================
-
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
 
 YANDEX_API = "https://cloud-api.yandex.net/v1/disk"
 
