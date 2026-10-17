@@ -129,6 +129,9 @@ def init_db() -> None:
         user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "token_version" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+        user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        if "token_version" not in user_columns:
+            db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
         link_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_links)").fetchall()}
         if "subject" not in link_columns:
             db.execute("ALTER TABLE student_links ADD COLUMN subject TEXT NOT NULL DEFAULT ''")
