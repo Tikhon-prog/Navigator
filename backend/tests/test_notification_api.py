@@ -33,8 +33,8 @@ class NotificationScopeTests(unittest.TestCase):
                     (user_id, username, core._hash_password("a sufficiently long test password"), role, username, class_id, core._utc_now()),
                 )
             db.execute(
-                "INSERT INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
-                ("student1", "teacher1", "teacher", "Mathematics", core._utc_now()),
+                "INSERT INTO teacher_subject_assignments(student_id,staff_id,subject,created_at) VALUES(?,?,?,?)",
+                ("student1", "teacher1", "Mathematics", core._utc_now()),
             )
 
     def tearDown(self):
