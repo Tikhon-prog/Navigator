@@ -85,10 +85,9 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
     if not identity:
         # Never auto-link by email/username: that can let an unverified claim take over an account.
         raise HTTPException(status_code=403, detail="SSO identity is not linked; ask the school administrator")
-    token = core._make_token(identity)
+    result = core._issue_session(identity)
     core._audit(identity["id"], "auth.sso_login")
-    return {"access_token": token, "token_type": "bearer", "expires_in": core.TOKEN_TTL_SECONDS,
-            "user": core._public_user(identity)}
+    return result
 
 
 @router.post("/admin/sso-identities", status_code=201)
