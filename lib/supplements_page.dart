@@ -110,6 +110,8 @@ class _SupplementsPageState extends State<SupplementsPage> {
     if (cachedSchoolUserId != currentSchoolUserId) {
       items = items.where((item) => !item.id.startsWith('server_')).toList();
       await prefs.setString('supplements_local', jsonEncode(items.map((e) => e.toJson()).toList()));
+      await prefs.remove('school_supplements_cache_v1');
+      await prefs.remove('school_supplements_user_id_v1');
     }
     if (mounted) setState(() => loading = false);
     try { await _refreshServerSupplements(); } catch (_) {}
