@@ -69,6 +69,13 @@ def init_db() -> None:
           created_at TEXT NOT NULL,
           PRIMARY KEY(student_id, staff_id, link_type)
         );
+        CREATE TABLE IF NOT EXISTS teacher_subject_assignments (
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          subject TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY(student_id, staff_id, subject)
+        );
         CREATE TABLE IF NOT EXISTS student_supplements (
           id TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           title TEXT NOT NULL, weekday INTEGER, time TEXT NOT NULL DEFAULT '',
@@ -92,6 +99,7 @@ def init_db() -> None:
           target_id TEXT, details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_links_staff ON student_links(staff_id, link_type);
+        CREATE INDEX IF NOT EXISTS idx_teacher_subject_staff ON teacher_subject_assignments(staff_id, subject);
         CREATE INDEX IF NOT EXISTS idx_supplements_student ON student_supplements(student_id);
         CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);
         """)
@@ -247,10 +255,15 @@ class AnnouncementBody(BaseModel):
 def _can_view_student(actor: dict[str, Any], student: sqlite3.Row) -> bool:
     if actor["role"] == "admin":
         return True
-    if actor["role"] in {"mentor", "teacher"}:
+    if actor["role"] == "teacher":
         with _db() as db:
-            link = db.execute("SELECT 1 FROM student_links WHERE student_id=? AND staff_id=? AND link_type=?",
-                              (student["id"], actor["id"], actor["role"])).fetchone()
+            link = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
+                              (student["id"], actor["id"])).fetchone()
+        return link is not None
+    if actor["role"] == "mentor":
+        with _db() as db:
+            link = db.execute("SELECT 1 FROM student_links WHERE student_id=? AND staff_id=? AND link_type='mentor'",
+                              (student["id"], actor["id"])).fetchone()
         return link is not None
     return actor["role"] == "student" and actor["id"] == student["id"]
 
@@ -346,8 +359,14 @@ def create_student_link(body: LinkBody, actor: dict[str, Any] = Depends(require_
         staff = db.execute("SELECT role FROM users WHERE id=? AND active=1", (body.staff_id,)).fetchone()
         if not student or student["role"] != "student" or not staff or staff["role"] != body.link_type:
             raise HTTPException(status_code=422, detail="Student/staff roles do not match the requested link")
-        db.execute("INSERT OR IGNORE INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
-                   (body.student_id, body.staff_id, body.link_type, body.subject.strip(), _utc_now()))
+        if body.link_type == "teacher":
+            if not body.subject.strip():
+                raise HTTPException(status_code=422, detail="subject is required for teacher assignments")
+            db.execute("INSERT OR IGNORE INTO teacher_subject_assignments(student_id,staff_id,subject,created_at) VALUES(?,?,?,?)",
+                       (body.student_id, body.staff_id, body.subject.strip(), _utc_now()))
+        else:
+            db.execute("INSERT OR IGNORE INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
+                       (body.student_id, body.staff_id, body.link_type, "", _utc_now()))
     _audit(actor["id"], "student.linked", body.student_id, {"staff_id": body.staff_id, "link_type": body.link_type, "subject": body.subject.strip()})
     return {"status": "linked", "student_id": body.student_id, "staff_id": body.staff_id, "link_type": body.link_type, "subject": body.subject.strip()}
 
@@ -357,9 +376,12 @@ def list_students(actor: dict[str, Any] = Depends(require_roles("admin", "mentor
     with _db() as db:
         if actor["role"] == "admin":
             rows = db.execute("SELECT id,username,role,display_name,class_id,active FROM users WHERE role='student' AND active=1 ORDER BY display_name").fetchall()
+        elif actor["role"] == "teacher":
+            rows = db.execute("SELECT DISTINCT u.id,u.username,u.role,u.display_name,u.class_id,u.active FROM users u JOIN teacher_subject_assignments l ON l.student_id=u.id WHERE u.role='student' AND u.active=1 AND l.staff_id=? ORDER BY u.display_name",
+                              (actor["id"],)).fetchall()
         else:
-            rows = db.execute("SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active FROM users u JOIN student_links l ON l.student_id=u.id WHERE u.role='student' AND u.active=1 AND l.staff_id=? AND l.link_type=? ORDER BY u.display_name",
-                              (actor["id"], actor["role"])).fetchall()
+            rows = db.execute("SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active FROM users u JOIN student_links l ON l.student_id=u.id WHERE u.role='student' AND u.active=1 AND l.staff_id=? AND l.link_type='mentor' ORDER BY u.display_name",
+                              (actor["id"],)).fetchall()
     return {"data": [dict(row) for row in rows]}
 
 
@@ -463,8 +485,8 @@ def teacher_subject_roster(actor: dict[str, Any] = Depends(require_roles("teache
     """Return only student records explicitly assigned to this teacher, grouped by subject."""
     with _db() as db:
         rows = db.execute(
-            "SELECT l.subject,u.id,u.display_name,u.class_id FROM student_links l "
-            "JOIN users u ON u.id=l.student_id WHERE l.staff_id=? AND l.link_type='teacher' "
+            "SELECT l.subject,u.id,u.display_name,u.class_id FROM teacher_subject_assignments l "
+            "JOIN users u ON u.id=l.student_id WHERE l.staff_id=? "
             "AND u.role='student' AND u.active=1 ORDER BY l.subject,u.display_name",
             (actor["id"],),
         ).fetchall()
