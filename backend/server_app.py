@@ -920,9 +920,13 @@ def create_app(
             classes_for_student = list(db.scalars(select(SchoolClass).join(
                 ClassMembership, ClassMembership.class_id == SchoolClass.id
             ).where(ClassMembership.student_id == student.id)))
+            class_ids = [c.id for c in classes_for_student]
+            schedule_query = select(ScheduleRecord).where(ScheduleRecord.class_id.in_(class_ids)) if class_ids else select(ScheduleRecord).where(ScheduleRecord.class_id == "__no_matching_class__")
+            schedule = db.scalars(schedule_query.order_by(ScheduleRecord.weekday, ScheduleRecord.lesson_number)).all()
             result.append({
                 "student": _user_json(student),
                 "classes": [_class_json(c) for c in classes_for_student],
+                "schedule": [_schedule_json(s) for s in schedule],
                 "supplements": [_supplement_json(s) for s in supplements],
             })
         return {"data": result}
