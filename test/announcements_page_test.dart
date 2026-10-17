@@ -34,6 +34,6 @@ void main() {
 
     expect(find.text('Завтра школьное мероприятие'), findsOneWidget);
     expect(find.text('Начало в 10:00'), findsOneWidget);
-    expect(find.textContaining('Сохранённая копия'), findsOneWidget);
+    expect(find.textContaining('сохранённая копия'), findsOneWidget);
   });
 }
