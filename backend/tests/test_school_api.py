@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from backend import school_api as api
+from backend import rbac_api
 
 
 class SchoolApiTests(unittest.TestCase):
@@ -145,6 +146,28 @@ class SchoolApiTests(unittest.TestCase):
             result = api.create_announcement(api.AnnouncementBody(title="Fire alarm", body="Leave by the nearest safe exit", severity="emergency"), actor)
         self.assertEqual(result["push_status"], "firebase_not_configured")
         self.assertEqual(result["severity"], "emergency")
+
+    def test_homeroom_teacher_can_publish_only_to_assigned_class(self):
+        actor = {"id": "teacher1", "role": "teacher", "class_id": None}
+        with patch.object(rbac_api, "_position", return_value=("homeroom_teacher", "8A")), \
+             patch.object(api, "_send_push", return_value=("no_registered_devices", 0)):
+            result = api.create_announcement(
+                api.AnnouncementBody(title="8A notice", body="Bring workbook", audience="class", class_id="8A"),
+                actor,
+            )
+            self.assertEqual(result["class_id"], "8A")
+            with self.assertRaises(HTTPException) as raised:
+                api.create_announcement(
+                    api.AnnouncementBody(title="8B notice", body="Wrong class", audience="class", class_id="8B"),
+                    actor,
+                )
+            self.assertEqual(raised.exception.status_code, 403)
+            with self.assertRaises(HTTPException) as raised:
+                api.create_announcement(
+                    api.AnnouncementBody(title="Global notice", body="Not allowed", audience="all"),
+                    actor,
+                )
+            self.assertEqual(raised.exception.status_code, 403)
 
     def test_teacher_can_have_multiple_subjects_for_same_student(self):
         actor = {"id": "admin1", "role": "admin"}
