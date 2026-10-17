@@ -17,7 +17,7 @@ void main() {
 
   testWidgets('announcements screen shows cached school-wide notices offline', (tester) async {
     SharedPreferences.setMockInitialValues({
-      'school_announcements_cache_v1': jsonEncode([
+      'school_announcements_cache_v2': jsonEncode([
         {
           'id': 'notice-1',
           'title': 'Завтра школьное мероприятие',
@@ -34,6 +34,6 @@ void main() {
 
     expect(find.text('Завтра школьное мероприятие'), findsOneWidget);
     expect(find.text('Начало в 10:00'), findsOneWidget);
-    expect(find.textContaining('сохранённая копия'), findsOneWidget);
+    expect(find.textContaining('Сохранённая копия'), findsOneWidget);
   });
 }
