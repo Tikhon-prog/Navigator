@@ -65,6 +65,7 @@ def init_db() -> None:
           student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           link_type TEXT NOT NULL CHECK(link_type IN ('mentor','teacher')),
+          subject TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL,
           PRIMARY KEY(student_id, staff_id, link_type)
         );
@@ -94,6 +95,10 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_supplements_student ON student_supplements(student_id);
         CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);
         """)
+        # Backward-compatible migration for databases created by earlier builds.
+        link_columns = {row["name"] for row in db.execute("PRAGMA table_info(student_links)").fetchall()}
+        if "subject" not in link_columns:
+            db.execute("ALTER TABLE student_links ADD COLUMN subject TEXT NOT NULL DEFAULT ''")
     _bootstrap_admin()
 
 
@@ -213,6 +218,7 @@ class LinkBody(BaseModel):
     student_id: str
     staff_id: str
     link_type: str
+    subject: str = Field(default="", max_length=120)
 
 
 class SupplementBody(BaseModel):
@@ -240,8 +246,6 @@ class AnnouncementBody(BaseModel):
 
 def _can_view_student(actor: dict[str, Any], student: sqlite3.Row) -> bool:
     if actor["role"] == "admin":
-        return True
-    if actor["role"] == "teacher" and actor.get("class_id") and actor["class_id"] == student["class_id"]:
         return True
     if actor["role"] in {"mentor", "teacher"}:
         with _db() as db:
@@ -342,10 +346,10 @@ def create_student_link(body: LinkBody, actor: dict[str, Any] = Depends(require_
         staff = db.execute("SELECT role FROM users WHERE id=? AND active=1", (body.staff_id,)).fetchone()
         if not student or student["role"] != "student" or not staff or staff["role"] != body.link_type:
             raise HTTPException(status_code=422, detail="Student/staff roles do not match the requested link")
-        db.execute("INSERT OR IGNORE INTO student_links(student_id,staff_id,link_type,created_at) VALUES(?,?,?,?)",
-                   (body.student_id, body.staff_id, body.link_type, _utc_now()))
-    _audit(actor["id"], "student.linked", body.student_id, {"staff_id": body.staff_id, "link_type": body.link_type})
-    return {"status": "linked", "student_id": body.student_id, "staff_id": body.staff_id, "link_type": body.link_type}
+        db.execute("INSERT OR IGNORE INTO student_links(student_id,staff_id,link_type,subject,created_at) VALUES(?,?,?,?,?)",
+                   (body.student_id, body.staff_id, body.link_type, body.subject.strip(), _utc_now()))
+    _audit(actor["id"], "student.linked", body.student_id, {"staff_id": body.staff_id, "link_type": body.link_type, "subject": body.subject.strip()})
+    return {"status": "linked", "student_id": body.student_id, "staff_id": body.staff_id, "link_type": body.link_type, "subject": body.subject.strip()}
 
 
 @router.get("/students")
@@ -353,9 +357,6 @@ def list_students(actor: dict[str, Any] = Depends(require_roles("admin", "mentor
     with _db() as db:
         if actor["role"] == "admin":
             rows = db.execute("SELECT id,username,role,display_name,class_id,active FROM users WHERE role='student' AND active=1 ORDER BY display_name").fetchall()
-        elif actor["role"] == "teacher" and actor.get("class_id"):
-            rows = db.execute("SELECT id,username,role,display_name,class_id,active FROM users WHERE role='student' AND active=1 AND (class_id=? OR id IN (SELECT student_id FROM student_links WHERE staff_id=? AND link_type='teacher')) ORDER BY display_name",
-                              (actor["class_id"], actor["id"])).fetchall()
         else:
             rows = db.execute("SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active FROM users u JOIN student_links l ON l.student_id=u.id WHERE u.role='student' AND u.active=1 AND l.staff_id=? AND l.link_type=? ORDER BY u.display_name",
                               (actor["id"], actor["role"])).fetchall()
@@ -455,4 +456,16 @@ def read_audit(limit: int = 100, actor: dict[str, Any] = Depends(require_roles("
     limit = max(1, min(limit, 500))
     with _db() as db:
         rows = db.execute("SELECT id,actor_id,action,target_id,details_json,created_at FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+@router.get("/teachers/me/subjects")
+def teacher_subject_roster(actor: dict[str, Any] = Depends(require_roles("teacher"))) -> dict[str, Any]:
+    """Return only student records explicitly assigned to this teacher, grouped by subject."""
+    with _db() as db:
+        rows = db.execute(
+            "SELECT l.subject,u.id,u.display_name,u.class_id FROM student_links l "
+            "JOIN users u ON u.id=l.student_id WHERE l.staff_id=? AND l.link_type='teacher' "
+            "AND u.role='student' AND u.active=1 ORDER BY l.subject,u.display_name",
+            (actor["id"],),
+        ).fetchall()
     return {"data": [dict(row) for row in rows]}
