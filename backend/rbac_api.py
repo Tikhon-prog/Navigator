@@ -311,6 +311,15 @@ def assign_position(body: PositionBody,
             raise HTTPException(status_code=404, detail="Active account not found")
         if user["role"] not in {"teacher", "mentor", "admin"}:
             raise HTTPException(status_code=422, detail="Only staff accounts can receive school positions")
+        mentor_positions = {"mentor", "mentor_coordinator"}
+        teacher_positions = {"teacher", "homeroom_teacher", "dop_coordinator", "librarian"}
+        leadership_positions = {"director", "deputy"}
+        if body.position in mentor_positions and user["role"] not in {"mentor", "admin"}:
+            raise HTTPException(status_code=422, detail="Mentor positions require a mentor or administrator account")
+        if body.position in teacher_positions and user["role"] not in {"teacher", "admin"}:
+            raise HTTPException(status_code=422, detail="This position requires a teacher or administrator account")
+        if body.position in leadership_positions and user["role"] not in {"teacher", "admin"}:
+            raise HTTPException(status_code=422, detail="School leadership positions require a teacher or administrator account")
         if actor["role"] != "admin" and user["id"] == actor["id"]:
             raise HTTPException(status_code=403, detail="School leadership cannot change its own position")
         db.execute(
@@ -323,8 +332,8 @@ def assign_position(body: PositionBody,
     return {"status": "assigned", "user_id": user["id"], "position": body.position, "scope_class": body.scope_class}
 
 
-@router.delete("/admin/staff-positions/{user_id}")
-def remove_position(user_id: str, actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
+@router.delete("/admin/staff-positions/by-id/{user_id}")
+def remove_position_by_id(user_id: str, actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
     with core._db() as db:
         cur = db.execute("DELETE FROM staff_positions WHERE user_id=?", (user_id,))
     if not cur.rowcount:
