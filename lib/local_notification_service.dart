@@ -20,6 +20,9 @@ class LocalNotificationService {
   static const String supplementsChannelId = 'pokolenie_supplements';
   static const String supplementsChannelName = 'ДОПы';
   static const String supplementsChannelDescription = 'Напоминания о дополнительных занятиях';
+  static const String schoolChannelId = 'pokolenie_school_alerts';
+  static const String schoolChannelName = 'Школьные оповещения';
+  static const String schoolChannelDescription = 'Общие, целевые и экстренные сообщения школы';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -53,11 +56,45 @@ class LocalNotificationService {
       ),
     );
 
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        schoolChannelId,
+        schoolChannelName,
+        description: schoolChannelDescription,
+        importance: Importance.max,
+      ),
+    );
+
     await androidPlugin?.requestNotificationsPermission();
     _initialized = true;
   }
 
   Future<void> cancelAll() => plugin.cancelAll();
+
+  Future<void> showIncomingNotification({
+    required String title,
+    required String body,
+  }) async {
+    await initialize();
+    final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    await plugin.show(
+      id,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          schoolChannelId,
+          schoolChannelName,
+          channelDescription: schoolChannelDescription,
+          importance: Importance.max,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.message,
+          ticker: 'Поколение',
+          autoCancel: true,
+        ),
+      ),
+    );
+  }
 
   Future<void> _cancelNotificationRange(int from, int to) async {
     final pending = await plugin.pendingNotificationRequests();
