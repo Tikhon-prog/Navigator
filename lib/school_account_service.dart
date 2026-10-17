@@ -257,6 +257,26 @@ class SchoolAccountService {
     }
   }
 
+  /// Restore server-backed notifications after an app restart without blocking
+  /// Flutter startup. The stored refresh token is rotated before any network
+  /// registration when the access token is close to expiry.
+  Future<bool> restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    final savedUser = await currentUser();
+    if (baseUrl.isEmpty || savedUser == null) return false;
+    final token = await validAccessToken();
+    if (token == null || token.isEmpty) return false;
+    try {
+      final config = await _getConfig(baseUrl);
+      return await _initializePush(config, baseUrl, token);
+    } catch (_) {
+      // Keep a valid offline session; the next explicit login/network operation
+      // can recover Firebase registration when the school server comes back.
+      return false;
+    }
+  }
+
   Future<int?> refreshMySupplements() async {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
