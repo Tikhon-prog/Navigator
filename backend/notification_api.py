@@ -351,11 +351,18 @@ def create_group(body: GroupBody, actor: dict[str, Any] = Depends(require_group_
 @router.post("/admin/notification-groups/{group_id}/members", status_code=201)
 def add_group_member(group_id: str, body: GroupMemberBody,
                      actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
+    from . import rbac_api
+    actor_position, _ = (None, None) if actor["role"] == "admin" else rbac_api._position(actor["id"])
+    school_leadership = actor["role"] == "admin" or actor_position in {"director", "deputy"}
     with core._db() as db:
         group = db.execute("SELECT id FROM notification_groups WHERE id=?", (group_id,)).fetchone()
-        user = db.execute("SELECT id FROM users WHERE id=? AND active=1", (body.user_id,)).fetchone()
+        user = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.user_id,)).fetchone()
         if not group or not user:
             raise HTTPException(status_code=404, detail="Group or active user not found")
+        # Non-leadership coordinators may build student delivery groups, but
+        # cannot use that power to create a group broadcast to staff accounts.
+        if not school_leadership and user["role"] != "student":
+            raise HTTPException(status_code=403, detail="Only school leadership may add staff accounts to notification groups")
         db.execute("INSERT OR IGNORE INTO notification_group_members(group_id,user_id) VALUES(?,?)", (group_id, body.user_id))
     core._audit(actor["id"], "notification_group.member_added", group_id, {"user_id": body.user_id})
     return {"status": "added", "group_id": group_id, "user_id": body.user_id}
@@ -478,6 +485,14 @@ def create_notification(body: NotificationBody,
             target = db.execute("SELECT id FROM notification_groups WHERE id=?", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Target group not found")
+            if not is_school_leadership:
+                non_students = db.execute(
+                    "SELECT 1 FROM notification_group_members m JOIN users u ON u.id=m.user_id "
+                    "WHERE m.group_id=? AND u.active=1 AND u.role!='student' LIMIT 1",
+                    (body.target_id,)
+                ).fetchone()
+                if non_students:
+                    raise HTTPException(status_code=403, detail="This group includes staff accounts and requires school leadership to broadcast")
         notification_id = secrets.token_urlsafe(12)
         created_at = _now()
         delivery_status = "scheduled" if scheduled_at and scheduled_at > created_at else "queued"
