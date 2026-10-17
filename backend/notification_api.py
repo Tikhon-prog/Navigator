@@ -442,6 +442,15 @@ def create_notification(body: NotificationBody,
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
+            if body.kind == "dop_reminder":
+                if target["role"] != "student":
+                    raise HTTPException(status_code=422, detail="DOP reminders must target a student")
+                has_active_dop = db.execute(
+                    "SELECT 1 FROM student_supplements WHERE student_id=? AND status='active' LIMIT 1",
+                    (body.target_id,)
+                ).fetchone()
+                if not has_active_dop:
+                    raise HTTPException(status_code=422, detail="No active DOP record exists for this student")
             if not is_school_leadership and target["role"] != "student":
                 raise HTTPException(status_code=403, detail="Staff without school-wide leadership may notify only student accounts")
             if actor["role"] == "teacher" and not is_school_leadership and position != "dop_coordinator":
