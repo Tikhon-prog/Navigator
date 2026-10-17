@@ -205,6 +205,11 @@ def _enqueue_dop_reminders() -> int:
 def _dispatch_due_notifications() -> int:
     now = _now()
     with core._db() as db:
+        db.execute(
+            "UPDATE notifications SET delivery_status='expired',push_status='expired' "
+            "WHERE delivery_status IN ('queued','scheduled') AND expires_at IS NOT NULL AND expires_at<=?",
+            (now,)
+        )
         due = db.execute(
             "SELECT id FROM notifications WHERE delivery_status IN ('queued','scheduled') "
             "AND (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) "
@@ -322,6 +327,11 @@ def create_notification(body: NotificationBody,
         expires_at = _normalize_timestamp(body.expires_at)
     except ValueError:
         raise HTTPException(status_code=422, detail="Dates must be ISO-8601 timestamps")
+    now_dt = datetime.now(timezone.utc)
+    if expires_at and datetime.fromisoformat(expires_at) <= now_dt:
+        raise HTTPException(status_code=422, detail="expires_at must be in the future")
+    if scheduled_at and expires_at and datetime.fromisoformat(expires_at) <= datetime.fromisoformat(scheduled_at):
+        raise HTTPException(status_code=422, detail="expires_at must be later than scheduled_at")
     with core._db() as db:
         if body.target_type == "user":
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
@@ -367,7 +377,7 @@ def create_notification(body: NotificationBody,
 def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
     now = _now()
     with core._db() as db:
-        rows = db.execute("SELECT * FROM notifications WHERE (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) AND delivery_status!='processing' ORDER BY created_at DESC LIMIT 200", (now, now)).fetchall()
+        rows = db.execute("SELECT * FROM notifications WHERE (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) AND delivery_status NOT IN ('processing','cancelled','expired') ORDER BY created_at DESC LIMIT 200", (now, now)).fetchall()
         visible = []
         for row in rows:
             if row["target_type"] == "all":
