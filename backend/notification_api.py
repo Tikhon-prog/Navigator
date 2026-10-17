@@ -48,7 +48,8 @@ def _init() -> None:
           target_id TEXT, created_by TEXT NOT NULL REFERENCES users(id),
           created_at TEXT NOT NULL, scheduled_at TEXT, expires_at TEXT,
           delivery_status TEXT NOT NULL DEFAULT 'queued', push_status TEXT NOT NULL DEFAULT 'pending',
-          delivered_count INTEGER NOT NULL DEFAULT 0
+          delivered_count INTEGER NOT NULL DEFAULT 0, delivery_attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT, last_error_code TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
         CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -70,6 +71,15 @@ def _init() -> None:
             db.execute("ALTER TABLE notifications ADD COLUMN push_status TEXT NOT NULL DEFAULT 'pending'")
         if "delivered_count" not in columns:
             db.execute("ALTER TABLE notifications ADD COLUMN delivered_count INTEGER NOT NULL DEFAULT 0")
+        if "delivery_attempts" not in columns:
+            db.execute("ALTER TABLE notifications ADD COLUMN delivery_attempts INTEGER NOT NULL DEFAULT 0")
+        if "next_attempt_at" not in columns:
+            db.execute("ALTER TABLE notifications ADD COLUMN next_attempt_at TEXT")
+        if "last_error_code" not in columns:
+            db.execute("ALTER TABLE notifications ADD COLUMN last_error_code TEXT")
+        # Recover claimed jobs left behind by an abrupt container restart.
+        db.execute("UPDATE notifications SET delivery_status='retry',next_attempt_at=? WHERE delivery_status='processing'",
+                   (_now(),))
 
 
 @router.on_event("startup")
@@ -94,7 +104,11 @@ async def _worker_loop() -> None:
         except Exception:
             # The loop must survive a transient database/provider error.
             pass
-        await asyncio.sleep(max(3, int(os.getenv("NAVIGATOR_NOTIFICATION_POLL_SECONDS", "10"))))
+        try:
+            poll_seconds = int(os.getenv("NAVIGATOR_NOTIFICATION_POLL_SECONDS", "10"))
+        except ValueError:
+            poll_seconds = 10
+        await asyncio.sleep(max(3, min(300, poll_seconds)))
 
 
 def _recipient_tokens(db, row) -> list[str]:
@@ -214,21 +228,24 @@ def _dispatch_due_notifications() -> int:
     now = _now()
     with core._db() as db:
         db.execute(
-            "UPDATE notifications SET delivery_status='expired',push_status='expired' "
-            "WHERE delivery_status IN ('queued','scheduled') AND expires_at IS NOT NULL AND expires_at<=?",
+            "UPDATE notifications SET delivery_status='expired',push_status='expired',next_attempt_at=NULL "
+            "WHERE delivery_status IN ('queued','scheduled','retry') AND expires_at IS NOT NULL AND expires_at<=?",
             (now,)
         )
         due = db.execute(
-            "SELECT id FROM notifications WHERE delivery_status IN ('queued','scheduled') "
+            "SELECT id FROM notifications WHERE delivery_status IN ('queued','scheduled','retry') "
+            "AND (next_attempt_at IS NULL OR next_attempt_at<=?) "
             "AND (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) "
-            "ORDER BY COALESCE(scheduled_at,created_at),created_at LIMIT 50", (now, now)
+            "ORDER BY COALESCE(next_attempt_at,scheduled_at,created_at),created_at LIMIT 50", (now, now, now)
         ).fetchall()
     sent_jobs = 0
     for item in due:
         notification_id = item["id"]
         with core._db() as db:
             claimed = db.execute(
-                "UPDATE notifications SET delivery_status='processing' WHERE id=? AND delivery_status IN ('queued','scheduled')",
+                "UPDATE notifications SET delivery_status='processing',delivery_attempts=delivery_attempts+1,next_attempt_at=NULL "
+                "WHERE id=? AND delivery_status IN ('queued','scheduled','retry') AND (next_attempt_at IS NULL OR next_attempt_at<=?)",
+                (notification_id, now)
                 (notification_id,)
             )
             if claimed.rowcount != 1:
@@ -239,11 +256,23 @@ def _dispatch_due_notifications() -> int:
             tokens, row["title"], row["body"],
             {"notification_id": notification_id, "kind": row["kind"], "severity": "emergency" if row["kind"] == "emergency" else "info"}
         )
-        status = "sent" if push_status == "sent" else "partial" if push_status == "partial" else "failed"
+        attempt_count = int(row["delivery_attempts"] or 1)
+        retryable_statuses = {
+            "firebase_not_configured", "firebase_credentials_invalid",
+            "firebase_admin_package_missing", "provider_error", "failed",
+        }
+        retryable = push_status in retryable_statuses and attempt_count < 6
+        if retryable:
+            status = "retry"
+            backoff_seconds = min(3600, 15 * (2 ** (attempt_count - 1)))
+            next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds)).isoformat()
+        else:
+            status = "sent" if push_status == "sent" else "partial" if push_status == "partial" else "failed"
+            next_attempt = None
         with core._db() as db:
             db.execute(
-                "UPDATE notifications SET delivery_status=?,push_status=?,delivered_count=? WHERE id=?",
-                (status, push_status, sent_count, notification_id)
+                "UPDATE notifications SET delivery_status=?,push_status=?,delivered_count=?,next_attempt_at=?,last_error_code=? WHERE id=?",
+                (status, push_status, sent_count, next_attempt, None if push_status == "sent" else push_status, notification_id)
             )
         core._audit(row["created_by"], "notification.delivery_finished", notification_id,
                     {"delivery_status": status, "push_status": push_status, "delivered_count": sent_count})
