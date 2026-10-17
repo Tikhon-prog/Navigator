@@ -211,6 +211,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     if ('${item['time'] ?? ''}'.isNotEmpty) '${item['time']}',
                     if ('${item['room'] ?? ''}'.isNotEmpty) 'Кабинет ${item['room']}',
                   ].join(' • ')),
+                  trailing: canManageDop ? IconButton(
+                    tooltip: 'Удалить ДОП',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: () => Navigator.pop(dialogContext, 'delete:${item['id']}'),
+                  ) : null,
                 ),
             ],
           ))),
@@ -228,6 +233,27 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       if (action == 'add_dop' && canManageDop && mounted) {
         await _addSupplement(id);
         if (mounted) await _openStudent(student);
+      } else if (action != null && action.startsWith('delete:') && canManageDop && mounted) {
+        final supplementId = action.substring('delete:'.length);
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Удалить ДОП?'),
+            content: const Text('Запись будет удалена, а ожидающее серверное напоминание отменено.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
+              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Удалить')),
+            ],
+          ),
+        );
+        if (confirmed == true) {
+          await _withBusy(() async {
+            await _request('DELETE', 'management/supplements/$supplementId');
+          });
+          if (mounted) await _openStudent(student);
+        } else if (mounted) {
+          await _openStudent(student);
+        }
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
