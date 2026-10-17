@@ -533,7 +533,7 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
       TextField(controller:firstName,decoration:const InputDecoration(labelText:'Имя')),
       Row(children:[Expanded(child:TextField(controller:classNumber,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Класс'))),const SizedBox(width:10),Expanded(child:TextField(controller:classLetter,decoration:const InputDecoration(labelText:'Буква')))]),
       const SizedBox(height:10),
-      Text('Тип проживания Navigator определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
+      Text('Тип проживания Поколение определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
     ])),
     actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:(){if(lastName.text.trim().isEmpty||firstName.text.trim().isEmpty||classNumber.text.trim().isEmpty||classLetter.text.trim().isEmpty)return;Navigator.pop(context,DopStudent(lastName:lastName.text.trim(),firstName:firstName.text.trim(),classNumber:classNumber.text.trim(),classLetter:classLetter.text.trim().toUpperCase(),residenceType:'auto'));},child:const Text('Сохранить'))],
   );
