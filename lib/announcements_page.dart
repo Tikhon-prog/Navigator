@@ -108,7 +108,9 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         final decoded = jsonDecode(cached) as List;
         _items = decoded.map((item) => SchoolAnnouncement.fromJson(
           Map<String, dynamic>.from(item as Map),
-        )).toList();
+        )).where((item) => !item.isExpired &&
+            (item.targetClass.isEmpty ||
+                (_classId.isNotEmpty && _sameClass(item.targetClass, _classId)))).toList();
       } catch (_) {
         _items = [];
       }
