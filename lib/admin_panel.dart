@@ -67,6 +67,7 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
 
   @override Widget build(BuildContext context) => AlertDialog(
     title: Text(setupMode ? 'Создание локального администратора' : 'Вход в кабинет школы'),
+    scrollable: true,
     content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: double.infinity,
@@ -357,7 +358,18 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
               height: 68,
               selectedIndex: tab,
               onDestinationSelected: (v) => setState(() => tab = v),
-              destinations: [for (final s in sections) NavigationDestination(icon: Icon(s.icon), label: s.title)],
+              destinations: [
+                for (final s in sections)
+                  NavigationDestination(
+                    icon: Icon(s.icon),
+                    label: switch (s.title) {
+                      'Администраторы' => 'Аккаунты',
+                      'Синхронизация' => 'Сервер',
+                      'Безопасность' => 'Защита',
+                      _ => s.title,
+                    },
+                  ),
+              ],
             ),
           ]);
         }
