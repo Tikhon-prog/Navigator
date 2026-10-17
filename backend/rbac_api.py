@@ -471,11 +471,18 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
             for teacher_id in teacher_ids:
                 assignment_keys.add((student["id"], teacher_id, subject))
 
+    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     if not assignment_keys:
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
+                (source_name + ":teacher_assignments", 0, skipped, _now(),
+                 json.dumps({"sheet": "BaseSchedule", "note": "no matching teacher/student records"}, ensure_ascii=False))
+            )
+        core._audit(actor["id"], "school_data.teacher_assignments_sync_empty", None,
+                    {"source": source_name, "skipped": skipped})
         return {"status": "no_assignments_imported", "rows_seen": len(raw_rows), "imported": 0,
                 "skipped": skipped, "note": "No matching teacher/student records found; previous schedule assignments were preserved."}
-
-    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     with core._db() as db:
         db.execute("DELETE FROM teacher_subject_assignments WHERE source_key LIKE 'schedule:%'")
         for student_id, teacher_id, subject in sorted(assignment_keys):
