@@ -296,9 +296,12 @@ def readiness() -> dict[str, Any]:
         "firebase_android_client_ready": firebase["android_client_ready"],
         "firebase_delivery_enabled": firebase["delivery_enabled"],
         "school_sso_enabled": bool(
-            __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
-            and __import__("os").getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
-            and __import__("os").getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+            os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
+            and os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+            and (
+                os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().startswith("https://")
+                or os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().startswith("http://localhost")
+            )
         ),
     }
 
@@ -319,11 +322,13 @@ def public_config() -> dict[str, Any]:
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
     issuer_secure = issuer.startswith("https://") or issuer.startswith("http://localhost")
-    userinfo_secure = userinfo_url.startswith("https://") or userinfo_url.startswith("http://localhost")
+    # UserInfo may be discovered from the issuer's standard OIDC metadata if
+    # the school IT team leaves NAVIGATOR_OIDC_USERINFO_URL empty.
+    userinfo_secure = not userinfo_url or userinfo_url.startswith("https://") or userinfo_url.startswith("http://localhost")
     return {
         "school_name": os.getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
         "api_version": "v2",
-        "sso": {"enabled": bool(issuer and userinfo_url and client_id and redirect_uri and issuer_secure and userinfo_secure), "issuer": issuer,
+        "sso": {"enabled": bool(issuer and client_id and redirect_uri and issuer_secure and userinfo_secure), "issuer": issuer,
                 "client_id": client_id, "redirect_uri": redirect_uri,
                 "scopes": ["openid", "profile", "email"]},
         "firebase": {"enabled": firebase_enabled, **(firebase if firebase_enabled else {})},
