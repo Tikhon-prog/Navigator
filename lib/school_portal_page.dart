@@ -123,7 +123,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       ];
       if (canReadStudents) futures.add(_loadStudents());
       if (permissions.contains('*') || permissions.contains('dashboard.read')) futures.add(_loadDashboard());
-      if (canReadUsers) futures.add(_loadUsers());
+      if (canReadUsers || permissions.contains('assignments.manage')) futures.add(_loadUsers());
       await Future.wait(futures);
     } catch (e) {
       error = e.toString().replaceFirst('Exception: ', '');
@@ -149,7 +149,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
 
   Future<void> _loadUsers() async {
     try {
-      final result = await _request('GET', 'admin/users') as Map;
+      final endpoint = canReadUsers ? 'admin/users' : 'management/staff';
+      final result = await _request('GET', endpoint) as Map;
       users = (result['data'] as List? ?? const []).whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row)).toList();
     } catch (_) { users = []; }
@@ -372,6 +373,92 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _assignStudent(Map<String, dynamic> student) async {
+    final subject = TextEditingController();
+    String assignmentType = 'mentor';
+    String staffId = '';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) {
+        final eligible = users.where((u) => u['role'] == assignmentType && (u['active'] == true || u['active'] == 1)).toList();
+        if (staffId.isEmpty || !eligible.any((u) => u['id'].toString() == staffId)) {
+          staffId = eligible.isEmpty ? '' : eligible.first['id'].toString();
+        }
+        return AlertDialog(
+          title: Text('Назначить сотрудника: ${student['display_name'] ?? 'ученик'}'),
+          content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: assignmentType,
+              decoration: const InputDecoration(labelText: 'Тип назначения'),
+              items: const [
+                DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
+                DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
+              ],
+              onChanged: (v) => setDialogState(() { assignmentType = v ?? 'mentor'; staffId = ''; }),
+            ),
+            const SizedBox(height: 10),
+            if (eligible.isEmpty)
+              const Text('Нет активных сотрудников с выбранным типом аккаунта.')
+            else DropdownButtonFormField<String>(
+              value: staffId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Сотрудник'),
+              items: [for (final staff in eligible) DropdownMenuItem(
+                value: staff['id'].toString(),
+                child: Text('${staff['display_name'] ?? staff['username']}'),
+              )],
+              onChanged: (v) => setDialogState(() => staffId = v ?? ''),
+            ),
+            if (assignmentType == 'teacher') TextField(controller: subject, decoration: const InputDecoration(labelText: 'Предмет')),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+            FilledButton(onPressed: eligible.isEmpty || staffId.isEmpty || (assignmentType == 'teacher' && subject.text.trim().isEmpty)
+                ? null
+                : () => Navigator.pop(dialogContext, {'staff_id': staffId, 'assignment_type': assignmentType, 'subject': subject.text.trim()}),
+              child: const Text('Назначить')),
+          ],
+        );
+      }),
+    );
+    subject.dispose();
+    if (result == null) return;
+    await _withBusy(() async {
+      await _request('POST', 'admin/assignments', body: {
+        'student_id': student['id'], 'staff_id': result['staff_id'],
+        'assignment_type': result['assignment_type'], 'subject': result['subject'] ?? '',
+      });
+    });
+  }
+
+  Future<void> _linkSsoIdentity(Map<String, dynamic> account) async {
+    final subject = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Связать школьный SSO'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Аккаунт: ${account['username'] ?? ''}'),
+          const SizedBox(height: 8),
+          TextField(controller: subject, decoration: const InputDecoration(
+            labelText: 'OIDC subject (sub)', helperText: 'Стабильный идентификатор из школьного UserInfo, не email',
+          )),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: subject.text.trim().isEmpty ? null : () => Navigator.pop(dialogContext, subject.text.trim()), child: const Text('Связать')),
+        ],
+      ),
+    );
+    subject.dispose();
+    if (result == null) return;
+    await _withBusy(() async {
+      await _request('POST', 'admin/sso-identities', body: {
+        'username': account['username'], 'subject': result,
+      });
+    });
+  }
+
   Future<void> _toggleUser(Map<String, dynamic> account) async {
     final active = account['active'] == true || account['active'] == 1;
     await _withBusy(() async {
@@ -475,7 +562,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       leading: CircleAvatar(child: Text((student['display_name']?.toString().isNotEmpty ?? false) ? student['display_name'].toString()[0].toUpperCase() : 'У')),
       title: Text(student['display_name']?.toString() ?? 'Ученик', style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('Класс: ${student['class_id'] ?? 'не указан'}'),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+        if (permissions.contains('*') || permissions.contains('assignments.manage'))
+          IconButton(tooltip: 'Назначить наставника или учителя', onPressed: busy ? null : () => _assignStudent(student), icon: const Icon(Icons.person_add_alt_1_rounded)),
+        const Icon(Icons.chevron_right_rounded),
+      ]),
       onTap: () => _openStudent(student),
     )),
   ]);
@@ -499,11 +590,16 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       leading: CircleAvatar(child: Icon(account['role'] == 'student' ? Icons.person_rounded : Icons.badge_rounded)),
       title: Text(account['display_name']?.toString() ?? account['username']?.toString() ?? 'Аккаунт', style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('${account['role']} • ${account['position'] ?? 'без должности'}${account['class_id'] == null ? '' : ' • ${account['class_id']}'}'),
-      trailing: canManageUsers && account['role'] != 'admin' ? IconButton(
-        tooltip: (account['active'] == true || account['active'] == 1) ? 'Отключить аккаунт' : 'Включить аккаунт',
-        onPressed: busy ? null : () => _toggleUser(account),
-        icon: Icon((account['active'] == true || account['active'] == 1) ? Icons.person_off_rounded : Icons.person_add_alt_1_rounded),
-      ) : null,
+      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+        if (isAdmin)
+          IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
+        if (canManageUsers && account['role'] != 'admin')
+          IconButton(
+            tooltip: (account['active'] == true || account['active'] == 1) ? 'Отключить аккаунт' : 'Включить аккаунт',
+            onPressed: busy ? null : () => _toggleUser(account),
+            icon: Icon((account['active'] == true || account['active'] == 1) ? Icons.person_off_rounded : Icons.person_add_alt_1_rounded),
+          ),
+      ]),
     )),
   ]);
 }
