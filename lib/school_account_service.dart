@@ -390,11 +390,13 @@ class SchoolAccountService {
     final accessToken = await validAccessToken();
     final refreshToken = prefs.getString(_refreshKey) ?? '';
     final rawUser = prefs.getString(_userKey);
+    var currentUserId = '';
     if (rawUser != null) {
       try {
         final user = jsonDecode(rawUser);
         if (user is Map && user['id'] != null) {
-          await prefs.setBool('dop_reminders_enabled_${user['id']}', prefs.getBool('dop_reminders_enabled') ?? false);
+          currentUserId = user['id'].toString().trim();
+          await prefs.setBool('dop_reminders_enabled_${currentUserId}', prefs.getBool('dop_reminders_enabled') ?? false);
         }
       } catch (_) {}
     }
@@ -429,24 +431,56 @@ class SchoolAccountService {
     await _messageSubscription?.cancel();
     _tokenSubscription = null;
     _messageSubscription = null;
-    // Clear user-scoped caches on this device so the next school account
-    // cannot see personal messages or DOP records from the previous session.
+    // Migrate a legacy shared DOP list only when its old sync marker proves
+    // it belonged to this account; never assign an unknown user's offline
+    // entries to the account that happens to be signed in at logout.
     try {
-      final rawAnnouncements = prefs.getString('school_announcements_cache_v2');
-      if (rawAnnouncements != null) {
-        final rows = (jsonDecode(rawAnnouncements) as List).where((item) =>
-            item is Map && (item['target_user_id'] == null || item['target_user_id'].toString().isEmpty)).toList();
-        await prefs.setString('school_announcements_cache_v2', jsonEncode(rows));
-      }
-      final rawSupplements = prefs.getString('supplements_local');
-      if (rawSupplements != null) {
-        final rows = (jsonDecode(rawSupplements) as List).where((item) =>
-            item is Map && !((item['id']?.toString() ?? '').startsWith('server_'))).toList();
-        await prefs.setString('supplements_local', jsonEncode(rows));
+      final legacyDops = prefs.getString('supplements_local');
+      final legacyOwner = prefs.getString('school_supplements_user_id_v1') ?? '';
+      if (legacyDops != null && currentUserId.isNotEmpty && legacyOwner == currentUserId) {
+        final rawRows = jsonDecode(legacyDops);
+        if (rawRows is List) {
+          final scopedKey = 'supplements_local_${currentUserId}';
+          final existing = prefs.getString(scopedKey);
+          final byId = <String, Map<String, dynamic>>{};
+          if (existing != null) {
+            try {
+              for (final item in (jsonDecode(existing) as List).whereType<Map>()) {
+                final map = Map<String, dynamic>.from(item);
+                byId[(map['id'] ?? '').toString()] = map;
+              }
+            } catch (_) {}
+          }
+          for (final item in rawRows.whereType<Map>()) {
+            final map = Map<String, dynamic>.from(item);
+            final id = (map['id'] ?? '').toString();
+            if (id.isEmpty || id.startsWith('server_')) continue;
+            byId.putIfAbsent(id, () => map);
+          }
+          await prefs.setString(scopedKey, jsonEncode(byId.values.toList()));
+        }
       }
     } catch (_) {}
+    await prefs.remove('supplements_local');
+    // Personal notification payloads are not retained after logout. A fresh
+    // login may repopulate the account-scoped cache from the server.
+    if (currentUserId.isNotEmpty) {
+      await prefs.remove('school_announcements_cache_v2_$currentUserId');
+      await prefs.remove('school_supplements_cache_v1_$currentUserId');
+      await prefs.remove('school_supplements_user_id_v1_$currentUserId');
+    }
     await prefs.remove('school_supplements_cache_v1');
     await prefs.remove('school_supplements_user_id_v1');
+    for (final key in const [
+      'student_last_name', 'student_first_name', 'student_class_number',
+      'student_class_letter', 'student_class_name', 'student_class_id',
+      'last_name', 'first_name', 'class_name', 'class_id', 'class_number',
+      'class_letter', 'class_grade', 'profile_last_name', 'profile_first_name',
+      'surname', 'name', 'student_profile', 'profile', 'student_profile_name',
+    ]) {
+      await prefs.remove(key);
+    }
+    await prefs.remove('dop_last_sync');
     await prefs.remove(_tokenKey);
     await prefs.remove(_refreshKey);
     await prefs.remove(_expiresKey);
