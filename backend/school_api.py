@@ -355,6 +355,10 @@ class AnnouncementBody(BaseModel):
     expires_at: str | None = Field(default=None, max_length=50)
 
 
+class DeviceUnregisterBody(BaseModel):
+    token: str = Field(min_length=20, max_length=4096)
+
+
 def _can_view_student(actor: dict[str, Any], student: sqlite3.Row) -> bool:
     if actor["role"] == "admin":
         return True
@@ -578,10 +582,15 @@ def register_device(body: DeviceBody, actor: dict[str, Any] = Depends(current_us
 
 
 @router.delete("/devices/me")
-def unregister_my_devices(actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+def unregister_my_device(body: DeviceUnregisterBody | None = None,
+                         actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Revoke only the current device so signing out on one phone does not disable
+    # notifications on the user's other devices.
+    if body is None:
+        return {"status": "no_device_specified", "count": 0}
     with _db() as db:
-        cur = db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=? AND active=1",
-                         (_utc_now(), actor["id"]))
+        cur = db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=? AND fcm_token=? AND active=1",
+                         (_utc_now(), actor["id"], body.token))
     _audit(actor["id"], "device.unregistered", None, {"count": cur.rowcount})
     return {"status": "unregistered", "count": cur.rowcount}
 
