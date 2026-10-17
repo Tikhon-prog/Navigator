@@ -652,7 +652,25 @@ class RouteEngine {
   static Offset _nearestPointOnSegment(Offset p, CorridorSegment s) => _project(p, s.a, s.b);
 
   static RouteResult? build(String destinationId, {int startFloor = 1, String? startLocationId}) {
-    final destination = SchoolData.room(destinationId);
+    // startFloor is kept for callers that also select which floor to browse;
+    // the real origin is the main entrance unless an explicit location is saved.
+    assert(startFloor >= 1 && startFloor <= 3);
+    final destination = SchoolData.tryRoom(destinationId);
+    if (destination == null) return null;
+    final startRoom = startLocationId == null ? null : SchoolData.tryRoom(startLocationId);
+    if (startLocationId != null && startRoom == null) return null;
+    final effectiveStartFloor = startRoom?.floor ?? 1;
+
+    // A same-location request must succeed even when that point has no corridor
+    // connector, and should not build the full graph or show walking directions.
+    if (startRoom != null && startRoom.id == destination.id) {
+      final point = DoorPoints.of(destination.id, destination.point);
+      return RouteResult(
+        [RouteNode('same_start', destination.floor, point, 'Точка назначения')],
+        destination, 0, destination.floor, startLocationId,
+      );
+    }
+
     final segments = CorridorRoads.all;
     final nodes = <String, RouteNode>{};
     final segmentNodeIds = <int, List<String>>{};
@@ -704,7 +722,15 @@ class RouteEngine {
     final anchorRoadNode = <String, String>{};
     final requestedAnchors = <String>{destination.id};
     if (startLocationId != null) requestedAnchors.add(startLocationId);
-    for (final entry in _anchors.entries) {
+    // Keep the hand-mapped door points, but do not make routing depend on every
+    // room already having an explicit DoorPoints entry: use its catalog point
+    // as a safe, bounded fallback for the requested origin/destination.
+    final routeAnchors = <String, Offset>{..._anchors};
+    routeAnchors.putIfAbsent(destination.id, () => DoorPoints.of(destination.id, destination.point));
+    if (startRoom != null) {
+      routeAnchors.putIfAbsent(startRoom.id, () => DoorPoints.of(startRoom.id, startRoom.point));
+    }
+    for (final entry in routeAnchors.entries) {
       final id = entry.key;
       if (_blockedTransit.contains(id) && !requestedAnchors.contains(id)) continue;
       final p = entry.value;
@@ -783,18 +809,12 @@ class RouteEngine {
       }
     }
 
-    // Main entrance is the source when no room is selected.
-    final startRoom = startLocationId == null ? null : SchoolData.room(startLocationId);
-    final effectiveStartFloor = startRoom?.floor ?? startFloor;
+    // Main entrance is always on floor 1. A browsing-floor selection must not
+    // fabricate an origin point on the second or third floor.
     final sourceAnchor = startRoom == null ? 'entry' : startRoom.id;
     final source = anchorNode[sourceAnchor];
     final target = anchorNode[destination.id];
     if (source == null || target == null) return null;
-
-    if (startLocationId == destinationId) {
-      final p = DoorPoints.of(destination.id, destination.point);
-      return RouteResult([RouteNode('same_start', destination.floor, p, 'Точка назначения')], destination, 0, destination.floor, startLocationId);
-    }
 
     // Prefer a fully same-floor path whenever one exists. A large stair penalty
     // alone is not a guarantee: bad/overlapping map geometry can make a valid
@@ -857,7 +877,56 @@ class RouteEngine {
     }
     path.add(RouteNode('destination_door_${destination.id}', destination.floor, DoorPoints.of(destination.id, destination.point), SchoolData.title(destination)));
 
-    return RouteResult(path, destination, distance[target]!, effectiveStartFloor, startLocationId);
+    final displayPath = _simplifyPath(path);
+    return RouteResult(displayPath, destination, distance[target]!, effectiveStartFloor, startLocationId);
+  }
+
+  static List<RouteNode> _simplifyPath(List<RouteNode> input) {
+    if (input.length < 3) return List<RouteNode>.unmodifiable(input);
+    final points = List<RouteNode>.from(input);
+    var changed = true;
+    // Remove only geometry nodes that sit on a straight continuation. Semantic
+    // endpoints and stair anchors are retained; topology itself is never edited.
+    while (changed) {
+      changed = false;
+      for (var i = 1; i < points.length - 1; i++) {
+        final prev = points[i - 1];
+        final current = points[i];
+        final next = points[i + 1];
+        if (prev.floor != current.floor || current.floor != next.floor) continue;
+        if (!current.id.startsWith('road_')) continue;
+        final v1 = Offset(
+          (current.point.dx - prev.point.dx) * _mapW,
+          (current.point.dy - prev.point.dy) * _mapH,
+        );
+        final v2 = Offset(
+          (next.point.dx - current.point.dx) * _mapW,
+          (next.point.dy - current.point.dy) * _mapH,
+        );
+        final len1 = v1.distance;
+        final len2 = v2.distance;
+        if (len1 < 2 || len2 < 2) continue;
+        final cross = _cross(v1, v2).abs();
+        final dot = v1.dx * v2.dx + v1.dy * v2.dy;
+        // Only collapse forward collinear points, not U-turns or tight corners.
+        if (dot <= 0 || cross / (len1 * len2) > 0.035) continue;
+        final chord = next.point - prev.point;
+        final chordLength2 = chord.dx * chord.dx + chord.dy * chord.dy;
+        if (chordLength2 <= 1e-12) continue;
+        final t = (((current.point.dx - prev.point.dx) * chord.dx) +
+                ((current.point.dy - prev.point.dy) * chord.dy)) /
+            chordLength2;
+        final projected = Offset(
+          prev.point.dx + chord.dx * t,
+          prev.point.dy + chord.dy * t,
+        );
+        if (_pxDistance(current.point, projected) > 10) continue;
+        points.removeAt(i);
+        changed = true;
+        break;
+      }
+    }
+    return List<RouteNode>.unmodifiable(points);
   }
 
   static int? _anchorFloor(String id) {
@@ -871,38 +940,60 @@ class RouteEngine {
   }
 
   static List<RouteStep> instructions(RouteResult result) {
-    final path = result.nodes;
+    final path = _simplifyPath(result.nodes);
     if (path.isEmpty) return const [];
+    if (path.any((node) => node.id == 'same_start')) {
+      return [RouteStep(
+        result.destination.floor,
+        'Вы уже находитесь у места «${SchoolData.title(result.destination)}».',
+        Icons.check_circle_outline_rounded,
+      )];
+    }
     final steps = <RouteStep>[];
     if (result.startLocationId == null) {
-      steps.add(RouteStep(result.startFloor, 'Начните от главного входа и двигайтесь по коридору.', Icons.directions_walk_rounded));
+      steps.add(RouteStep(1, 'Начните от главного входа на 1-м этаже.', Icons.directions_walk_rounded));
     } else {
-      steps.add(RouteStep(result.startFloor, 'Выйдите из ${SchoolData.title(SchoolData.room(result.startLocationId!))} через дверь в коридор.', Icons.exit_to_app_rounded));
+      final start = SchoolData.tryRoom(result.startLocationId!);
+      if (start == null) return const [];
+      steps.add(RouteStep(start.floor, 'Выйдите из ${SchoolData.title(start)} через дверь в коридор.', Icons.exit_to_app_rounded));
     }
     for (var i = 1; i < path.length; i++) {
       final prev = path[i - 1];
       final cur = path[i];
       if (cur.floor != prev.floor) {
         steps.add(RouteStep(cur.floor, cur.floor > prev.floor
-            ? 'Поднимитесь по лестнице на ${cur.floor} этаж.'
-            : 'Спуститесь по лестнице на ${cur.floor} этаж.', Icons.stairs_rounded));
+            ? 'Поднимитесь по лестнице на ${cur.floor}-й этаж.'
+            : 'Спуститесь по лестнице на ${cur.floor}-й этаж.', Icons.stairs_rounded));
         continue;
       }
       if (cur.id.startsWith('destination_door_')) {
-        steps.add(RouteStep(cur.floor, 'Подойдите к ${SchoolData.title(result.destination)} — вы на месте.', Icons.flag_rounded));
+        steps.add(RouteStep(cur.floor, 'Вы прибыли: ${SchoolData.title(result.destination)}.', Icons.flag_rounded));
         continue;
       }
       if (i + 1 < path.length) {
         final next = path[i + 1];
-        final v1 = cur.point - prev.point;
-        final v2 = next.point - cur.point;
-        if (v1.distance > .01 && v2.distance > .01) {
-          final cross = v1.dx * v2.dy - v1.dy * v2.dx;
-          final dot = v1.dx * v2.dx + v1.dy * v2.dy;
-          if (dot < 0.0 || cross.abs() > .015) {
-            final turn = cross > 0 ? 'Поверните направо' : 'Поверните налево';
-            steps.add(RouteStep(cur.floor, '$turn и продолжайте по коридору.', cross > 0 ? Icons.turn_right_rounded : Icons.turn_left_rounded));
-          }
+        final v1 = Offset(
+          (cur.point.dx - prev.point.dx) * _mapW,
+          (cur.point.dy - prev.point.dy) * _mapH,
+        );
+        final v2 = Offset(
+          (next.point.dx - cur.point.dx) * _mapW,
+          (next.point.dy - cur.point.dy) * _mapH,
+        );
+        if (v1.distance < 2 || v2.distance < 2) continue;
+        final cross = _cross(v1, v2);
+        final dot = v1.dx * v2.dx + v1.dy * v2.dy;
+        final angle = math.atan2(cross, dot) * 180 / math.pi;
+        if (angle.abs() < 28) continue;
+        if (angle.abs() >= 150) {
+          steps.add(RouteStep(cur.floor, 'Развернитесь и двигайтесь в обратном направлении.', Icons.turn_left_rounded));
+        } else {
+          final right = angle > 0;
+          steps.add(RouteStep(
+            cur.floor,
+            '${right ? 'Поверните направо' : 'Поверните налево'} и продолжайте по коридору.',
+            right ? Icons.turn_right_rounded : Icons.turn_left_rounded,
+          ));
         }
       }
     }
