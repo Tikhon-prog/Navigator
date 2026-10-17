@@ -30,6 +30,10 @@ Required for authenticated endpoints:
   optional initial admin account; password must be at least 14 characters. The bootstrap
   account is created only when there is no existing admin.
 - `NAVIGATOR_TOKEN_TTL_SECONDS`: access token lifetime, default 8 hours.
+- `NAVIGATOR_REFRESH_TTL_SECONDS`: rotating refresh-token lifetime, default 30 days.
+- `NAVIGATOR_NOTIFICATION_WORKER_ENABLED` and `NAVIGATOR_NOTIFICATION_POLL_SECONDS`: enable and tune the single-container notification worker.
+- `NAVIGATOR_SCHOOL_TIMEZONE`: timezone used for server-generated DOP reminders (default `Europe/Moscow`).
+- `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
 - `FIREBASE_CREDENTIALS_PATH`: optional path to a Firebase service-account JSON file mounted
   read-only as a secret, never committed to the repository. Alternatively, set
   `FIREBASE_CREDENTIALS_JSON_BASE64` to the one-line Base64 encoding of that JSON. Protect
@@ -41,17 +45,26 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 
 ## Routes
 
-- `POST /api/v2/auth/login` — username/password to bearer token.
-- `GET /api/v2/auth/me` — current account.
-- `POST /api/v2/admin/users` — create an account.
-- `POST /api/v2/admin/student-links` — explicitly associate a student with a mentor/teacher; include `subject` for teacher assignments.
+- `POST /api/v2/auth/login` — local username/password session.
+- `POST /api/v2/auth/sso` — exchange the school OIDC access token for a school session.
+- `POST /api/v2/auth/refresh` and `POST /api/v2/auth/logout` — rotate/revoke refreshable sessions.
+- `GET /api/v2/auth/me` and `GET /api/v2/auth/permissions` — current account and effective position permissions.
+- `GET /api/v2/public/config` — non-secret OIDC/Firebase client configuration for the Android app.
+- `POST /api/v2/admin/users` and `POST /api/v2/management/users` — create local accounts, subject to permissions.
+- `GET /api/v2/admin/users`, `PATCH /api/v2/admin/users/{id}` — list/update accounts and deactivate/reactivate users.
+- `PUT /api/v2/admin/staff-positions` — assign a position (director, deputy, homeroom teacher, DOP coordinator, mentor coordinator, teacher, mentor, librarian); only an existing admin can assign director/deputy.
+- `POST /api/v2/admin/student-links` and `POST/DELETE /api/v2/admin/assignments` — explicitly associate students with mentors and teachers by subject.
+- `GET /api/v2/management/dashboard`, `GET /api/v2/management/students`, `GET /api/v2/management/staff` — role-scoped management overview and rosters.
 - `GET /api/v2/teachers/me/subjects` — list students explicitly assigned to the signed-in teacher by subject.
 - `GET /api/v2/students` and `GET /api/v2/students/{id}` — role-scoped student list/details.
-- `POST /api/v2/admin/students/{id}/supplements` — add a student-specific supplement record.
-- `POST /api/v2/devices/register` — register an FCM device token for the signed-in user.
+- `POST /api/v2/management/students/{id}/supplements`, `PATCH/DELETE /api/v2/management/supplements/{id}` — create/update/delete DOP records with permissions.
+- `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter.
+- `POST /api/v2/devices/register`, `DELETE /api/v2/devices/me` — register and revoke FCM device tokens.
+- `GET /api/v2/notifications`, `POST /api/v2/admin/notifications` — list visible notifications and create global, class, group, personal, emergency, or scheduled messages.
+- `GET/PUT /api/v2/notifications/preferences` — opt in/out of server-generated DOP reminders.
 - `GET /api/v2/announcements` — list announcements visible to the current user.
 - `POST /api/v2/admin/announcements` — publish info, warning, or emergency notice.
-- `GET /api/v2/admin/audit` — inspect recent audit events.
+- `GET /api/v2/admin/audit` and `GET /api/v2/management/audit` — inspect recent audit events with appropriate permissions.
 
 Use the header `Authorization: Bearer <access_token>` on authenticated requests.
 Example login body: `{"username":"admin","password":"<secret>"}`.
@@ -61,7 +74,10 @@ Example emergency notice body:
 ## Emergency-notification limitations
 
 The API sends a Firebase Cloud Messaging notification when Firebase is configured and
-valid device tokens exist. Device tokens are sent in batches of up to 500, matching FCM's
+valid device tokens exist. The notification worker handles queued/scheduled messages and
+creates idempotent 15-minute DOP reminders for students who enabled that preference. It
+polls SQLite in the API container; keep the deployment to one worker process per database
+unless a shared transactional database and worker coordination are configured. Device tokens are sent in batches of up to 500, matching FCM's
 multicast limit; the API records a partial result when some deliveries succeed and others fail. It does not trigger or replace the school's PA/loudspeaker
 system, fire-alarm hardware, 112, or any official emergency process. Push delivery is
 best-effort; mobile OS settings, network coverage, battery restrictions, and provider
@@ -70,6 +86,13 @@ Use short, pre-approved templates and let school leadership authorize emergency
 broadcasts. Do not include sensitive student information in global messages.
 
 ## Production hardening required before real student data
+
+The app now has a school SSO sign-in entry and a role-aware portal for staff, student rosters,
+DOP management, assignments, account lifecycle, notifications and sync status. The Flutter
+schedule can refresh from `BaseSchedule` when the configured source has compatible columns;
+the bundled schedule remains the offline fallback. Student-linked DOP rows are imported
+through the portal's explicit sync action and unmatched rows are skipped rather than assigned
+to the wrong student.
 
 This is a functional integration scaffold, not yet an approved production deployment.
 Before using real student data: deploy only behind HTTPS; configure secrets through the
