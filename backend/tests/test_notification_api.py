@@ -78,7 +78,8 @@ class NotificationScopeTests(unittest.TestCase):
             notifications.NotificationPreferencesBody(dop_reminders_enabled=True), actor
         )
         tomorrow = datetime.now(ZoneInfo("Europe/Moscow")).date() + timedelta(days=1)
-        start_time = (datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(days=1, hours=2)).strftime("%H:%M")
+        # A fixed late time tomorrow keeps the test independent of the runner's clock.
+        start_time = "23:55"
         with core._db() as db:
             db.execute(
                 "INSERT INTO student_supplements(id,student_id,title,weekday,time,teacher,room,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
