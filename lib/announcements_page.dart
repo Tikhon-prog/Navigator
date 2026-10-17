@@ -115,6 +115,13 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       } catch (_) {
         _items = [];
       }
+      // Show cached announcements immediately while the online refresh continues.
+      if (_items.isNotEmpty && mounted) {
+        setState(() {
+          _loading = false;
+          _status = 'Сохранённая копия • проверяю обновления…';
+        });
+      }
     }
 
     if (!enabled || base.isEmpty) {
