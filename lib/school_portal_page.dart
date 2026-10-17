@@ -409,7 +409,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               )],
               onChanged: (v) => setDialogState(() => staffId = v ?? ''),
             ),
-            if (assignmentType == 'teacher') TextField(controller: subject, decoration: const InputDecoration(labelText: 'Предмет')),
+            if (assignmentType == 'teacher') TextField(
+              controller: subject,
+              decoration: const InputDecoration(labelText: 'Предмет'),
+              onChanged: (_) => setDialogState(() {}),
+            ),
           ])),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
@@ -446,7 +450,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
-          FilledButton(onPressed: subject.text.trim().isEmpty ? null : () => Navigator.pop(dialogContext, subject.text.trim()), child: const Text('Связать')),
+          FilledButton(onPressed: () {
+            if (subject.text.trim().isEmpty) return;
+            Navigator.pop(dialogContext, subject.text.trim());
+          }, child: const Text('Связать')),
         ],
       ),
     );
