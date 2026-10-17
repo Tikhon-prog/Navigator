@@ -12,6 +12,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .school_api import router as school_services_router
+from .sso_api import router as school_sso_router
+from .notification_api import router as notification_router
+from .data_sources import load_configured_sheet
 from dotenv import load_dotenv
 
 
@@ -64,6 +67,8 @@ app = FastAPI(
 
 # Separate authenticated API for accounts, scoped student access, and announcements.
 app.include_router(school_services_router)
+app.include_router(school_sso_router)
+app.include_router(notification_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,6 +193,10 @@ def read_sheet(sheet_name: str):
     if sheet_name not in PUBLIC_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
 
+    configured_data = load_configured_sheet(sheet_name)
+    if configured_data is not None:
+        return configured_data
+
     workbook = load_workbook()
 
     try:
@@ -282,14 +291,11 @@ def health():
 
 @app.get("/api/sheets")
 def get_sheets():
-
+    if os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower() in {"json", "http"}:
+        return {"sheets": sorted(PUBLIC_READ_SHEETS)}
     workbook = load_workbook()
-
     try:
-        return {
-            "sheets": [name for name in workbook.sheetnames if name in PUBLIC_READ_SHEETS]
-        }
-
+        return {"sheets": [name for name in workbook.sheetnames if name in PUBLIC_READ_SHEETS]}
     finally:
         workbook.close()
 
