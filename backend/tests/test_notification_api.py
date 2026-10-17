@@ -29,6 +29,7 @@ class NotificationScopeTests(unittest.TestCase):
                 ("teacher1", "teacher", "teacher", "8A"),
                 ("student1", "student1", "student", "8A"),
                 ("student2", "student2", "student", "8B"),
+                ("student3", "student3", "student", "8А"),
             ]:
                 db.execute(
                     "INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -172,6 +173,49 @@ class NotificationScopeTests(unittest.TestCase):
             notifications.list_notifications({"id": "student2", "role": "student", "class_id": "8B"})["data"],
             [],
         )
+
+    def test_class_notification_is_visible_across_cyrillic_latin_class_labels(self):
+        notice = notifications.NotificationBody(
+            title="8A notice", body="For class 8A",
+            kind="targeted", target_type="class", target_id="8A",
+        )
+        notifications.create_notification(notice, {"id": "admin1", "role": "admin"})
+        result = notifications.list_notifications({"id": "student3", "role": "student", "class_id": "8А"})
+        self.assertEqual([item["title"] for item in result["data"]], ["8A notice"])
+
+    def test_class_push_recipients_normalize_cyrillic_latin_labels(self):
+        with core._db() as db:
+            db.executemany(
+                "INSERT INTO devices(id,user_id,fcm_token,platform,active,updated_at) VALUES(?,?,?,?,1,?)",
+                [
+                    ("device1", "student1", "token-for-student-one-0000000001", "android", core._utc_now()),
+                    ("device2", "student2", "token-for-student-two-0000000002", "android", core._utc_now()),
+                    ("device3", "student3", "token-for-student-three-000003", "android", core._utc_now()),
+                ],
+            )
+            tokens = notifications._recipient_tokens(db, {"target_type": "class", "target_id": "8A"})
+        self.assertEqual(set(tokens), {"token-for-student-one-0000000001", "token-for-student-three-000003"})
+
+    def test_transient_firebase_delivery_error_is_scheduled_for_retry(self):
+        notification_id = "retry-notice-1"
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,delivery_status) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (notification_id, "Retry", "Temporary failure test", "personal", "user", "student1",
+                 "admin1", notifications._now(), "queued"),
+            )
+        with patch.object(core, "_send_push", return_value=("provider_error", 0)):
+            self.assertEqual(notifications._dispatch_due_notifications(), 1)
+        with core._db() as db:
+            row = db.execute(
+                "SELECT delivery_status,delivery_attempts,next_attempt_at,push_status FROM notifications WHERE id=?",
+                (notification_id,),
+            ).fetchone()
+        self.assertEqual(row["delivery_status"], "retry")
+        self.assertEqual(row["delivery_attempts"], 1)
+        self.assertIsNotNone(row["next_attempt_at"])
+        self.assertEqual(row["push_status"], "provider_error")
 
     def test_teacher_cannot_broadcast_to_everyone(self):
         body = notifications.NotificationBody(title="Message", body="Test")
