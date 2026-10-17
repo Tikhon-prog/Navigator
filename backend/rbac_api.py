@@ -6,7 +6,10 @@ grant additional school duties without making every deputy/teacher an administra
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
+import importlib.util
+import json
 import os
 import re
 import secrets
@@ -135,6 +138,45 @@ class AssignmentBody(BaseModel):
     subject: str = Field(default="", max_length=120)
 
 
+def _firebase_status() -> dict[str, bool]:
+    enabled = os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    firebase_client = (
+        os.getenv("FIREBASE_WEB_API_KEY", "").strip(),
+        os.getenv("FIREBASE_ANDROID_APP_ID", "").strip(),
+        os.getenv("FIREBASE_MESSAGING_SENDER_ID", "").strip(),
+        os.getenv("FIREBASE_PROJECT_ID", "").strip(),
+    )
+    credential_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
+    credential_b64 = os.getenv("FIREBASE_CREDENTIALS_JSON_BASE64", "").strip()
+    credentials_ready = False
+    try:
+        if credential_b64:
+            payload = json.loads(base64.b64decode(credential_b64).decode("utf-8"))
+        elif credential_path and os.path.isfile(credential_path):
+            with open(credential_path, "r", encoding="utf-8") as credential_file:
+                payload = json.load(credential_file)
+        else:
+            payload = {}
+        credentials_ready = all(
+            isinstance(payload.get(key), str) and payload[key].strip()
+            for key in ("project_id", "client_email", "private_key")
+        )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        credentials_ready = False
+    try:
+        package_ready = importlib.util.find_spec("firebase_admin") is not None
+    except (ImportError, ValueError):
+        package_ready = False
+    server_ready = enabled and credentials_ready and package_ready
+    client_ready = enabled and all(firebase_client)
+    return {
+        "enabled_by_env": enabled,
+        "server_ready": server_ready,
+        "android_client_ready": client_ready,
+        "delivery_enabled": server_ready and client_ready,
+    }
+
+
 def _position(user_id: str) -> tuple[str | None, str | None]:
     try:
         with core._db() as db:
@@ -187,13 +229,15 @@ def readiness() -> dict[str, Any]:
         raise
     except Exception:
         raise HTTPException(status_code=503, detail="School data source is not ready")
-    firebase_enabled = __import__("os").getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    firebase = _firebase_status()
     return {
         "status": "ready",
-        "source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
+        "source": os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
         "classes_available": len(classes),
         "schedule_rows_available": len(schedule),
-        "firebase_delivery_enabled": firebase_enabled,
+        "firebase_server_ready": firebase["server_ready"],
+        "firebase_android_client_ready": firebase["android_client_ready"],
+        "firebase_delivery_enabled": firebase["delivery_enabled"],
         "school_sso_enabled": bool(
             __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
             and __import__("os").getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
@@ -207,15 +251,12 @@ def public_config() -> dict[str, Any]:
     # Only public client configuration is exposed here. No secrets, service-account
     # JSON, API tokens, or private school data are returned.
     firebase = {
-        "api_key": __import__("os").getenv("FIREBASE_WEB_API_KEY", "").strip(),
-        "app_id": __import__("os").getenv("FIREBASE_ANDROID_APP_ID", "").strip(),
-        "messaging_sender_id": __import__("os").getenv("FIREBASE_MESSAGING_SENDER_ID", "").strip(),
-        "project_id": __import__("os").getenv("FIREBASE_PROJECT_ID", "").strip(),
+        "api_key": os.getenv("FIREBASE_WEB_API_KEY", "").strip(),
+        "app_id": os.getenv("FIREBASE_ANDROID_APP_ID", "").strip(),
+        "messaging_sender_id": os.getenv("FIREBASE_MESSAGING_SENDER_ID", "").strip(),
+        "project_id": os.getenv("FIREBASE_PROJECT_ID", "").strip(),
     }
-    os = __import__("os")
-    credential_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
-    credential_ready = bool(os.getenv("FIREBASE_CREDENTIALS_JSON_BASE64", "").strip()) or bool(credential_path and os.path.isfile(credential_path))
-    firebase_enabled = all(firebase.values()) and credential_ready and os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    firebase_enabled = _firebase_status()["delivery_enabled"]
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
