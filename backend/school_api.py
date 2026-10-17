@@ -276,10 +276,19 @@ def _send_push(tokens: list[str], title: str, body: str, data: dict[str, str]) -
         from firebase_admin import messaging
         if not firebase_admin._apps:
             credential_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
-            if not credential_path or not Path(credential_path).is_file():
-                return "firebase_not_configured", 0
+            credential_b64 = os.getenv("FIREBASE_CREDENTIALS_JSON_BASE64", "").strip()
             from firebase_admin import credentials
-            firebase_admin.initialize_app(credentials.Certificate(credential_path))
+            if credential_b64:
+                try:
+                    credential_payload = json.loads(base64.b64decode(credential_b64).decode("utf-8"))
+                    firebase_credential = credentials.Certificate(credential_payload)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    return "firebase_credentials_invalid", 0
+            elif credential_path and Path(credential_path).is_file():
+                firebase_credential = credentials.Certificate(credential_path)
+            else:
+                return "firebase_not_configured", 0
+            firebase_admin.initialize_app(firebase_credential)
         success_count = 0
         for offset in range(0, len(tokens), 500):
             batch = tokens[offset:offset + 500]
