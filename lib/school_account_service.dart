@@ -71,6 +71,48 @@ class SchoolAccountService {
     return data;
   }
 
+  Future<Map<String, dynamic>> signInAsServerAdmin(
+    String baseUrl, {required String username, required String password}
+  ) async {
+    final response = await http.post(
+      _endpoint(baseUrl, 'auth/login'),
+      headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
+    ).timeout(const Duration(seconds: 12));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(response.statusCode == 401
+          ? 'Неверный логин или пароль технического администратора.'
+          : 'Сервер не принял вход (HTTP ${response.statusCode}).');
+    }
+    final payload = jsonDecode(response.body);
+    if (payload is! Map<String, dynamic> || payload['access_token'] is! String) {
+      throw const FormatException('Неверный ответ авторизации');
+    }
+    final user = Map<String, dynamic>.from((payload['user'] as Map?) ?? const {});
+    if (user['role'] != 'admin') {
+      final refresh = payload['refresh_token']?.toString() ?? '';
+      if (refresh.isNotEmpty) {
+        try {
+          await http.post(_endpoint(baseUrl, 'auth/logout'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refresh}));
+        } catch (_) {}
+      }
+      throw Exception('Резервный вход разрешён только техническому администратору. Используй школьный SSO.');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, payload['access_token'] as String);
+    await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
+    await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
+    await prefs.setString(_userKey, jsonEncode(user));
+    await prefs.setString('school_api_base_url_v1', baseUrl.trim());
+    var pushRegistered = false;
+    try {
+      pushRegistered = await _initializePush(await _getConfig(baseUrl), baseUrl, payload['access_token'] as String);
+    } catch (_) {}
+    return {'user': user, 'push_registered': pushRegistered};
+  }
+
   Future<Map<String, dynamic>> signInWithSchoolAccount(String baseUrl) async {
     final config = await _getConfig(baseUrl);
     final sso = config['sso'];
