@@ -484,7 +484,7 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
             if value:
                 teachers_by_name[str(value).strip().casefold()] = teacher["id"]
 
-    assignment_keys: set[tuple[str, str, str]] = set()
+    parsed_rows: list[dict[str, Any]] = []
     skipped = 0
     for raw in raw_rows:
         if not isinstance(raw, dict):
@@ -516,9 +516,45 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         if not matched:
             skipped += 1
             continue
-        for student in matched:
-            for teacher_id in teacher_ids:
-                assignment_keys.add((student["id"], teacher_id, subject))
+        group_label = _field(row, "group", "group_number", "subgroup", "группа", "подгруппа")
+        weekday = _field(row, "weekday", "day", "day_of_week", "день", "день_недели")
+        time_slot = _field(row, "time", "lesson_time", "time_slot", "время")
+        parsed_rows.append({
+            "class_key": _class_key(class_name),
+            "class_keys": class_keys,
+            "subject": subject,
+            "subject_key": subject.strip().casefold(),
+            "teacher_ids": teacher_ids,
+            "group": group_label.strip().casefold(),
+            "slot": (weekday.strip().casefold(), time_slot.strip().casefold()),
+            "student_ids": [student["id"] for student in matched],
+        })
+
+    # If the same class/subject/time is explicitly split into multiple groups
+    # taught by different accounts, assigning both teachers to every student
+    # would disclose an overly broad roster. Such class/subject links require
+    # an explicit student-level assignment in the school portal.
+    slot_groups: dict[tuple[str, str, tuple[str, str]], set[str]] = {}
+    slot_teachers: dict[tuple[str, str, tuple[str, str]], set[str]] = {}
+    for row in parsed_rows:
+        slot_key = (row["class_key"], row["subject_key"], row["slot"])
+        if row["group"]:
+            slot_groups.setdefault(slot_key, set()).add(row["group"])
+        slot_teachers.setdefault(slot_key, set()).update(row["teacher_ids"])
+    split_slots = {
+        slot_key for slot_key, groups in slot_groups.items()
+        if len(groups) > 1 and len(slot_teachers.get(slot_key, set())) > 1
+    }
+    split_class_subjects = {(class_key, subject_key) for class_key, subject_key, _ in split_slots}
+
+    assignment_keys: set[tuple[str, str, str]] = set()
+    for row in parsed_rows:
+        if (row["class_key"], row["subject_key"]) in split_class_subjects:
+            skipped += len(row["student_ids"]) * len(row["teacher_ids"])
+            continue
+        for student_id in row["student_ids"]:
+            for teacher_id in row["teacher_ids"]:
+                assignment_keys.add((student_id, teacher_id, row["subject"]))
 
     source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     if not assignment_keys:
@@ -533,7 +569,21 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         return {"status": "no_assignments_imported", "rows_seen": len(raw_rows), "imported": 0,
                 "skipped": skipped, "note": "No matching teacher/student records found; previous schedule assignments were preserved."}
     with core._db() as db:
-        db.execute("DELETE FROM teacher_subject_assignments WHERE source_key LIKE 'schedule:%'")
+        # Only replace the old schedule-derived set when every source row mapped
+        # successfully. On incomplete input, add/update valid rows but do not
+        # revoke existing assignments until an administrator fixes the mapping.
+        if skipped == 0:
+            db.execute("DELETE FROM teacher_subject_assignments WHERE source_key LIKE 'schedule:%'")
+        # Even on an incomplete run, remove auto-derived access for detected
+        # split-group subjects: the class-wide assignment is unsafe by definition.
+        for class_key, subject_key in split_class_subjects:
+            for student in students:
+                if _class_key(str(student.get("class_id") or "")) != class_key:
+                    continue
+                db.execute(
+                    "DELETE FROM teacher_subject_assignments WHERE student_id=? AND lower(subject)=? AND source_key LIKE 'schedule:%'",
+                    (student["id"], subject_key)
+                )
         for student_id, teacher_id, subject in sorted(assignment_keys):
             key_data = json.dumps([student_id, teacher_id, subject], ensure_ascii=False, separators=(",", ":"))
             source_key = "schedule:" + hashlib.sha256(key_data.encode()).hexdigest()
@@ -548,12 +598,17 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
         db.execute(
             "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
             (source_name + ":teacher_assignments", len(assignment_keys), skipped, _now(),
-             json.dumps({"sheet": "BaseSchedule"}, ensure_ascii=False))
+             json.dumps({"sheet": "BaseSchedule", "split_subjects": sorted([list(item) for item in split_class_subjects]),
+                          "complete_source": skipped == 0}, ensure_ascii=False))
         )
     core._audit(actor["id"], "school_data.teacher_assignments_synced", None,
-                {"source": source_name, "imported": len(assignment_keys), "skipped": skipped})
-    return {"status": "completed", "source": source_name, "rows_seen": len(raw_rows),
-            "imported": len(assignment_keys), "skipped": skipped}
+                {"source": source_name, "imported": len(assignment_keys), "skipped": skipped,
+                 "split_subjects": len(split_class_subjects), "complete_source": skipped == 0})
+    return {"status": "completed" if skipped == 0 else "partial_preserved_previous",
+            "source": source_name, "rows_seen": len(raw_rows), "imported": len(assignment_keys),
+            "skipped": skipped, "split_subjects": len(split_class_subjects),
+            "note": "Subjects split among multiple groups and teachers were not auto-assigned to every student. Assign individual students explicitly in the portal." if split_class_subjects else
+                    ("Some rows were not mapped; previous schedule assignments were preserved." if skipped else "All source rows were mapped.")}
 
 
 @router.post("/management/sync/supplements")
