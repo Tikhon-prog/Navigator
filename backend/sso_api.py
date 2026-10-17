@@ -138,8 +138,6 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         )
         position = mapped_role if mapped_role in {"director", "deputy", "homeroom_teacher", "dop_coordinator", "mentor_coordinator", "librarian"} else None
         if position:
-            from . import rbac_api
-            rbac_api._init()
             db.execute(
                 "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?)",
                 (user_id, position, class_id if position == "homeroom_teacher" else None, None, core._utc_now())
