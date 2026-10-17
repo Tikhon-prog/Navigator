@@ -26,6 +26,10 @@ assignments and mentor relationships are explicit database records. Do not infer
 names, emails or class labels; the school must provide an authoritative mapping and an
 administrator must import or approve it.
 
+## First-run mobile server URL
+
+The server `.env` configures the server, but cannot be read directly by an already-built APK. For a preconfigured install, set the non-secret GitHub repository variable `POKOLENIE_API_BASE_URL` to the public HTTPS API origin, for example `https://api.school.example`. The Android and iOS build workflows embed it as a default; new installs then enable online mode automatically. Existing device settings are respected, and the value can still be changed in the app's server settings. Do not put access tokens, OAuth secrets or Firebase service-account credentials in this variable.
+
 ## Environment
 
 Required for authenticated endpoints:
