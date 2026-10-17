@@ -140,7 +140,9 @@ def public_config() -> dict[str, Any]:
         "project_id": __import__("os").getenv("FIREBASE_PROJECT_ID", "").strip(),
     }
     os = __import__("os")
-    firebase_enabled = all(firebase.values()) and os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    credential_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
+    credential_ready = bool(os.getenv("FIREBASE_CREDENTIALS_JSON_BASE64", "").strip()) or bool(credential_path and os.path.isfile(credential_path))
+    firebase_enabled = all(firebase.values()) and credential_ready and os.getenv("NAVIGATOR_ENABLE_FIREBASE", "false").strip().lower() in {"1", "true", "yes", "on"}
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
     userinfo_url = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
