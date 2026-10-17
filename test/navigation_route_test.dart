@@ -95,3 +95,48 @@ void main() {
     }
   });
 }
+
+  group('Route detour regression checks', () {
+    void expectShortSymmetricRoute({
+      required String from,
+      required String to,
+      required int floor,
+      required double maximumPixels,
+    }) {
+      final forward = RouteEngine.build(to, startFloor: floor, startLocationId: from);
+      final backward = RouteEngine.build(from, startFloor: floor, startLocationId: to);
+
+      expect(forward, isNotNull, reason: '$from → $to should be routable');
+      expect(backward, isNotNull, reason: '$to → $from should be routable');
+      expect(forward!.changesFloor, isFalse);
+      expect(backward!.changesFloor, isFalse);
+      expect(forward.nodes.every((node) => node.floor == floor), isTrue);
+      expect(backward.nodes.every((node) => node.floor == floor), isTrue);
+      expect(forward.distance, lessThan(maximumPixels),
+          reason: '$from → $to contains an unexpectedly long detour');
+      expect((forward.distance - backward.distance).abs(), lessThan(1.0),
+          reason: 'The corridor graph should be direction-symmetric');
+    }
+
+    test('third-floor corridor around 317/318 is short in both directions', () {
+      expectShortSymmetricRoute(from: '317', to: '318', floor: 3, maximumPixels: 300);
+    });
+
+    test('third-floor local connection around 315–317 has no long detour', () {
+      expectShortSymmetricRoute(from: '317', to: '315', floor: 3, maximumPixels: 600);
+      expectShortSymmetricRoute(from: '316', to: '317', floor: 3, maximumPixels: 450);
+    });
+
+    test('second-floor route 201–209 stays within that floor', () {
+      expectShortSymmetricRoute(from: '201', to: '209', floor: 2, maximumPixels: 2500);
+    });
+
+    test('first-floor route 101–130 stays within that floor', () {
+      expectShortSymmetricRoute(from: '101', to: '130', floor: 1, maximumPixels: 2000);
+    });
+
+    test('route to room 214 from room 215 is symmetric and same-floor', () {
+      expectShortSymmetricRoute(from: '215', to: '214', floor: 2, maximumPixels: 6000);
+    });
+  });
+
