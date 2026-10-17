@@ -344,8 +344,11 @@ def create_notification(body: NotificationBody,
         raise HTTPException(status_code=403, detail="Only school leadership may publish emergency notifications")
     if body.kind == "global" and not is_school_leadership:
         raise HTTPException(status_code=403, detail="Only school leadership may publish global notifications")
-    if body.kind == "dop_reminder" and not can_manage_dop and actor["role"] not in {"student"}:
-        raise HTTPException(status_code=403, detail="DOP reminder permission required")
+    # Students opt in through /notifications/preferences; only authorized
+    # staff can create/remediate reminder records. Otherwise a student could
+    # target arbitrary accounts and manufacture personal notifications.
+    if body.kind == "dop_reminder" and not can_manage_dop:
+        raise HTTPException(status_code=403, detail="DOP reminder management permission required")
     if actor["role"] == "teacher" and not is_school_leadership and body.target_type not in {"user", "class"}:
         raise HTTPException(status_code=403, detail="Teachers may notify only assigned students")
     if actor["role"] == "teacher" and not is_school_leadership and body.target_type == "class" and position not in {"homeroom_teacher", "dop_coordinator"}:
@@ -373,6 +376,8 @@ def create_notification(body: NotificationBody,
             target = db.execute("SELECT id,role FROM users WHERE id=? AND active=1", (body.target_id,)).fetchone()
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
+            if not is_school_leadership and target["role"] != "student":
+                raise HTTPException(status_code=403, detail="Staff without school-wide leadership may notify only student accounts")
             if actor["role"] == "teacher" and not is_school_leadership and position != "dop_coordinator":
                 if position == "homeroom_teacher":
                     linked = db.execute("SELECT 1 FROM users WHERE id=? AND role='student' AND class_id=?",
