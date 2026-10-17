@@ -876,6 +876,11 @@ class RouteEngine {
     }
     final path = ids.reversed.map((id) => nodes[id]!).toList();
 
+    // Graph anchor nodes exactly represent the same doorway points added below
+    // for display. Drop those duplicates so the route has one clean start and end.
+    if (path.isNotEmpty && path.first.id == source) path.removeAt(0);
+    if (path.isNotEmpty && path.last.id == target) path.removeLast();
+
     // Replace technical anchor nodes with readable door/start labels.
     if (startRoom != null) {
       path.insert(0, RouteNode('start_room_${startRoom.id}', startRoom.floor, DoorPoints.of(startRoom.id, startRoom.point), SchoolData.title(startRoom)));
