@@ -219,7 +219,7 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
         user = db.execute("SELECT id,username,role,display_name,class_id,active,token_version FROM users WHERE id=?", (claims.get("sub"),)).fetchone()
     if not user or not user["active"] or user["role"] != claims.get("role") or int(claims.get("ver", 0)) != int(user["token_version"]):
         raise HTTPException(status_code=401, detail="Account is inactive or token is no longer valid")
-    return dict(user)
+    return {key: user[key] for key in ("id", "username", "role", "display_name", "class_id", "active")}
 
 
 def _issue_session(user: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
