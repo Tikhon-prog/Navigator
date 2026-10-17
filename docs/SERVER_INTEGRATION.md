@@ -1,9 +1,13 @@
 # Серверная интеграция школы «Поколение»
 
 This branch adds a first usable, separately versioned service API at `/api/v2`.
-The existing workbook-backed `/api/*` endpoints remain read-only and unchanged.
-The new service stores identities, mentor/teacher relationships, student-specific
-supplements, registered devices, announcements, and audit events in SQLite.
+The existing workbook-backed `/api/*` endpoints remain read-only for public reference data
+(classes, base timetable, rooms, places, and school-wide/class-targeted announcements).
+The `Supplements` workbook sheet is now internal-only: generic `/api/data/Supplements`,
+`/api/schema/Supplements`, and the legacy `/api/supplements` endpoint do not expose the
+whole student DOP roster. An authorized staff member imports it through the authenticated
+sync route. The new service stores identities, explicit mentor/teacher relationships,
+student-specific supplements, registered devices, announcements, and audit events in SQLite.
 
 ## Roles and visibility
 
@@ -67,6 +71,8 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 - `POST /api/v2/auth/refresh` and `POST /api/v2/auth/logout` — rotate/revoke refreshable sessions.
 - `GET /api/v2/auth/me` and `GET /api/v2/auth/permissions` — current account and effective position permissions.
 - `GET /api/v2/public/config` — non-secret OIDC/Firebase client configuration for the Android app.
+- `GET /api/v2/health/ready` — checks that the token secret is not a placeholder and that Classes/BaseSchedule source data are available; reports readiness flags for OIDC and FCM without revealing credentials.
+- Legacy `GET /api/supplements` returns HTTP 403. Use `POST /api/v2/management/sync/supplements` followed by authenticated student/staff endpoints instead.
 - `POST /api/v2/admin/users` and `POST /api/v2/management/users` — create local accounts, subject to permissions.
 - `GET /api/v2/admin/users`, `PATCH /api/v2/admin/users/{id}` — list/update accounts and deactivate/reactivate users.
 - `PUT /api/v2/admin/staff-positions` — assign a position (director, deputy, homeroom teacher, DOP coordinator, mentor coordinator, teacher, mentor, librarian); only an existing admin can assign director/deputy.
@@ -75,7 +81,8 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 - `GET /api/v2/teachers/me/subjects` — list students explicitly assigned to the signed-in teacher by subject.
 - `GET /api/v2/students` and `GET /api/v2/students/{id}` — role-scoped student list/details.
 - `POST /api/v2/management/students/{id}/supplements`, `PATCH/DELETE /api/v2/management/supplements/{id}` — create/update/delete DOP records with permissions.
-- `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter.
+- `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter. Unmatched rows are skipped; matching by display name is allowed only when unambiguous.
+- `POST /api/v2/management/sync/teacher-assignments` — rebuild subject links from the base timetable. If the source is incompletely mapped, previous schedule-derived assignments are preserved. Subjects explicitly split across groups with different teachers are not assigned class-wide; configure those student-level relationships manually in the portal.
 - `POST /api/v2/management/sync/teacher-assignments` and `PUT /api/v2/admin/schedule-teacher-aliases` — derive teacher/student/subject access from the authoritative timetable, with explicit aliases when timetable teacher names differ from account names.
 - `GET /api/v2/announcements/workbook` — class-scoped workbook announcements; public announcement routes intentionally return school-wide notices only.
 - `POST /api/v2/devices/register`, `DELETE /api/v2/devices/me` — register and revoke FCM device tokens.
