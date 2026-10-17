@@ -237,22 +237,22 @@ class SchoolAccountService {
     }
   }
 
-  Future<int> refreshMySupplements() async {
+  Future<int?> refreshMySupplements() async {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     final rawUser = prefs.getString(_userKey);
     final accessToken = await validAccessToken();
-    if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty || rawUser == null) return 0;
+    if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty || rawUser == null) return null;
     try {
       final user = jsonDecode(rawUser);
-      if (user is! Map || user['role'] != 'student' || user['id'] == null) return 0;
+      if (user is! Map || user['role'] != 'student' || user['id'] == null) return null;
       final response = await http.get(
         _endpoint(baseUrl, 'students/${user['id']}'),
         headers: {'Accept': 'application/json', 'Authorization': 'Bearer $accessToken'},
       ).timeout(const Duration(seconds: 10));
-      if (response.statusCode < 200 || response.statusCode >= 300) return 0;
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final payload = jsonDecode(response.body);
-      if (payload is! Map || payload['supplements'] is! List) return 0;
+      if (payload is! Map || payload['supplements'] is! List) return null;
       final rows = <Map<String, dynamic>>[];
       for (final item in (payload['supplements'] as List).whereType<Map>()) {
         final weekday = (item['weekday'] as num?)?.toInt();
@@ -271,9 +271,10 @@ class SchoolAccountService {
         });
       }
       await prefs.setString('school_supplements_cache_v1', jsonEncode(rows));
+      await prefs.setString('school_supplements_user_id_v1', user['id'].toString());
       return rows.length;
     } catch (_) {
-      return 0;
+      return null;
     }
   }
 
@@ -359,6 +360,24 @@ class SchoolAccountService {
     await _messageSubscription?.cancel();
     _tokenSubscription = null;
     _messageSubscription = null;
+    // Clear user-scoped caches on this device so the next school account
+    // cannot see personal messages or DOP records from the previous session.
+    try {
+      final rawAnnouncements = prefs.getString('school_announcements_cache_v2');
+      if (rawAnnouncements != null) {
+        final rows = (jsonDecode(rawAnnouncements) as List).where((item) =>
+            item is Map && (item['target_user_id'] == null || item['target_user_id'].toString().isEmpty)).toList();
+        await prefs.setString('school_announcements_cache_v2', jsonEncode(rows));
+      }
+      final rawSupplements = prefs.getString('supplements_local');
+      if (rawSupplements != null) {
+        final rows = (jsonDecode(rawSupplements) as List).where((item) =>
+            item is Map && !((item['id']?.toString() ?? '').startsWith('server_'))).toList();
+        await prefs.setString('supplements_local', jsonEncode(rows));
+      }
+    } catch (_) {}
+    await prefs.remove('school_supplements_cache_v1');
+    await prefs.remove('school_supplements_user_id_v1');
     await prefs.remove(_tokenKey);
     await prefs.remove(_refreshKey);
     await prefs.remove(_expiresKey);
