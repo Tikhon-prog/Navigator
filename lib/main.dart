@@ -153,6 +153,17 @@ class SchoolScheduleCatalog {
     _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
 
+  static Map<String, dynamic> _normalizedScheduleRow(Map<String, dynamic> row) {
+    final normalized = <String, dynamic>{};
+    for (final entry in row.entries) {
+      final key = entry.key.trim().toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9а-я]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      normalized[key] = entry.value;
+    }
+    return normalized;
+  }
+
   static String _rowText(Map<String, dynamic> row, List<String> keys) {
     for (final key in keys) {
       final value = row[key];
@@ -195,7 +206,7 @@ class SchoolScheduleCatalog {
       final classRows = classPayload?['data'];
       if (classRows is List) {
         for (final rawClass in classRows.whereType<Map>()) {
-          final item = Map<String, dynamic>.from(rawClass);
+          final item = _normalizedScheduleRow(Map<String, dynamic>.from(rawClass));
           final id = _rowText(item, ['id', 'class_id', 'code']);
           final name = _rowText(item, ['name', 'class_name', 'title', 'класс']);
           if (id.isNotEmpty && name.isNotEmpty) classNames[id] = name;
@@ -205,18 +216,18 @@ class SchoolScheduleCatalog {
     final variantsByClass = <String, List<Map<String, dynamic>>>{};
     for (final raw in rawRows) {
       if (raw is! Map) continue;
-      final row = Map<String, dynamic>.from(raw);
+      final row = _normalizedScheduleRow(Map<String, dynamic>.from(raw));
       final classRef = _rowText(row, ['class_id', 'class', 'класс_id']);
       final classLabel = _rowText(row, ['class_name', 'class_label', 'class_display_name', 'класс']);
       final className = classLabel.isNotEmpty ? classLabel : (classNames[classRef] ?? classRef);
-      final subject = _rowText(row, ['subject', 'discipline', 'lesson', 'предмет', 'дисциплина']);
+      final subject = _rowText(row, ['subject', 'subject_name', 'discipline', 'discipline_name', 'lesson', 'предмет', 'дисциплина']);
       final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
-      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'время']);
+      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_начала']);
       if (className.isEmpty || subject.isEmpty || day == null || time.isEmpty) continue;
       final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'группа'])) ?? 1;
       variantsByClass.putIfAbsent(className, () => <Map<String, dynamic>>[]).add({
         'day': day, 'time': time, 'subject': subject,
-        'room': _rowText(row, ['room', 'cabinet', 'room_id', 'кабинет']),
+        'room': _rowText(row, ['room', 'room_name', 'cabinet', 'room_id', 'кабинет']),
         'teacher': _rowText(row, ['teacher', 'teacher_name', 'педагог', 'учитель']),
         'group': group,
       });
