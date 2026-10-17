@@ -17,6 +17,7 @@ class SchoolAccountService {
   static const _expiresKey = 'school_access_expires_at_v1';
   static StreamSubscription<String>? _tokenSubscription;
   static StreamSubscription<RemoteMessage>? _messageSubscription;
+  static Future<String?>? _refreshInFlight;
 
   static Uri _endpoint(String rawBase, String suffix) {
     final base = Uri.parse(rawBase.trim());
@@ -330,7 +331,15 @@ class SchoolAccountService {
     return refreshSession();
   }
 
-  Future<String?> refreshSession() async {
+  Future<String?> refreshSession() {
+    final existing = _refreshInFlight;
+    if (existing != null) return existing;
+    final pending = _performRefreshSession();
+    _refreshInFlight = pending;
+    return pending.whenComplete(() { _refreshInFlight = null; });
+  }
+
+  Future<String?> _performRefreshSession() async {
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString(_refreshKey) ?? '';
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
