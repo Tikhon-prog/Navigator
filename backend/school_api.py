@@ -295,16 +295,30 @@ def _send_push(tokens: list[str], title: str, body: str, data: dict[str, str]) -
                 return "firebase_not_configured", 0
             firebase_admin.initialize_app(firebase_credential)
         success_count = 0
+        invalid_tokens: list[str] = []
         for offset in range(0, len(tokens), 500):
             batch = tokens[offset:offset + 500]
             message = messaging.MulticastMessage(
                 notification=messaging.Notification(title=title, body=body),
                 data={str(k): str(v) for k, v in data.items()},
                 tokens=batch,
-                android=messaging.AndroidConfig(priority="high" if data.get("severity") == "emergency" else "normal"),
+                android=messaging.AndroidConfig(
+                    priority="high" if data.get("severity") == "emergency" else "normal",
+                    notification=messaging.AndroidNotification(channel_id="pokolenie_school_alerts"),
+                ),
             )
             response = messaging.send_each_for_multicast(message)
             success_count += response.success_count
+            for token, result in zip(batch, response.responses):
+                if result.success:
+                    continue
+                error_code = getattr(result.exception, "code", "") if result.exception else ""
+                if error_code in {"messaging/registration-token-not-registered", "messaging/invalid-registration-token"}:
+                    invalid_tokens.append(token)
+        if invalid_tokens:
+            with _db() as db:
+                db.executemany("UPDATE devices SET active=0,updated_at=? WHERE fcm_token=?",
+                               [(_utc_now(), token) for token in invalid_tokens])
         if success_count == len(tokens):
             return "sent", success_count
         if success_count:
