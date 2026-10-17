@@ -208,6 +208,8 @@ def remove_position(username: str, actor: dict[str, Any] = Depends(core.current_
         ).fetchone()
         if not target:
             raise HTTPException(status_code=404, detail="Staff account not found")
+        if actor["role"] != "admin" and target["id"] == actor["id"]:
+            raise HTTPException(status_code=403, detail="School leadership cannot remove its own position")
         if actor["role"] != "admin" and target["position"] in {"director", "deputy"}:
             raise HTTPException(status_code=403, detail="Only an administrator can remove top leadership positions")
         db.execute("DELETE FROM staff_positions WHERE user_id=?", (target["id"],))
@@ -298,6 +300,8 @@ def assign_position(body: PositionBody,
             raise HTTPException(status_code=404, detail="Active account not found")
         if user["role"] not in {"teacher", "mentor", "admin"}:
             raise HTTPException(status_code=422, detail="Only staff accounts can receive school positions")
+        if actor["role"] != "admin" and user["id"] == actor["id"]:
+            raise HTTPException(status_code=403, detail="School leadership cannot change its own position")
         db.execute(
             "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?) "
             "ON CONFLICT(user_id) DO UPDATE SET position=excluded.position,scope_class=excluded.scope_class,"
