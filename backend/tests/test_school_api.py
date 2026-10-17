@@ -80,6 +80,12 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api.get_student("student2", actor)
 
+    def test_teacher_details_hide_private_supplements(self):
+        actor = {"id": "teacher1", "role": "teacher", "class_id": "8A"}
+        result = api.get_student("student1", actor)
+        self.assertEqual(result["supplements"], [])
+        self.assertEqual(result["staff"][0]["subject"], "Mathematics")
+
     def test_students_audience_is_visible_to_student_accounts(self):
         with api._db() as db:
             db.execute("INSERT INTO announcements(id,title,body,severity,audience,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
