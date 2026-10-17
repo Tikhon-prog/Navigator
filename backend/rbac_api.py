@@ -196,6 +196,25 @@ def my_permissions(actor: dict[str, Any] = Depends(core.current_user)) -> dict[s
     return {"user": actor, "position": position, "scope_class": scope_class, "permissions": grants}
 
 
+@router.delete("/admin/staff-positions/{username}")
+def remove_position(username: str, actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, str]:
+    actor_position, _ = _position(actor["id"])
+    if actor["role"] != "admin" and actor_position not in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="School leadership permission required")
+    with core._db() as db:
+        target = db.execute(
+            "SELECT u.id,p.position FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.username=? COLLATE NOCASE AND u.active=1", (username,)
+        ).fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Staff account not found")
+        if actor["role"] != "admin" and target["position"] in {"director", "deputy"}:
+            raise HTTPException(status_code=403, detail="Only an administrator can remove top leadership positions")
+        db.execute("DELETE FROM staff_positions WHERE user_id=?", (target["id"],))
+    core._audit(actor["id"], "staff.position_removed", target["id"], {"previous_position": target["position"]})
+    return {"status": "removed"}
+
+
 @router.get("/admin/users")
 def list_users(actor: dict[str, Any] = Depends(require_permission("staff.read"))) -> dict[str, Any]:
     with core._db() as db:
