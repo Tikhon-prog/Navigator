@@ -310,7 +310,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
               DropdownMenuItem(value: 'admin', child: Text('Администратор')),
             ],
-            onChanged: (v) => setDialogState(() => role = v ?? 'teacher')),
+            onChanged: (v) => setDialogState(() {
+              role = v ?? 'teacher';
+              if (role == 'student') staffPosition = '';
+            })),
           if (role == 'student') TextField(controller: classId, decoration: const InputDecoration(labelText: 'Класс ученика')),
           if (role != 'student') ...[
             DropdownButtonFormField<String>(
