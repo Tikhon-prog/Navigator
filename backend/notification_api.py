@@ -419,6 +419,8 @@ def create_notification(body: NotificationBody,
         raise HTTPException(status_code=403, detail="Class broadcast requires an assigned school position")
     if body.target_type == "all" and not is_school_leadership:
         raise HTTPException(status_code=403, detail="Global target requires school leadership")
+    if body.target_type == "group" and not is_school_leadership and not rbac_api._has(actor, "assignments.manage"):
+        raise HTTPException(status_code=403, detail="Notification-group publishing permission required")
     if body.target_type == "class" and not can_class_broadcast:
         raise HTTPException(status_code=403, detail="Class-targeted publishing permission required")
     if body.kind == "emergency" and body.scheduled_at:
