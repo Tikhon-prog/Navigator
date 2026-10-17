@@ -2383,16 +2383,18 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _openSchoolCabinet(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('navigator_api_enabled') ?? false;
-    final baseUrl = (prefs.getString('navigator_api_url') ?? '').trim();
-    if (enabled && baseUrl.isNotEmpty) {
-      await _schoolAccount(context);
-    } else {
-      // First-time device configuration is still handled by the existing local
-      // settings panel; once an API URL is saved, this shortcut switches to SSO.
-      await _openAdmin(context);
+    final service = SchoolAccountService();
+    final current = await service.currentUser();
+    if (!context.mounted) return;
+    if (current != null) {
+      if (current['role'] == 'student') {
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+      } else {
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+      }
+      return;
     }
+    await _schoolAccount(context);
   }
 
   Future<void> _editClass(BuildContext context) async {
@@ -2428,7 +2430,8 @@ class SettingsPage extends StatelessWidget {
       Card(child: ListTile(leading: Icon(Icons.palette_rounded, color: c.primary), title: const Text('Цветовая тема'), subtitle: Text(AppPalette.name(theme)), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _pickTheme(context))),
       const SizedBox(height: 18), const Text('Для сотрудников', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: ListTile(leading: Icon(Icons.verified_user_rounded, color: c.primary), title: const Text('Школьная учётная запись'), subtitle: const Text('Безопасный вход через школьный SSO и регистрация уведомлений'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _schoolAccount(context))),
-      Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Вход сотрудника и управление; при первом запуске — настройка подключения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openSchoolCabinet(context))),
+      Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Сотрудникам — управление по роли; ученикам — школьные оповещения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openSchoolCabinet(context))),
+      Card(child: ListTile(leading: Icon(Icons.cloud_sync_rounded, color: c.primary), title: const Text('Настройки подключения'), subtitle: const Text('Адрес API, включение онлайн-режима и проверка соединения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Офлайн-навигатор школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
     ]))));
