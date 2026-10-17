@@ -272,11 +272,19 @@ def patch_user(user_id: str, body: UserPatch,
         if key in changes:
             fields.append(f"{key}=?")
             values.append(int(changes[key]) if key == "active" else changes[key])
+    deactivating = "active" in changes and not changes["active"]
+    if deactivating:
+        fields.append("token_version=token_version+1")
     with core._db() as db:
         exists = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
         if not exists:
             raise HTTPException(status_code=404, detail="Account not found")
         db.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", (*values, user_id))
+        if deactivating:
+            db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
+                       (_now(), _now(), user_id))
+            db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=?",
+                       (_now(), user_id))
         row = db.execute(
             "SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active,p.position,p.scope_class "
             "FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?", (user_id,)
