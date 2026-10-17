@@ -191,7 +191,10 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         if mapped_role == "homeroom_teacher" and not class_id:
             return None
 
-        base_role = mapped_role if mapped_role in {"student", "mentor", "mentor_coordinator", "admin"} else "teacher"
+        # The core users table stores account types only (admin/student/mentor/teacher).
+        # All school job titles except the mentor account are represented by a
+        # separate staff_positions row and must not be inserted as a base role.
+        base_role = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
         user_id = secrets.token_urlsafe(12)
         random_password = secrets.token_urlsafe(48)
         assigned_class = class_id if mapped_role in {"student", "homeroom_teacher"} else None
