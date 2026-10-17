@@ -13,6 +13,7 @@ import 'local_notification_service.dart';
 import 'security_service.dart';
 import 'supplements_page.dart';
 import 'school_account_service.dart';
+import 'dop_parser.dart';
 import 'school_portal_page.dart';
 import 'online_data_service.dart';
 
@@ -432,12 +433,28 @@ class _StudentClassDialogState extends State<_StudentClassDialog> {
     ])), actions: widget.requiredChoice ? null : [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена'))]);
   }
 }
+String _studentScopedPreferenceKey(SharedPreferences prefs, String key) {
+  var userId = '';
+  final raw = prefs.getString('school_user_v1');
+  if (raw != null) {
+    try {
+      final account = jsonDecode(raw);
+      if (account is Map && account['id'] != null) {
+        userId = account['id'].toString().trim();
+      }
+    } catch (_) {}
+  }
+  // Keeps the old keys for offline-only installs, while separating group
+  // choices for signed-in students sharing the same device.
+  return studentProfilePreferenceKey(key, userId: userId);
+}
+
 Future<void> showStudentGroupSelection(BuildContext context, String className) async {
   await SchoolScheduleCatalog.load();
   final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
   if (subjects.isEmpty || !context.mounted) return;
   final prefs = await SharedPreferences.getInstance();
-  final values = <String, int>{for (final s in subjects) s: prefs.getInt('student_group_${className}_$s') ?? 1};
+  final values = <String, int>{for (final s in subjects) s: prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_group_${className}_$s')) ?? 1};
   if (!context.mounted) return;
   await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
 }
@@ -488,7 +505,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     }).toList())),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt('student_group_${widget.className}_${e.key}', e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
+      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt(_studentScopedPreferenceKey(p, 'student_group_${widget.className}_${e.key}'), e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
     ],
   );
 }
@@ -1520,7 +1537,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
       setState(() {
         for (var d = 1; d <= 6; d++) {
           for (var slot = 0; slot < 6; slot++) {
-            selected['$d|$slot'] = p.getString('math_subject_${widget.className}_${d}_$slot') ?? '';
+            selected['$d|$slot'] = p.getString(_studentScopedPreferenceKey(p, 'math_subject_${widget.className}_${d}_$slot')) ?? '';
           }
         }
       });
@@ -1549,7 +1566,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
         final p = await SharedPreferences.getInstance();
         for (var d = 1; d <= 6; d++) {
           for (var slot = 0; slot < 6; slot++) {
-            await p.setString('math_subject_${widget.className}_${d}_$slot', selected['$d|$slot'] ?? '');
+            await p.setString(_studentScopedPreferenceKey(p, 'math_subject_${widget.className}_${d}_$slot'), selected['$d|$slot'] ?? '');
           }
         }
         if (context.mounted) Navigator.pop(context);
@@ -1597,13 +1614,13 @@ class _SchedulePageState extends State<SchedulePage> {
     final groups = <String,int>{};
     if (classId.isNotEmpty) {
       for (final s in SchoolScheduleCatalog.splitSubjects(classId)) {
-        groups[s] = p.getInt('student_group_${classId}_$s') ?? 1;
+        groups[s] = p.getInt(_studentScopedPreferenceKey(p, 'student_group_${classId}_$s')) ?? 1;
       }
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
         for (var slot = 0; slot < 6; slot++) {
-          dayNames.add(p.getString('math_subject_${classId}_${d}_$slot') ?? '');
+          dayNames.add(p.getString(_studentScopedPreferenceKey(p, 'math_subject_${classId}_${d}_$slot')) ?? '');
         }
         mathNames[d] = dayNames;
       }
