@@ -81,6 +81,7 @@ def init_db() -> None:
           staff_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           subject TEXT NOT NULL,
           created_at TEXT NOT NULL,
+          source_key TEXT,
           PRIMARY KEY(student_id, staff_id, subject)
         );
         CREATE TABLE IF NOT EXISTS student_supplements (
@@ -119,6 +120,10 @@ def init_db() -> None:
         if "source_key" not in supplement_columns:
             db.execute("ALTER TABLE student_supplements ADD COLUMN source_key TEXT")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplement_source_key ON student_supplements(source_key) WHERE source_key IS NOT NULL")
+        assignment_columns = {row["name"] for row in db.execute("PRAGMA table_info(teacher_subject_assignments)").fetchall()}
+        if "source_key" not in assignment_columns:
+            db.execute("ALTER TABLE teacher_subject_assignments ADD COLUMN source_key TEXT")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_teacher_assignment_source_key ON teacher_subject_assignments(source_key) WHERE source_key IS NOT NULL")
     _bootstrap_admin()
 
 
