@@ -37,6 +37,16 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def normalize_class_id(value: Any) -> str:
+    """Normalize visually equivalent Cyrillic/Latin class letters for access checks."""
+    lookalikes = str.maketrans({
+        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+        "Х": "X", "У": "Y",
+    })
+    return "".join(str(value or "").strip().upper().translate(lookalikes).split())
+
+
 @contextmanager
 def _db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
