@@ -222,7 +222,12 @@ def patch_user(user_id: str, body: UserPatch,
 
 @router.put("/admin/staff-positions")
 def assign_position(body: PositionBody,
-                    actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, Any]:
+                    actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    actor_position, _ = _position(actor["id"])
+    if actor["role"] != "admin" and actor_position not in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="School leadership permission required")
+    if actor["role"] != "admin" and body.position in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="Only an existing administrator can assign top leadership positions")
     if body.position not in POSITIONS:
         raise HTTPException(status_code=422, detail="Unsupported staff position")
     if body.position == "homeroom_teacher" and not body.scope_class:
