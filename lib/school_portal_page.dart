@@ -35,6 +35,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   bool get canManageUsers => permissions.contains('*') || permissions.contains('staff.manage');
   bool get canManageDop => permissions.contains('*') || permissions.contains('dop.manage');
   bool get canReadUsers => permissions.contains('*') || permissions.contains('staff.read');
+  bool get canSeeStaffList => canReadUsers || permissions.contains('assignments.manage');
   bool get canReadAudit => permissions.contains('*') || permissions.contains('audit.read');
   bool get canSendNotifications => isLeadership || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) || user['role'] == 'teacher';
   bool get canReadStudents => user['role'] != 'student' && user['role'] != null;
@@ -829,8 +830,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   ]);
 
   Widget _userList(ColorScheme scheme) => ListView(padding: const EdgeInsets.all(12), children: [
-    if (!canReadUsers) const Card(child: ListTile(leading: Icon(Icons.lock_outline_rounded), title: Text('Управление аккаунтами недоступно.'))),
-    if (canReadUsers && users.isEmpty) const Card(child: ListTile(title: Text('Список аккаунтов недоступен или пока пуст.'))),
+    if (!canSeeStaffList) const Card(child: ListTile(leading: Icon(Icons.lock_outline_rounded), title: Text('Список сотрудников недоступен.'))),
+    if (canSeeStaffList && users.isEmpty) const Card(child: ListTile(title: Text('Список сотрудников недоступен или пока пуст.'))),
     for (final account in users) Card(child: ListTile(
       leading: CircleAvatar(child: Icon(account['role'] == 'student' ? Icons.person_rounded : Icons.badge_rounded)),
       title: Text(account['display_name']?.toString() ?? account['username']?.toString() ?? 'Аккаунт', style: const TextStyle(fontWeight: FontWeight.w800)),
