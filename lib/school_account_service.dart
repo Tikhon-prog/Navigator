@@ -105,6 +105,8 @@ class SchoolAccountService {
     await prefs.setString(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(user));
+    await prefs.remove('student_class_id');
+    await prefs.remove('student_class_name');
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
     if (user['id'] != null) {
       final preferenceKey = 'dop_reminders_enabled_${user['id']}';
@@ -179,6 +181,9 @@ class SchoolAccountService {
       final className = await _resolveClassName(baseUrl, classId);
       await prefs.setString('student_class_id', classId);
       await prefs.setString('student_class_name', className);
+    } else {
+      await prefs.remove('student_class_id');
+      await prefs.remove('student_class_name');
     }
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
     // Keep server-side reminder scheduling aligned with the user's local choice.
