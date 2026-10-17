@@ -80,7 +80,6 @@ class CorridorRoads {
     CorridorSegment(3, Offset(2713 / 7016, 3517 / 4960), Offset(3557 / 7016, 3517 / 4960), 'Длинное бирюзовое крыло'),
     // Connect the local 316–318 corridor to the mapped long corridor; verify exact path against the floor plan.
     CorridorSegment(3, Offset(2285 / 7016, 3540 / 4960), Offset(2713 / 7016, 3517 / 4960), 'Соединение локального коридора 316–318 с длинным коридором', hidden: true),
-    CorridorSegment(3, Offset(3557 / 7016, 3517 / 4960), Offset(2813 / 7016, 3517 / 4960), 'Подход к Информационно-библиотечному центру'),
     CorridorSegment(3, Offset(1881 / 7016, 3292 / 4960), Offset(1913 / 7016, 3448 / 4960), 'Коридор у кабинета 318', hidden: true),
     CorridorSegment(3, Offset(1913 / 7016, 3448 / 4960), Offset(2285 / 7016, 3540 / 4960), 'Коридор у кабинетов 317–316', hidden: true),
     CorridorSegment(3, Offset(2125 / 7016, 3540 / 4960), Offset(2285 / 7016, 3388 / 4960), 'Коридор у кабинетов 316–315', hidden: true),
