@@ -320,10 +320,14 @@ def create_notification(body: NotificationBody,
             if not target:
                 raise HTTPException(status_code=404, detail="Active target user not found")
             if actor["role"] == "teacher" and not is_school_leadership and position != "dop_coordinator":
-                linked = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
-                                    (body.target_id, actor["id"])).fetchone()
+                if position == "homeroom_teacher":
+                    linked = db.execute("SELECT 1 FROM users WHERE id=? AND role='student' AND class_id=?",
+                                        (body.target_id, scope_class)).fetchone()
+                else:
+                    linked = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
+                                        (body.target_id, actor["id"])).fetchone()
                 if target["role"] != "student" or not linked:
-                    raise HTTPException(status_code=403, detail="Student is not assigned to this teacher")
+                    raise HTTPException(status_code=403, detail="Student is outside this staff member's assigned scope")
             if actor["role"] == "mentor" and not is_school_leadership:
                 linked = db.execute("SELECT 1 FROM student_links WHERE student_id=? AND staff_id=? AND link_type='mentor'",
                                     (body.target_id, actor["id"])).fetchone()
