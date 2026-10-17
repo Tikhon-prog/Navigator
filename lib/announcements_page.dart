@@ -167,27 +167,31 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     }
 
     try {
-      final uri = _announcementsUri(base, _classId);
-      final response = await http.get(uri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-      final decoded = jsonDecode(response.body);
-      final rows = decoded is Map ? decoded['data'] : decoded;
-      if (rows is! List) throw const FormatException('Ожидался список объявлений');
-
       final parsed = <SchoolAnnouncement>[];
-      for (final row in rows) {
-        if (row is! Map) continue;
-        final announcement = SchoolAnnouncement.fromJson(Map<String, dynamic>.from(row));
-        if (announcement.isExpired) continue;
-        if (announcement.targetClass.isNotEmpty &&
-            (_classId.isEmpty || !_sameClass(announcement.targetClass, _classId))) {
-          continue;
+      var feedLoaded = false;
+      try {
+        final uri = _announcementsUri(base, _classId);
+        final response = await http.get(uri, headers: const {'Accept': 'application/json'})
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          final rows = decoded is Map ? decoded['data'] : decoded;
+          if (rows is List) {
+            feedLoaded = true;
+            for (final row in rows) {
+              if (row is! Map) continue;
+              final announcement = SchoolAnnouncement.fromJson(Map<String, dynamic>.from(row));
+              if (announcement.isExpired) continue;
+              if (announcement.targetClass.isNotEmpty &&
+                  (_classId.isEmpty || !_sameClass(announcement.targetClass, _classId))) continue;
+              parsed.add(announcement);
+            }
+          }
         }
-        parsed.add(announcement);
+      } catch (_) {
+        // Authenticated v2 feeds may still work if the optional workbook feed is offline.
       }
+      var securedLoaded = false;
       // Authenticated v2 feeds include targeted/personal notifications and
       // leadership announcements. The public workbook feed remains available
       // for offline-compatible school-wide announcements.
@@ -204,6 +208,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
             final payload = jsonDecode(secured.body);
             final secureRows = payload is Map ? payload['data'] : payload;
             if (secureRows is! List) continue;
+            securedLoaded = true;
             for (final row in secureRows) {
               if (row is! Map) continue;
               final source = Map<String, dynamic>.from(row);
@@ -235,6 +240,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         }
       }
 
+      if (!feedLoaded && !securedLoaded) throw Exception('No announcement feed is available');
       parsed.sort((a, b) {
         final aDate = a.date;
         final bDate = b.date;
@@ -254,7 +260,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       });
     } catch (_) {
       if (mounted) setState(() {
-        _serverConfigured = true;
+        _serverConfigured = false;
         _connectionFailed = true;
         _loading = false;
         _refreshing = false;
