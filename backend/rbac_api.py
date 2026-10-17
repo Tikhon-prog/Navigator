@@ -122,6 +122,30 @@ def _require_position_actor(actor: dict[str, Any], permission: str) -> tuple[str
     return position or ("administrator" if actor.get("role") == "admin" else actor.get("role", "")), scope_class
 
 
+@router.get("/public/config")
+def public_config() -> dict[str, Any]:
+    # Only public client configuration is exposed here. No secrets, service-account
+    # JSON, API tokens, or private school data are returned.
+    firebase = {
+        "api_key": __import__("os").getenv("FIREBASE_WEB_API_KEY", "").strip(),
+        "app_id": __import__("os").getenv("FIREBASE_ANDROID_APP_ID", "").strip(),
+        "messaging_sender_id": __import__("os").getenv("FIREBASE_MESSAGING_SENDER_ID", "").strip(),
+        "project_id": __import__("os").getenv("FIREBASE_PROJECT_ID", "").strip(),
+    }
+    firebase_enabled = all(firebase.values())
+    issuer = __import__("os").getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    client_id = __import__("os").getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
+    redirect_uri = __import__("os").getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
+    return {
+        "school_name": __import__("os").getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
+        "api_version": "v2",
+        "sso": {"enabled": bool(issuer and client_id and redirect_uri), "issuer": issuer,
+                "client_id": client_id, "redirect_uri": redirect_uri,
+                "scopes": ["openid", "profile", "email"]},
+        "firebase": {"enabled": firebase_enabled, **(firebase if firebase_enabled else {})},
+    }
+
+
 @router.get("/auth/permissions")
 def my_permissions(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
     position, scope_class = _position(actor["id"])
