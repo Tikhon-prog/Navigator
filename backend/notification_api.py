@@ -417,6 +417,10 @@ def create_notification(body: NotificationBody,
 
 @router.get("/notifications")
 def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    from . import rbac_api
+    _, position_class = rbac_api._position(actor["id"])
+    actor_class = actor.get("class_id") or position_class
+    normalized_actor_class = core.normalize_class_id(actor_class)
     now = _now()
     with core._db() as db:
         rows = db.execute("SELECT * FROM notifications WHERE (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) AND delivery_status NOT IN ('processing','cancelled','expired') ORDER BY created_at DESC LIMIT 200", (now, now)).fetchall()
@@ -426,7 +430,7 @@ def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> di
                 visible.append(dict(row))
             elif row["target_type"] == "user" and row["target_id"] == actor["id"]:
                 visible.append(dict(row))
-            elif row["target_type"] == "class" and actor.get("class_id") and core.normalize_class_id(row["target_id"]) == core.normalize_class_id(actor["class_id"]):
+            elif row["target_type"] == "class" and normalized_actor_class and core.normalize_class_id(row["target_id"]) == normalized_actor_class:
                 visible.append(dict(row))
             elif row["target_type"] == "group":
                 member = db.execute("SELECT 1 FROM notification_group_members WHERE group_id=? AND user_id=?", (row["target_id"], actor["id"])).fetchone()
