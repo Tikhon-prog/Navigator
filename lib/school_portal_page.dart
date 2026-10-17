@@ -535,7 +535,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             ],
             onChanged: (v) => setDialogState(() {
               role = v ?? 'teacher';
-              if (role == 'student') staffPosition = '';
+              const teacherPositions = {'director', 'deputy', 'homeroom_teacher', 'dop_coordinator', 'mentor_coordinator', 'teacher', 'librarian'};
+              const mentorPositions = {'mentor', 'mentor_coordinator'};
+              if (role == 'student' || role == 'admin' ||
+                  (role == 'teacher' && staffPosition == 'mentor') ||
+                  (role == 'mentor' && staffPosition.isNotEmpty && !mentorPositions.contains(staffPosition)) ||
+                  (role == 'teacher' && staffPosition.isNotEmpty && !teacherPositions.contains(staffPosition))) {
+                staffPosition = '';
+              }
             })),
           if (role == 'student') TextField(controller: classId, decoration: const InputDecoration(labelText: 'Класс ученика')),
           if (role != 'student') ...[
@@ -544,14 +551,15 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               decoration: const InputDecoration(labelText: 'Должность / дополнительные права'),
               items: [
                 const DropdownMenuItem(value: '', child: Text('Обычный сотрудник')),
-                if (isAdmin) const DropdownMenuItem(value: 'director', child: Text('Директор')),
-                if (isAdmin) const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
-                const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
-                const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
-                const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
-                const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
-                const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
-                const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
+                if (role == 'teacher' && isAdmin) const DropdownMenuItem(value: 'director', child: Text('Директор')),
+                if (role == 'teacher' && isAdmin) const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
+                if (role == 'teacher') const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
+                if (role == 'teacher') const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
+                if (role == 'teacher') const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
+                if (role == 'teacher') const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
+                if (role == 'teacher') const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
+                if (role == 'mentor') const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
+                if (role == 'mentor') const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
               ],
               onChanged: (v) => setDialogState(() => staffPosition = v ?? ''),
             ),
@@ -599,9 +607,15 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       return;
     }
     final scopeClass = TextEditingController(text: (account['scope_class'] ?? '').toString());
+    final accountRole = (account['role'] ?? '').toString();
     String position = currentPosition;
-    final allowed = <String>{'', 'teacher', 'mentor', 'homeroom_teacher', 'dop_coordinator', 'mentor_coordinator', 'librarian'};
-    if (isAdmin) allowed.addAll({'director', 'deputy'});
+    final allowed = <String>{''};
+    if (accountRole == 'teacher') {
+      allowed.addAll({'teacher', 'homeroom_teacher', 'dop_coordinator', 'mentor_coordinator', 'librarian'});
+      if (isAdmin) allowed.addAll({'director', 'deputy'});
+    } else if (accountRole == 'mentor') {
+      allowed.addAll({'mentor', 'mentor_coordinator'});
+    }
     if (!allowed.contains(position)) position = '';
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -613,14 +627,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             decoration: const InputDecoration(labelText: 'Должность'),
             items: [
               const DropdownMenuItem(value: '', child: Text('Без отдельной должности')),
-              const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
-              const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
-              const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
-              const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
-              const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
-              const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
-              if (isAdmin) const DropdownMenuItem(value: 'director', child: Text('Директор')),
-              if (isAdmin) const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
+              if (accountRole == 'teacher') const DropdownMenuItem(value: 'teacher', child: Text('Учитель-предметник')),
+              if (accountRole == 'teacher') const DropdownMenuItem(value: 'homeroom_teacher', child: Text('Классный руководитель')),
+              if (accountRole == 'teacher') const DropdownMenuItem(value: 'dop_coordinator', child: Text('Координатор ДОПов')),
+              if (accountRole == 'teacher' || accountRole == 'mentor') const DropdownMenuItem(value: 'mentor_coordinator', child: Text('Координатор наставников')),
+              if (accountRole == 'mentor') const DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
+              if (accountRole == 'teacher') const DropdownMenuItem(value: 'librarian', child: Text('Библиотекарь')),
+              if (isAdmin && accountRole == 'teacher') const DropdownMenuItem(value: 'director', child: Text('Директор')),
+              if (isAdmin && accountRole == 'teacher') const DropdownMenuItem(value: 'deputy', child: Text('Завуч')),
             ],
             onChanged: (value) => setDialogState(() => position = value ?? ''),
           ),
