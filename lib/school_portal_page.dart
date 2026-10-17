@@ -39,7 +39,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
+    _tabs.addListener(_onTabChanged);
     _load();
+  }
+
+  void _onTabChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -216,8 +221,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     final body = TextEditingController();
     final targetId = TextEditingController();
     String kind = 'targeted';
-    String targetType = 'class';
     final isLead = isLeadership;
+    String targetType = isLead || position == 'homeroom_teacher' ? 'class' : 'user';
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
@@ -247,7 +252,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             decoration: const InputDecoration(labelText: 'Кому'),
             items: [
               if (isLead) const DropdownMenuItem(value: 'all', child: Text('Вся школа')),
-              const DropdownMenuItem(value: 'class', child: Text('Класс')),
+              if (isLead || position == 'homeroom_teacher')
+                const DropdownMenuItem(value: 'class', child: Text('Класс')),
               const DropdownMenuItem(value: 'user', child: Text('Один пользователь')),
               if (isLead) const DropdownMenuItem(value: 'group', child: Text('Группа')),
             ],
