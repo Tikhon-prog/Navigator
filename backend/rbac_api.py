@@ -796,7 +796,9 @@ def sync_status(actor: dict[str, Any] = Depends(require_permission("dop.read_all
 @router.get("/announcements/workbook")
 def list_workbook_announcements(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
     from .main import _visible_announcements
-    return {"data": _visible_announcements(actor.get("class_id"), include_class_targeted=True)}
+    _, assigned_class = (None, None) if actor["role"] == "admin" else _position(actor["id"])
+    class_id = actor.get("class_id") or assigned_class
+    return {"data": _visible_announcements(class_id, include_class_targeted=True)}
 
 
 @router.get("/management/dashboard")
