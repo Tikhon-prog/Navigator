@@ -18,6 +18,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from .school_api import router as school_services_router
 from .sso_api import router as school_sso_router
 from .notification_api import router as notification_router
+from .rbac_api import router as school_rbac_router
 from .data_sources import load_configured_sheet
 
 
@@ -72,6 +73,7 @@ app = FastAPI(
 app.include_router(school_services_router)
 app.include_router(school_sso_router)
 app.include_router(notification_router)
+app.include_router(school_rbac_router)
 
 app.add_middleware(
     CORSMiddleware,
