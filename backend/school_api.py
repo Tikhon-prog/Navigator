@@ -648,6 +648,15 @@ def unregister_my_device(body: DeviceUnregisterBody | None = None,
 
 @router.get("/announcements")
 def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    position_class = None
+    try:
+        from . import rbac_api
+        _, position_class = rbac_api._position(actor["id"])
+    except Exception:
+        # The account API remains available during the first schema initialization.
+        position_class = None
+    actor_class = actor.get("class_id") or position_class
+    normalized_actor_class = normalize_class_id(actor_class)
     with _db() as db:
         rows = db.execute("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100").fetchall()
     visible = []
@@ -666,7 +675,7 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
         audience_role = {"students": "student"}.get(row["audience"], row["audience"])
         if row["audience"] == "all" or audience_role == actor["role"]:
             visible.append(row)
-        elif row["audience"] == "class" and actor.get("class_id") and row["class_id"] == actor["class_id"]:
+        elif row["audience"] == "class" and normalized_actor_class and normalize_class_id(row["class_id"]) == normalized_actor_class:
             visible.append(row)
         elif actor["role"] == "admin":
             visible.append(row)
