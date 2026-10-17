@@ -620,6 +620,12 @@ def sync_status(actor: dict[str, Any] = Depends(require_permission("dop.read_all
             "configured_source": __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()}
 
 
+@router.get("/announcements/workbook")
+def list_workbook_announcements(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    from .main import _visible_announcements
+    return {"data": _visible_announcements(actor.get("class_id"), include_class_targeted=True)}
+
+
 @router.get("/management/dashboard")
 def management_dashboard(actor: dict[str, Any] = Depends(require_permission("dashboard.read"))) -> dict[str, Any]:
     position, scope_class = _require_position_actor(actor, "dashboard.read")
