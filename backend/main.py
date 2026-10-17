@@ -556,12 +556,12 @@ def _normalize_class_key(value: Any) -> str:
     return str(value or "").strip().upper().replace(" ", "").translate(lookalikes)
 
 
-def _visible_announcements(class_id: str | None = None) -> list[dict[str, Any]]:
+def _visible_announcements(class_id: str | None = None, *, include_class_targeted: bool = False) -> list[dict[str, Any]]:
     data = read_sheet("Announcements")
     target_key = _normalize_class_key(class_id)
-    # Without a class profile, show only school-wide notices. Do not hand
-    # every class-targeted notice to an anonymous client by default.
-    if not target_key:
+    # Public endpoints must never trust a caller-supplied class ID. Only the
+    # authenticated v2 endpoint may return a matching class-targeted notice.
+    if not include_class_targeted or not target_key:
         data = [item for item in data if not _normalize_class_key(item.get("target_class_id"))]
     else:
         data = [
