@@ -127,6 +127,16 @@ void main() {
       }
     });
 
+    test('route display contains one entrance node and one destination door node', () {
+      final result = RouteEngine.build('104');
+
+      expect(result, isNotNull);
+      expect(result!.nodes.first.id, 'start_entry');
+      expect(result.nodes.where((node) => node.id == 'anchor_entry'), isEmpty);
+      expect(result.nodes.last.id, 'destination_door_104');
+      expect(result.nodes.where((node) => node.id == 'anchor_104'), isEmpty);
+    });
+
     test('same room produces a zero-distance route', () {
       final result = RouteEngine.build('311', startFloor: 3, startLocationId: '311');
 
