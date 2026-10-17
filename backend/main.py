@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Load secrets before importing modules that read environment variables at import time.
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from .school_api import router as school_services_router
 from .sso_api import router as school_sso_router
@@ -267,25 +267,17 @@ def root():
 
 @app.get("/api/health")
 def health():
-
+    source = os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     try:
-        data = download_master_file()
-
-        return {
-            "status": "ok",
-            "source": "Yandex Disk",
-            "file": YANDEX_FILE_PATH,
-            "size": len(data),
-        }
-
+        if source == "yandex":
+            data = download_master_file()
+            return {"status": "ok", "source": "yandex", "file": YANDEX_FILE_PATH, "size": len(data)}
+        sample = load_configured_sheet("Classes")
+        return {"status": "ok", "source": source, "sample_rows": len(sample or [])}
     except HTTPException:
         raise
-
     except Exception:
-        raise HTTPException(
-            status_code=502,
-            detail="School data source is temporarily unavailable",
-        )
+        raise HTTPException(status_code=502, detail="School data source is temporarily unavailable")
 
 
 # ============================================================
@@ -308,6 +300,10 @@ def get_schema(sheet_name: str):
     # Reject private sheet names before making any upstream request.
     if sheet_name not in PUBLIC_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
+
+    if os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower() in {"json", "http"}:
+        rows = load_configured_sheet(sheet_name) or []
+        return {"sheet": sheet_name, "columns": list(rows[0].keys()) if rows else []}
 
     workbook = load_workbook()
 
