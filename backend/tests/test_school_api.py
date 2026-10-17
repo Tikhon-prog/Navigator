@@ -78,6 +78,13 @@ class SchoolApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             api.get_student("student2", actor)
 
+    def test_students_audience_is_visible_to_student_accounts(self):
+        with api._db() as db:
+            db.execute("INSERT INTO announcements(id,title,body,severity,audience,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                       ("notice1", "Notice", "Body", "info", "students", "admin1", api._utc_now()))
+        result = api.list_announcements({"id": "student1", "role": "student", "class_id": "8A"})
+        self.assertEqual([item["id"] for item in result["data"]], ["notice1"])
+
     def test_announcement_push_fails_safely_without_firebase(self):
         with patch.object(api, "_send_push", return_value=("firebase_not_configured", 0)):
             with api._db() as db:

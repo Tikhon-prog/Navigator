@@ -61,3 +61,8 @@ flutter build apk --release
 - `assets/data/door_points.json` contains normalized door-threshold anchors for all rooms and special places.
 - `assets/maps/floor1_doors_debug.png`, `floor2_doors_debug.png`, `floor3_doors_debug.png` are visual review maps for the navigation anchors.
 - The staircase near the sleeping-corpus passage is intentionally not connected to floor 3; the main staircase by the purple wing is used for 2<->3 routing.
+
+
+## Серверная интеграция (ветка подготовки)
+
+Документация API, роли наставников/учителей, доступ к ДОПам, уведомления Firebase и переменные окружения: [docs/SERVER_INTEGRATION.md](docs/SERVER_INTEGRATION.md). Серверная часть подключена отдельным пространством маршрутов `/api/v2`; для реального запуска требуются серверные секреты и согласованная школой модель данных.
