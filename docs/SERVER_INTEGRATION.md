@@ -131,61 +131,83 @@ throttle is process-local and is not a substitute for edge rate limiting. Teache
 is deliberately based on explicit subject assignments, not inferred from a shared class.
 
 
-## School SSO
+## School SSO setup
 
-The server now exposes `POST /api/v2/auth/sso`. The Android app should use the school's
-OIDC Authorization Code flow with PKCE through the official school identity provider,
-then send the resulting short-lived access token to this endpoint. Configure:
+The Android app uses OpenID Connect Authorization Code + PKCE through the school's identity
+provider. It sends both the returned ID token and access token to `POST /api/v2/auth/sso`.
+The server verifies the ID-token signature using the provider's JWKS, checks issuer,
+audience and expiration, calls the configured/discovered HTTPS UserInfo endpoint, and
+requires the ID-token subject and UserInfo subject to match. Use the exact issuer and
+client registration values from school IT; do not guess an issuer or reuse another app's
+client ID.
 
-- `NAVIGATOR_OIDC_ISSUER`: canonical issuer URL from the school identity provider.
-- `NAVIGATOR_OIDC_USERINFO_URL`: that provider's HTTPS UserInfo endpoint.
+An existing local account must normally be linked by an administrator using
+`POST /api/v2/admin/sso-identities` with the stable provider subject (not an email
+address guessed from the username). Trusted-claim auto-linking/provisioning is optional
+and disabled by default. Enable it only after school IT confirms that the configured
+username, role and class claims are controlled by the IdP and cannot be user-edited.
+Administrative-account provisioning remains separately disabled unless explicitly
+approved. The app's redirect URI must match the URI registered for the Android client.
 
-The server calls UserInfo over TLS and uses the returned stable `sub` claim. It **does
-not auto-link by email or username**. An administrator must explicitly link a local
-учётную запись «Поколение» один раз using `POST /api/v2/admin/sso-identities` with
-`{"username":"existing-login","subject":"stable-oidc-subject"}`. This avoids
-account takeover through mismatched or unverified profile claims. Do not enable this
-until the school IT team supplies and approves the issuer/endpoints and mobile client
-registration. The legacy password login remains for local development/admin bootstrap,
-not as the assumed student login experience.
+## Notifications and delivery
+
+- `POST /api/v2/admin/notifications` creates global, class, group, personal, emergency,
+  or scheduled messages, subject to role/position and recipient-scope checks.
+- `GET /api/v2/notifications` returns only records visible to the current account.
+- `GET/PUT /api/v2/notifications/preferences` stores each student's opt-in choice for
+  server-generated DOP reminders. The worker generates deduplicated reminders 15 minutes
+  before active, timed supplements and records delivery status.
+- Notification groups support `GET/POST /api/v2/admin/notification-groups`,
+  `GET /api/v2/admin/notification-groups/{id}/members`,
+  `POST /api/v2/admin/notification-groups/{id}/members`,
+  `DELETE /api/v2/admin/notification-groups/{id}/members/{user_id}`, and
+  `DELETE /api/v2/admin/notification-groups/{id}`. Group administration is available
+  only to technical admins and staff with assignment-management permission.
+- The delivery worker retries only transient provider-level failures with bounded
+  exponential backoff. Missing Firebase credentials/packages, no registered recipients,
+  and partial deliveries are surfaced rather than endlessly retried. A partial send is
+  not automatically resent because that could duplicate a message for people who received it.
+- `push_status` and `delivery_status` are operational signals, not proof that a person
+  opened or read a notification. FCM and mobile OS settings are best-effort and can delay
+  or suppress delivery.
+
+Never use the app as the only channel for emergencies. It does not replace the school's
+official alarm/PA process or emergency services. Global and emergency templates should
+be approved by school leadership and must not contain sensitive student data.
 
 ## Multiple school-data sources
 
 Set `NAVIGATOR_DATA_SOURCE` to one of:
 
 - `yandex` (default): existing workbook and `YANDEX_OAUTH_TOKEN` flow.
-- `json`: read the allowlisted sheet names from `NAVIGATOR_DATA_JSON_PATH`, a local
-  UTF-8 JSON object whose values are arrays of row objects.
-- `http`: request `{NAVIGATOR_DATA_API_URL}/{SheetName}`; the endpoint may return
-  either a JSON array or an object with a `data` array. Optional bearer token:
+- `json`: read allowlisted sheet names from `NAVIGATOR_DATA_JSON_PATH`, a local UTF-8
+  JSON object whose values are arrays of row objects.
+- `http`: request `{NAVIGATOR_DATA_API_URL}/{SheetName}`; the endpoint may return a JSON
+  array or an object with a `data` array. Optional bearer token:
   `NAVIGATOR_DATA_API_TOKEN`.
 
-The current HTTP/JSON adapters cover the existing read-only sheet endpoints. Identity,
-relationships, personal notifications, and device tokens remain in the service database
-until a school-approved import/synchronization adapter is implemented. Keep the source
-token on the server; never put it in the APK. Use HTTPS for remote endpoints.
+Public workbook reads remain allowlisted/read-only. The authenticated account, assignments,
+private notifications and device registrations stay in the service database. The current
+DOP and teacher-assignment sync adapters map compatible source rows, skip unmatched
+records, and log each run. They do not automatically know which columns the actual school
+system uses; confirm and map the school's real schema before enabling automatic sync on
+live data.
 
-## Scoped notifications and DOP reminders
+## Deployment and production review
 
-- `POST /api/v2/admin/notifications` supports `global`, `targeted`, `personal`,
-  `dop_reminder`, and `emergency` kinds; targets can be all users, a class, a group,
-  or a single user. Only admins can publish emergency items.
-- `POST /api/v2/admin/notification-groups` creates a target group.
-- `POST /api/v2/admin/notification-groups/{group_id}/members` adds an active account.
-- `GET /api/v2/notifications` returns only notifications visible to the signed-in user.
-- `scheduled_at` is stored and hides a notification until its due time. It is **not yet
-  a delivery scheduler**: a worker must be deployed to send due push notifications. This
-  API does not claim a scheduled reminder has been delivered.
-- These new notification records are not yet wired to FCM delivery. Existing broadcast
-  announcements can send FCM pushes when configured; per-user/group push fan-out and
-  delivery receipts remain follow-up work.
+For a first test deployment, copy `.env.example` to `.env`, fill the values supplied by
+school IT, then run `docker compose up --build -d`. SQLite persists in the
+`navigator_data` volume. The container binds to `127.0.0.1:8000`; expose it only behind
+the school's HTTPS reverse proxy. Set the GitHub repository variable
+`POKOLENIE_API_BASE_URL` to the public HTTPS API origin before creating a preconfigured
+APK. It is a public URL, not a secret. Server secrets and the Firebase service-account
+credentials must remain server-side.
 
-
-## Portable deployment
-
-A Dockerfile and `docker-compose.yml` are included. Copy `.env.example` to `.env`,
-fill in the values supplied by school IT, then run `docker compose up --build -d`.
-The SQLite database persists in the `navigator_data` volume. Back it up and restrict
-host access. This only packages the API; it does not provision school SSO, Firebase,
-Yandex access, certificates, or official school data. Do not expose port 8000 directly
-to the public internet; put it behind the school's HTTPS reverse proxy.
+Before storing real student data, school leadership/IT must approve privacy/legal
+requirements, SSO claims, role mapping, retention and backups. Test backup restoration,
+database migration, account deactivation, device revocation and emergency message policy.
+Use centralized request-rate limiting and monitoring; the current login throttle is
+process-local. Keep one API worker for the SQLite-backed notification worker, or move to
+a shared transactional database and explicit multi-worker coordination before scaling
+horizontally. This is a functional integration scaffold, not a school-approved production
+deployment until these checks are complete.
