@@ -23,6 +23,14 @@ class DopStudent {
   String get className => classNumber + classLetter;
 }
 
+/// Keeps personally entered profile/supplement data isolated between school
+/// accounts on shared devices. Unauthenticated/offline-only use retains the
+/// original legacy preference keys for backward compatibility.
+String studentProfilePreferenceKey(String key, {String? userId}) {
+  final id = (userId ?? '').trim();
+  return id.isEmpty ? key : '${key}_${id}';
+}
+
 /// Временный источник данных ученика.
 ///
 /// Позже здесь можно сопоставить эти поля с официальным профилем «Поколение»,
@@ -32,11 +40,30 @@ class NavigatorStudentProvider {
 
   Future<DopStudent?> load() async {
     final prefs = await SharedPreferences.getInstance();
+    String? schoolUserId;
+    var hasSchoolSession = false;
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map && account['id'] != null) {
+          schoolUserId = account['id'].toString();
+          hasSchoolSession = true;
+        }
+      } catch (_) {}
+    }
 
     String first(List<String> keys) {
       for (final key in keys) {
-        final value = prefs.getString(key)?.trim();
+        final scopedKey = studentProfilePreferenceKey(key, userId: schoolUserId);
+        // Once signed into a school account, never fall back to another user's
+        // legacy personal name/profile fields.
+        final value = prefs.getString(scopedKey)?.trim();
         if (value != null && value.isNotEmpty) return value;
+        if (!hasSchoolSession) {
+          final legacy = prefs.getString(key)?.trim();
+          if (legacy != null && legacy.isNotEmpty) return legacy;
+        }
       }
       return '';
     }
