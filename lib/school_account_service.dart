@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -12,6 +13,8 @@ class SchoolAccountService {
   static const _appAuth = FlutterAppAuth();
   static const _tokenKey = 'school_access_token_v1';
   static const _userKey = 'school_user_v1';
+  static StreamSubscription<String>? _tokenSubscription;
+  static StreamSubscription<RemoteMessage>? _messageSubscription;
 
   static Uri _endpoint(String rawBase, String suffix) {
     final base = Uri.parse(rawBase.trim());
@@ -116,10 +119,12 @@ class SchoolAccountService {
     final token = await messaging.getToken();
     if (token == null || token.isEmpty) return false;
     await _registerToken(baseUrl, accessToken, token);
-    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+    await _tokenSubscription?.cancel();
+    await _messageSubscription?.cancel();
+    _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       _registerToken(baseUrl, accessToken, newToken);
     });
-    FirebaseMessaging.onMessage.listen((message) async {
+    _messageSubscription = FirebaseMessaging.onMessage.listen((message) async {
       final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Поколение';
       final body = message.notification?.body ?? message.data['body']?.toString() ?? 'Новое школьное уведомление';
       await LocalNotificationService().showIncomingNotification(title: title, body: body);
@@ -164,6 +169,20 @@ class SchoolAccountService {
 
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString(_tokenKey);
+    final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
+    if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty) {
+      try {
+        await http.delete(
+          _endpoint(baseUrl, 'devices/me'),
+          headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+    await _tokenSubscription?.cancel();
+    await _messageSubscription?.cancel();
+    _tokenSubscription = null;
+    _messageSubscription = null;
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
   }
