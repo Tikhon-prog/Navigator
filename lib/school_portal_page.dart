@@ -14,7 +14,7 @@ class SchoolPortalPage extends StatefulWidget {
 }
 
 class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  late final TabController _tabs = TabController(length: 5, vsync: this);
   bool loading = true;
   bool busy = false;
   String error = '';
@@ -28,12 +28,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
   List<Map<String, dynamic>> students = [];
   List<Map<String, dynamic>> users = [];
   List<Map<String, dynamic>> notifications = [];
+  List<Map<String, dynamic>> auditEvents = [];
 
   bool get isAdmin => user['role'] == 'admin';
   bool get isLeadership => isAdmin || const {'director', 'deputy'}.contains(position);
   bool get canManageUsers => permissions.contains('*') || permissions.contains('staff.manage');
   bool get canManageDop => permissions.contains('*') || permissions.contains('dop.manage');
   bool get canReadUsers => permissions.contains('*') || permissions.contains('staff.read');
+  bool get canReadAudit => permissions.contains('*') || permissions.contains('audit.read');
   bool get canSendNotifications => isLeadership || const {'homeroom_teacher', 'dop_coordinator'}.contains(position) || user['role'] == 'teacher';
   bool get canReadStudents => user['role'] != 'student' && user['role'] != null;
 
@@ -127,6 +129,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       if (canReadStudents) futures.add(_loadStudents());
       if (permissions.contains('*') || permissions.contains('dashboard.read')) futures.add(_loadDashboard());
       if (canReadUsers || permissions.contains('assignments.manage')) futures.add(_loadUsers());
+      if (canReadAudit) futures.add(_loadAudit());
       await Future.wait(futures);
     } catch (e) {
       error = e.toString().replaceFirst('Exception: ', '');
@@ -157,6 +160,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       users = (result['data'] as List? ?? const []).whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row)).toList();
     } catch (_) { users = []; }
+  }
+
+  Future<void> _loadAudit() async {
+    try {
+      final result = await _request('GET', 'management/audit?limit=100') as Map;
+      auditEvents = (result['data'] as List? ?? const []).whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row)).toList();
+    } catch (_) { auditEvents = []; }
   }
 
   Future<void> _loadNotifications() async {
@@ -694,6 +705,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             Tab(icon: Icon(Icons.groups_rounded), text: 'Ученики'),
             Tab(icon: Icon(Icons.campaign_rounded), text: 'Оповещения'),
             Tab(icon: Icon(Icons.manage_accounts_rounded), text: 'Аккаунты'),
+            Tab(icon: Icon(Icons.receipt_long_rounded), text: 'Аудит'),
           ],
         ),
       ),
@@ -713,6 +725,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
               _studentList(scheme),
               _notificationList(scheme),
               _userList(scheme),
+              _auditList(scheme),
             ]),
       floatingActionButton: busy ? const FloatingActionButton(onPressed: null, child: CircularProgressIndicator())
           : canSendNotifications && _tabs.index == 2
@@ -795,6 +808,21 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       subtitle: Text('${n['body'] ?? ''}\n${n['delivery_status'] ?? ''}', maxLines: 4, overflow: TextOverflow.ellipsis),
       isThreeLine: true,
     )),
+  ]);
+
+  Widget _auditList(ColorScheme scheme) => ListView(padding: const EdgeInsets.all(12), children: [
+    if (!canReadAudit)
+      const Card(child: ListTile(leading: Icon(Icons.lock_outline_rounded), title: Text('Просмотр журнала доступен только уполномоченным сотрудникам.'))),
+    if (canReadAudit && auditEvents.isEmpty)
+      const Card(child: ListTile(title: Text('Записей аудита пока нет.'))),
+    for (final event in auditEvents)
+      Card(child: ListTile(
+        leading: const Icon(Icons.history_rounded),
+        title: Text(event['action']?.toString() ?? 'Событие', style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text('${event['created_at'] ?? ''} • ${event['actor_id'] ?? 'system'}\nОбъект: ${event['target_id'] ?? '—'}',
+          maxLines: 3, overflow: TextOverflow.ellipsis),
+        isThreeLine: true,
+      )),
   ]);
 
   Widget _userList(ColorScheme scheme) => ListView(padding: const EdgeInsets.all(12), children: [
