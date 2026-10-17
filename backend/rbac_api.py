@@ -465,6 +465,21 @@ def management_student_supplements(student_id: str, actor: dict[str, Any] = Depe
     return {"student": dict(student), "data": [dict(row) for row in rows]}
 
 
+def _cancel_pending_dop_reminders(db, supplement_id: str) -> None:
+    try:
+        rows = db.execute("SELECT notification_id FROM dop_reminder_occurrences WHERE supplement_id=?", (supplement_id,)).fetchall()
+        for row in rows:
+            db.execute(
+                "UPDATE notifications SET delivery_status='cancelled',push_status='cancelled' "
+                "WHERE id=? AND delivery_status IN ('queued','scheduled','retry')",
+                (row["notification_id"],)
+            )
+        db.execute("DELETE FROM dop_reminder_occurrences WHERE supplement_id=?", (supplement_id,))
+    except Exception:
+        # Notification tables may not yet exist during a schema upgrade.
+        return
+
+
 @router.patch("/management/supplements/{supplement_id}")
 def update_supplement(supplement_id: str, body: core.SupplementBody,
                       actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, Any]:
@@ -472,6 +487,7 @@ def update_supplement(supplement_id: str, body: core.SupplementBody,
         row = db.execute("SELECT student_id FROM student_supplements WHERE id=?", (supplement_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="DOP record not found")
+        _cancel_pending_dop_reminders(db, supplement_id)
         db.execute(
             "UPDATE student_supplements SET title=?,weekday=?,time=?,teacher=?,room=?,status=?,updated_at=? WHERE id=?",
             (body.title, body.weekday, body.time, body.teacher, body.room, body.status, _now(), supplement_id)
@@ -487,6 +503,7 @@ def delete_supplement(supplement_id: str,
         row = db.execute("SELECT student_id FROM student_supplements WHERE id=?", (supplement_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="DOP record not found")
+        _cancel_pending_dop_reminders(db, supplement_id)
         db.execute("DELETE FROM student_supplements WHERE id=?", (supplement_id,))
     core._audit(actor["id"], "student.supplement_deleted", row["student_id"], {"supplement_id": supplement_id})
     return {"status": "deleted"}
