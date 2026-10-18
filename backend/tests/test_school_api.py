@@ -44,6 +44,18 @@ class SchoolApiTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def test_admin_supplement_route_is_bound_to_admin_creation_handler(self):
+        matches = [
+            route for route in api.router.routes
+            if getattr(route, "path", "").endswith("/admin/students/{student_id}/supplements")
+            and "POST" in getattr(route, "methods", set())
+        ]
+        self.assertEqual(len(matches), 1)
+        route = matches[0]
+        self.assertEqual(route.endpoint.__name__, "add_student_supplement")
+        self.assertIn("student_id", [parameter.name for parameter in route.dependant.path_params])
+        self.assertTrue(any(dependency.name == "actor" for dependency in route.dependant.dependencies))
+
     def test_manual_supplement_rejects_invalid_clock_time(self):
         body = api.SupplementBody(title="Robotics", weekday=3, time="25:90", status="active")
         with self.assertRaises(HTTPException) as raised:

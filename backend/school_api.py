@@ -665,7 +665,6 @@ def get_student(student_id: str, actor: dict[str, Any] = Depends(require_roles("
     return {"student": dict(student), "supplements": [dict(x) for x in supplements], "staff": [dict(x) for x in links]}
 
 
-@router.post("/admin/students/{student_id}/supplements", status_code=201)
 def _validate_supplement_body(body: SupplementBody) -> None:
     body.title = body.title.strip()
     body.time = body.time.strip()
@@ -680,6 +679,7 @@ def _validate_supplement_body(body: SupplementBody) -> None:
         raise HTTPException(status_code=422, detail="Supplement status must be active or inactive")
 
 
+@router.post("/admin/students/{student_id}/supplements", status_code=201)
 def add_student_supplement(student_id: str, body: SupplementBody, actor: dict[str, Any] = Depends(require_roles("admin"))) -> dict[str, Any]:
     _validate_supplement_body(body)
     supplement_id = secrets.token_urlsafe(12)
