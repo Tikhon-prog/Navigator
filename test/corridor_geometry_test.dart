@@ -14,6 +14,22 @@ void main() {
               math.pow((a.dy - b.dy) * mapHeight, 2),
         );
 
+    test('every corridor segment has a valid floor and normalized endpoints', () {
+      for (final segment in CorridorRoads.all) {
+        expect(segment.floor, inInclusiveRange(1, 3), reason: segment.label);
+        for (final point in [segment.a, segment.b]) {
+          expect(point.dx, inInclusiveRange(0, 1), reason: '${segment.label} x');
+          expect(point.dy, inInclusiveRange(0, 1), reason: '${segment.label} y');
+        }
+        expect(distance(segment.a, segment.b), greaterThan(1),
+            reason: 'Zero-length or near-zero corridor: ${segment.label}');
+      }
+      for (final floor in [1, 2, 3]) {
+        expect(CorridorRoads.all.any((segment) => segment.floor == floor), isTrue,
+            reason: 'No corridor segments exist for floor $floor');
+      }
+    });
+
     test('no same-floor collinear lines duplicate a long walkable segment', () {
       final segments = CorridorRoads.all;
       for (var i = 0; i < segments.length; i++) {
