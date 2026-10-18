@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  analyze-and-test:
+  android-build:
+    name: Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -55,84 +56,120 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(awk -F': *' '/^version:/ { print $2; exit }' pubspec.yaml)"
+          version="$(sed -n "s/^version: *['\" ]*\([^'\" ]*\).*/\1/p" pubspec.yaml | head -n1)"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Get dependencies
+      - name: Get Flutter dependencies
         run: flutter pub get
 
-      - name: Tests
+      - name: Flutter tests
         run: flutter test
 
-      - name: Analyze
+      - name: Flutter analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
+        env:
+          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
         run: flutter build apk --release --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
 
-      - name: Package APK, installer ZIP and source ZIP
+      - name: Name APK and create SHA-256 checksum
         shell: bash
         env:
           APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
           set -euo pipefail
-          app_name="Pokolenie-${APP_VERSION}"
-          apk_source="build/app/outputs/flutter-apk/app-release.apk"
-          test -s "$apk_source"
           mkdir -p dist
-          cp "$apk_source" "dist/${app_name}.apk"
-          (cd dist && sha256sum "${app_name}.apk" > "${app_name}.apk.sha256")
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Pokolenie-${APP_VERSION}.apk"
+          (cd dist && sha256sum "Pokolenie-${APP_VERSION}.apk" > "Pokolenie-${APP_VERSION}.apk.sha256")
+          test -s "dist/Pokolenie-${APP_VERSION}.apk"
 
-          package_dir="$(mktemp -d)"
-          trap 'rm -rf "$package_dir"' EXIT
-          cp "dist/${app_name}.apk" "$package_dir/"
-          cp "dist/${app_name}.apk.sha256" "$package_dir/"
-          cat > "$package_dir/INSTALL.txt" <<'EOF'
-          Приложение школы «Поколение» — установка Android
-
-          1. Распакуйте этот ZIP-архив.
-          2. Откройте файл Pokolenie-<версия>.apk на устройстве Android.
-          3. Если Android попросит, разрешите установку приложений из выбранного источника.
-          4. Проверьте SHA-256 APK по файлу .apk.sha256 перед установкой.
-
-          Важно: CI собирает APK в release-режиме. Если в окружении сборки не настроен
-          постоянный приватный ключ релиза, Android Gradle использует debug-подпись.
-          Такой APK подходит для тестирования; следующие CI-сборки могут потребовать
-          удаления предыдущей тестовой версии перед установкой. Для стабильных обновлений
-          настройте и надёжно сохраните отдельный ключ релиза, не добавляя его в Git.
-          EOF
-          cp "$package_dir/INSTALL.txt" dist/INSTALL.txt
-          (cd "$package_dir" && zip -9 -q -r "$GITHUB_WORKSPACE/dist/${app_name}.zip" .)
-
-          git archive --format=zip --prefix="${app_name}-source/" HEAD \
-            -o "dist/${app_name}-source.zip"
-
-          unzip -t "dist/${app_name}.zip"
-          unzip -t "dist/${app_name}-source.zip"
-          test -s "dist/${app_name}.apk"
-          test -s "dist/${app_name}.apk.sha256"
-          test -s "dist/${app_name}.zip"
-          test -s "dist/${app_name}-source.zip"
-          echo "Created APK, APK checksum, installation ZIP, and source ZIP for ${APP_VERSION}."
-
-      - name: Upload Android APK and installation ZIP
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: pokolenie-${{ steps.app-version.outputs.version }}-android
+          name: pokolenie-android-${{ steps.app-version.outputs.version }}
           path: |
             dist/Pokolenie-*.apk
             dist/Pokolenie-*.apk.sha256
-            dist/Pokolenie-*.zip
-            dist/INSTALL.txt
-            !dist/*-source.zip
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
-      - name: Upload source ZIP
+  windows-build:
+    name: Windows EXE installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop and read version
+        id: app-version
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          $versionLine = Get-Content pubspec.yaml | Where-Object { $_ -match '^version:' } | Select-Object -First 1
+          if (-not $versionLine) { throw 'Could not find version in pubspec.yaml' }
+          $version = ($versionLine -split ':', 2)[1].Trim().Trim("'").Trim('"')
+          if (-not $version) { throw 'Application version is empty' }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        env:
+          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
+        run: flutter build windows --release --dart-define=POKOLENIE_API_BASE_URL=$env:POKOLENIE_API_BASE_URL
+
+      - name: Verify Windows app bundle
+        shell: pwsh
+        run: |
+          $releaseDir = 'build/windows/x64/runner/Release'
+          $appExe = Join-Path $releaseDir 'pokolenie.exe'
+          if (-not (Test-Path $appExe)) { throw "Windows EXE not found: $appExe" }
+          if (-not (Test-Path (Join-Path $releaseDir 'data'))) { throw 'Flutter data directory missing from Windows bundle' }
+          if (-not (Test-Path (Join-Path $releaseDir 'flutter_windows.dll'))) { throw 'Flutter runtime DLL missing from Windows bundle' }
+          Get-ChildItem $releaseDir -Recurse | Measure-Object -Property Length -Sum | ForEach-Object {
+            Write-Host ("Windows runtime bundle size: {0:N1} MB" -f ($_.Sum / 1MB))
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = Join-Path "${env:ProgramFiles(x86)}" 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+          }
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup compiler ISCC.exe is unavailable' }
+
+      - name: Build Windows installer EXE
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
+        run: |
+          $iscc = Join-Path "${env:ProgramFiles(x86)}" 'Inno Setup 6\ISCC.exe'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" 'windows/installer.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          $installer = "dist/Pokolenie-Setup-$env:APP_VERSION.exe"
+          if (-not (Test-Path $installer)) { throw "Installer EXE was not created: $installer" }
+          Copy-Item 'build/windows/x64/runner/Release/pokolenie.exe' 'dist/Pokolenie.exe' -Force
+          Get-ChildItem dist -Filter '*.exe' | ForEach-Object { Write-Host ("Created {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB)) }
+
+      - name: Upload Windows EXE installer and app executable
         uses: actions/upload-artifact@v4
         with:
-          name: pokolenie-${{ steps.app-version.outputs.version }}-source
-          path: dist/*-source.zip
+          name: pokolenie-windows-${{ steps.app-version.outputs.version }}
+          path: |
+            dist/Pokolenie-Setup-*.exe
+            dist/Pokolenie.exe
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
