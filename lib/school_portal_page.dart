@@ -518,7 +518,8 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     final time = TextEditingController(text: existing?['time']?.toString() ?? '');
     final teacher = TextEditingController(text: existing?['teacher']?.toString() ?? '');
     final room = TextEditingController(text: existing?['room']?.toString() ?? '');
-    int weekday = (existing?['weekday'] as num?)?.toInt() ?? int.tryParse('${existing?['weekday'] ?? ''}') ?? 1;
+    final rawWeekday = existing?['weekday'];
+    int weekday = rawWeekday is num ? rawWeekday.toInt() : int.tryParse(rawWeekday?.toString() ?? '') ?? 1;
     String status = (existing?['status']?.toString() ?? 'active') == 'inactive' ? 'inactive' : 'active';
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
