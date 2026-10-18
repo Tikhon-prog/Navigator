@@ -206,6 +206,22 @@ jobs:
           Write-Host ("Windows runtime bundle size: {0:N1} MB" -f ($totalBytes / 1MB))
           if ($totalBytes -lt 10MB) { throw 'Windows runtime bundle is unexpectedly small; refusing to package it.' }
 
+      - name: Prepare complete portable Windows bundle
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
+        run: |
+          $releaseDir = 'build/windows/x64/runner/Release'
+          $portableDir = "dist/Pokolenie-Windows-Portable-$env:APP_VERSION"
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          Copy-Item -Path (Join-Path $releaseDir '*') -Destination $portableDir -Recurse -Force
+          if (-not (Test-Path (Join-Path $portableDir 'pokolenie.exe'))) { throw 'Portable Windows EXE is missing' }
+          if (-not (Test-Path (Join-Path $portableDir 'flutter_windows.dll'))) { throw 'Portable Flutter runtime is missing' }
+          if (-not (Test-Path (Join-Path $portableDir 'data\flutter_assets\AssetManifest.bin'))) { throw 'Portable Flutter assets are missing' }
+          Get-ChildItem $portableDir -Recurse -File | Measure-Object -Property Length -Sum | ForEach-Object {
+            Write-Host ("Portable bundle size: {0:N1} MB" -f ($_.Sum / 1MB))
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
@@ -226,7 +242,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
           $installer = "dist/Pokolenie-Setup-$env:APP_VERSION.exe"
           if (-not (Test-Path $installer)) { throw "Installer EXE was not created: $installer" }
-          Copy-Item 'build/windows/x64/runner/Release/pokolenie.exe' 'dist/Pokolenie.exe' -Force
           Get-ChildItem dist -Filter '*.exe' | ForEach-Object {
             Write-Host ("Created {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
           }
@@ -237,6 +252,6 @@ jobs:
           name: pokolenie-windows-${{ steps.app-version.outputs.version }}
           path: |
             dist/Pokolenie-Setup-*.exe
-            dist/Pokolenie.exe
+            dist/Pokolenie-Windows-Portable-*/**
           if-no-files-found: error
           retention-days: 14
