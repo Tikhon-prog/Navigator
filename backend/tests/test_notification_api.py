@@ -111,6 +111,32 @@ class NotificationScopeTests(unittest.TestCase):
             notifications.cancel_notification("missing-id", {"id": "teacher1", "role": "teacher"})
         self.assertEqual(raised.exception.status_code, 403)
 
+    def test_schoolwide_history_and_cancel_cannot_expose_or_modify_private_notifications(self):
+        private = notifications.NotificationBody(
+            title="Private message", body="Student-specific information",
+            kind="personal", target_type="user", target_id="student1",
+        )
+        private_created = notifications.create_notification(private, {"id": "admin1", "role": "admin"})
+        public = notifications.NotificationBody(
+            title="School-wide message", body="For everyone",
+            kind="global", target_type="all",
+        )
+        public_created = notifications.create_notification(public, {"id": "admin1", "role": "admin"})
+
+        history = notifications.list_admin_notifications(100, {"id": "admin1", "role": "admin"})["data"]
+        history_ids = [row["id"] for row in history]
+        self.assertIn(public_created["id"], history_ids)
+        self.assertNotIn(private_created["id"], history_ids)
+
+        with self.assertRaises(HTTPException) as raised:
+            notifications.cancel_notification(private_created["id"], {"id": "admin1", "role": "admin"})
+        self.assertEqual(raised.exception.status_code, 404)
+        with core._db() as db:
+            private_row = db.execute(
+                "SELECT delivery_status FROM notifications WHERE id=?", (private_created["id"],)
+            ).fetchone()
+        self.assertNotEqual(private_row["delivery_status"], "cancelled")
+
     def test_personal_notification_is_visible_only_to_recipient(self):
         with core._db() as db:
             db.execute(

@@ -518,7 +518,7 @@ def list_admin_notifications(limit: int = 100,
         rows = db.execute(
             "SELECT id,title,body,kind,target_type,target_id,created_by,created_at,scheduled_at,expires_at,"
             "delivery_status,push_status,delivered_count,delivery_attempts,last_error_code "
-            "FROM notifications ORDER BY created_at DESC LIMIT ?", (limit,)
+            "FROM notifications WHERE target_type='all' ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
     return {"data": [dict(row) for row in rows]}
 
@@ -533,10 +533,12 @@ def cancel_notification(notification_id: str,
         raise HTTPException(status_code=403, detail="School leadership permission required")
     with core._db() as db:
         row = db.execute(
-            "SELECT id,delivery_status,push_status FROM notifications WHERE id=?", (notification_id,)
+            "SELECT id,target_type,delivery_status,push_status FROM notifications WHERE id=?", (notification_id,)
         ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Notification not found")
+        # This endpoint manages only school-wide broadcasts. Do not let a leadership
+        # account use it to inspect or cancel private, class, or group notifications.
+        if not row or row["target_type"] != "all":
+            raise HTTPException(status_code=404, detail="School-wide notification not found")
         if row["delivery_status"] == "processing":
             raise HTTPException(status_code=409, detail="Notification delivery is already in progress; retry after it finishes")
         already_sent = row["delivery_status"] in {"sent", "partial"} or row["push_status"] in {"sent", "partial"}
