@@ -6,6 +6,15 @@
 - Добавлены личные заметки: создание, редактирование, удаление и локальное сохранение без отправки на сервер.
 
 
+## 0.2.0+2 — мультиплатформенная сборка и Windows
+
+- Разделены проверка качества и независимые задачи release-сборки Android APK и Windows installer EXE.
+- Добавлен Inno Setup installer, включающий Windows EXE, Flutter runtime DLL и файлы приложения.
+- Добавлен Windows-вход в школьный OIDC через системный браузер и Authorization Code + PKCE с loopback callback.
+- Включена Windows-инициализация локальных уведомлений и опрос ленты школьных оповещений, пока desktop-приложение запущено.
+- Сборка не вызывает Android Edge-to-Edge API и Firebase Messaging на Windows; Android-поведение сохранено.
+- Обновлены инструкции по сборке, настройке OIDC, API, runner и требованиям к Microsoft C++/ATL.
+
 ## 0.2.0 — 18 октября 2026
 
 - Подготовлена версия приложения 0.2.0 (Android build number 2).

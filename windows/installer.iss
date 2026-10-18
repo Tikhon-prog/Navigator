@@ -36,8 +36,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "Pokolenie.Navigator.Desktop"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "Pokolenie.Navigator.Desktop"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить «Поколение»"; Flags: postinstall nowait skipifsilent

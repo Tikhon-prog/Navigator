@@ -10,39 +10,36 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: flutter-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  android-build:
-    name: Android APK
+  quality:
+    name: Tests, analysis and security checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.app-version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
 
-      - name: Audit Python dependencies for known vulnerabilities
-        run: |
-          python -m pip install pip-audit
-          pip-audit -r backend/requirements.txt
-
-      - name: Scan current checkout for committed secrets
+      - name: Scan checkout for committed secrets
         run: python backend/security_check.py
 
-      - name: Backend security regression tests
+      - name: Backend regression tests
         run: python -m unittest discover -s backend/tests -v
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -51,14 +48,8 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Read application version
-        id: app-version
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(sed -n "s/^version: *['\" ]*\([^'\" ]*\).*/\1/p" pubspec.yaml | head -n1)"
-          test -n "$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Verify Flutter toolchain
+        run: flutter --version
 
       - name: Get Flutter dependencies
         run: flutter pub get
@@ -69,39 +60,53 @@ jobs:
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Build release APK
-        env:
-          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
-        run: flutter build apk --release --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
-
-      - name: Name APK and create SHA-256 checksum
+      - name: Read application version
+        id: app-version
         shell: bash
-        env:
-          APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/Pokolenie-${APP_VERSION}.apk"
-          (cd dist && sha256sum "Pokolenie-${APP_VERSION}.apk" > "Pokolenie-${APP_VERSION}.apk.sha256")
-          test -s "dist/Pokolenie-${APP_VERSION}.apk"
+          version="$(sed -n "s/^version: *['\" ]*\([^'\" ]*\).*/\1/p" pubspec.yaml | head -n1)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: pokolenie-android-${{ steps.app-version.outputs.version }}
-          path: |
-            dist/Pokolenie-*.apk
-            dist/Pokolenie-*.apk.sha256
-          if-no-files-found: error
-          retention-days: 14
-
-  windows-build:
-    name: Windows EXE installer
-    runs-on: windows-latest
-    timeout-minutes: 60
+  dependency-audit:
+    name: Audit backend dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install audit tool
+        run: python -m pip install pip-audit
+
+      - name: Report known dependency vulnerabilities
+        run: pip-audit -r backend/requirements.txt
+
+  android-build:
+    name: Android APK
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle*
+            android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -110,7 +115,55 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Enable Windows desktop and read version
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        env:
+          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
+        run: flutter build apk --release --dart-define="POKOLENIE_API_BASE_URL=$POKOLENIE_API_BASE_URL"
+
+      - name: Verify APK and create SHA-256 checksum
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.quality.outputs.version }}
+        run: |
+          set -euo pipefail
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$apk"
+          mkdir -p dist
+          cp "$apk" "dist/Pokolenie-${APP_VERSION}.apk"
+          (cd dist && sha256sum "Pokolenie-${APP_VERSION}.apk" > "Pokolenie-${APP_VERSION}.apk.sha256")
+          file "dist/Pokolenie-${APP_VERSION}.apk"
+          ls -lh dist
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: pokolenie-android-${{ needs.quality.outputs.version }}
+          path: |
+            dist/Pokolenie-*.apk
+            dist/Pokolenie-*.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-build:
+    name: Windows EXE installer
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+
+      - name: Enable desktop target and read version
         id: app-version
         shell: pwsh
         run: |
@@ -121,25 +174,37 @@ jobs:
           if (-not $version) { throw 'Application version is empty' }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Verify Windows toolchain
+        shell: pwsh
+        run: |
+          flutter --version
+          flutter doctor -v
+
       - name: Get Flutter dependencies
         run: flutter pub get
 
       - name: Build Windows release
         env:
           POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
-        run: flutter build windows --release --dart-define=POKOLENIE_API_BASE_URL=$env:POKOLENIE_API_BASE_URL
+        run: flutter build windows --release "--dart-define=POKOLENIE_API_BASE_URL=$env:POKOLENIE_API_BASE_URL"
 
-      - name: Verify Windows app bundle
+      - name: Verify complete Windows bundle
         shell: pwsh
         run: |
           $releaseDir = 'build/windows/x64/runner/Release'
-          $appExe = Join-Path $releaseDir 'pokolenie.exe'
-          if (-not (Test-Path $appExe)) { throw "Windows EXE not found: $appExe" }
-          if (-not (Test-Path (Join-Path $releaseDir 'data'))) { throw 'Flutter data directory missing from Windows bundle' }
-          if (-not (Test-Path (Join-Path $releaseDir 'flutter_windows.dll'))) { throw 'Flutter runtime DLL missing from Windows bundle' }
-          Get-ChildItem $releaseDir -Recurse | Measure-Object -Property Length -Sum | ForEach-Object {
-            Write-Host ("Windows runtime bundle size: {0:N1} MB" -f ($_.Sum / 1MB))
+          $required = @(
+            'pokolenie.exe',
+            'flutter_windows.dll',
+            'data\flutter_assets\AssetManifest.bin',
+            'data\flutter_assets\assets\maps\floor1.webp'
+          )
+          foreach ($relativePath in $required) {
+            $path = Join-Path $releaseDir $relativePath
+            if (-not (Test-Path $path)) { throw "Required Windows runtime file is missing: $path" }
           }
+          $totalBytes = (Get-ChildItem $releaseDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          Write-Host ("Windows runtime bundle size: {0:N1} MB" -f ($totalBytes / 1MB))
+          if ($totalBytes -lt 10MB) { throw 'Windows runtime bundle is unexpectedly small; refusing to package it.' }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -162,10 +227,12 @@ jobs:
           $installer = "dist/Pokolenie-Setup-$env:APP_VERSION.exe"
           if (-not (Test-Path $installer)) { throw "Installer EXE was not created: $installer" }
           Copy-Item 'build/windows/x64/runner/Release/pokolenie.exe' 'dist/Pokolenie.exe' -Force
-          Get-ChildItem dist -Filter '*.exe' | ForEach-Object { Write-Host ("Created {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB)) }
+          Get-ChildItem dist -Filter '*.exe' | ForEach-Object {
+            Write-Host ("Created {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
+          }
 
-      - name: Upload Windows EXE installer and app executable
-        uses: actions/upload-artifact@v4
+      - name: Upload Windows installer and app executable
+        uses: actions/upload-artifact@v7
         with:
           name: pokolenie-windows-${{ steps.app-version.outputs.version }}
           path: |

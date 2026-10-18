@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_appauth/flutter_appauth.dart';
@@ -9,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'local_notification_service.dart';
+import 'desktop_sso_stub.dart' if (dart.library.io) 'desktop_sso_io.dart' as desktop_sso;
 
 class SchoolAccountService {
   static const _appAuth = FlutterAppAuth();
@@ -172,17 +175,36 @@ class SchoolAccountService {
       throw Exception('В конфигурации школьного входа не хватает обязательных параметров.');
     }
 
-    final result = await _appAuth.authorizeAndExchangeCode(
-      AuthorizationTokenRequest(
-        clientId,
-        redirectUri,
+    late final String? providerToken;
+    late final String? providerIdToken;
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      final desktopRedirectUri = '${sso['desktop_redirect_uri'] ?? ''}'.trim();
+      if (desktopRedirectUri.isEmpty) {
+        throw Exception(
+          'Для Windows не настроен NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI на сервере. '
+          'Добавь http://127.0.0.1:43827/oauth/callback в разрешённые адреса школьного OIDC.',
+        );
+      }
+      final desktopTokens = await desktop_sso.authorizeAndExchangeCode(
+        clientId: clientId,
         issuer: issuer,
-        scopes: const ['openid', 'profile', 'email'],
-        promptValues: const ['login'],
-      ),
-    );
-    final providerToken = result?.accessToken;
-    final providerIdToken = result?.idToken;
+        redirectUri: desktopRedirectUri,
+      );
+      providerToken = desktopTokens.accessToken;
+      providerIdToken = desktopTokens.idToken;
+    } else {
+      final result = await _appAuth.authorizeAndExchangeCode(
+        AuthorizationTokenRequest(
+          clientId,
+          redirectUri,
+          issuer: issuer,
+          scopes: const ['openid', 'profile', 'email'],
+          promptValues: const ['login'],
+        ),
+      );
+      providerToken = result?.accessToken;
+      providerIdToken = result?.idToken;
+    }
     if (providerToken == null || providerToken.isEmpty || providerIdToken == null || providerIdToken.isEmpty) {
       throw Exception('Школьный провайдер не вернул необходимые OIDC-токены.');
     }
@@ -244,6 +266,10 @@ class SchoolAccountService {
   }
 
   Future<bool> _initializePush(Map<String, dynamic> config, String baseUrl, String accessToken) async {
+    // firebase_messaging currently supports Android, iOS, macOS and web,
+    // not native Windows desktop. The rest of the school session must work
+    // normally when the app runs as a Windows EXE.
+    if (defaultTargetPlatform == TargetPlatform.windows) return false;
     final rawFirebase = config['firebase'];
     if (rawFirebase is! Map || rawFirebase['enabled'] != true) return false;
     if (Firebase.apps.isEmpty) {

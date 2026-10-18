@@ -32,7 +32,12 @@ class LocalNotificationService {
     tz.setLocalLocation(tz.getLocation('Europe/Moscow'));
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    const windows = WindowsInitializationSettings(
+      appName: 'Поколение',
+      appUserModelId: 'Pokolenie.Navigator.Desktop',
+      guid: '7b68277c-0c39-4f4c-94ce-4f899cc2f7d4',
+    );
+    const settings = InitializationSettings(android: android, windows: windows);
     await plugin.initialize(settings);
 
     final androidPlugin = plugin
@@ -97,6 +102,7 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        windows: WindowsNotificationDetails(),
       ),
     );
   }
@@ -136,6 +142,7 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        windows: WindowsNotificationDetails(),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
@@ -167,6 +174,7 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        windows: WindowsNotificationDetails(),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );

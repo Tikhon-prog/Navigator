@@ -48,6 +48,21 @@ class SsoProvisioningTests(unittest.TestCase):
         self.assertFalse(sso_api._is_secure_service_url("http://10.0.0.1"))
         self.assertFalse(sso_api._is_secure_service_url("https://"))
 
+    def test_public_config_exposes_configured_desktop_loopback_redirect(self):
+        env = {
+            "NAVIGATOR_OIDC_ISSUER": "https://school-id.example.org",
+            "NAVIGATOR_OIDC_CLIENT_ID": "pokolenie-desktop",
+            "NAVIGATOR_OIDC_REDIRECT_URI": "ru.pokolenie.navigator:/oauthredirect",
+            "NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI": "http://127.0.0.1:43827/oauth/callback",
+        }
+        with patch.dict(os.environ, env):
+            config = rbac_api.public_config()
+        self.assertTrue(config["sso"]["enabled"])
+        self.assertEqual(
+            config["sso"]["desktop_redirect_uri"],
+            "http://127.0.0.1:43827/oauth/callback",
+        )
+
     def test_director_bootstrap_preserves_exact_issuer_with_trailing_slash(self):
         env = {
             "POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME": "director.slash",

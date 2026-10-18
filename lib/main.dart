@@ -18,6 +18,7 @@ import 'school_account_service.dart';
 import 'dop_parser.dart';
 import 'school_portal_page.dart';
 import 'online_data_service.dart';
+import 'desktop_notification_polling_stub.dart' if (dart.library.io) 'desktop_notification_polling_io.dart' as desktop_polling;
 
 const String _configuredApiBase = String.fromEnvironment('POKOLENIE_API_BASE_URL');
 
@@ -43,12 +44,20 @@ Future<void> _seedOnlineSettings() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  if (defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS) {
+    try {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } catch (_) {
+      // This is a mobile-only system UI preference; desktop startup must proceed.
+    }
+  }
   try { await _seedOnlineSettings(); } catch (_) {}
   try { await LocalNotificationService().initialize(); } catch (_) {}
   runApp(const PokolenieApp());
   // Re-register FCM token/listeners in the background after a prior SSO login.
   unawaited(SchoolAccountService().restoreSession());
+  unawaited(desktop_polling.startDesktopNotificationPolling());
 }
 
 enum AppThemeType { yellow, turquoise, darkBlue, violet, coral, green }
@@ -2298,6 +2307,7 @@ class SettingsPage extends StatelessWidget {
       await SchoolAccountService().signInAsServerAdmin(
         baseUrl, username: result['username']!, password: result['password']!,
       );
+      unawaited(desktop_polling.startDesktopNotificationPolling());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Технический вход выполнен.')));
         await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
@@ -2331,6 +2341,7 @@ class SettingsPage extends StatelessWidget {
       );
       if (action == 'signout') {
         await service.signOut();
+        await desktop_polling.stopDesktopNotificationPolling();
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
       } else if (action == 'portal' && context.mounted) {
         if (current['role'] == 'student') {
@@ -2369,6 +2380,7 @@ class SettingsPage extends StatelessWidget {
     try {
       final result = await service.signInWithSchoolAccount(baseUrl);
       final user = Map<String, dynamic>.from(result['user'] as Map);
+      unawaited(desktop_polling.startDesktopNotificationPolling());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Вход выполнен: ${user['display_name'] ?? user['username'] ?? 'учётная запись'}.${result['push_registered'] == true ? ' Уведомления подключены.' : ' Push-уведомления пока не настроены.'}'),

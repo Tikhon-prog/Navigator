@@ -425,6 +425,10 @@ def public_config() -> dict[str, Any]:
     userinfo_url = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
+    desktop_redirect_uri = os.getenv(
+        "NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI",
+        "http://127.0.0.1:43827/oauth/callback",
+    ).strip()
     issuer_secure = bool(issuer) and _is_secure_service_url(issuer)
     # UserInfo may be discovered from the issuer's standard OIDC metadata if
     # the school IT team leaves NAVIGATOR_OIDC_USERINFO_URL empty.
@@ -432,9 +436,14 @@ def public_config() -> dict[str, Any]:
     return {
         "school_name": os.getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
         "api_version": "v2",
-        "sso": {"enabled": bool(issuer and client_id and redirect_uri and issuer_secure and userinfo_secure), "issuer": issuer,
-                "client_id": client_id, "redirect_uri": redirect_uri,
-                "scopes": ["openid", "profile", "email"]},
+        "sso": {
+            "enabled": bool(issuer and client_id and redirect_uri and issuer_secure and userinfo_secure),
+            "issuer": issuer,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "desktop_redirect_uri": desktop_redirect_uri,
+            "scopes": ["openid", "profile", "email"],
+        },
         "firebase": {"enabled": firebase_enabled, **(firebase if firebase_enabled else {})},
     }
 
