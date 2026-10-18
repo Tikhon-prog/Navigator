@@ -72,7 +72,10 @@ Invoke-CheckedCommand 'python' @('backend/security_check.py')
 Invoke-CheckedCommand 'python' @('-m', 'unittest', 'discover', '-s', 'backend/tests', '-v')
 
 Invoke-CheckedCommand 'flutter' @('config', '--enable-windows-desktop')
-Invoke-CheckedCommand 'flutter' @('doctor', '-v')
+Write-Host ''
+Write-Host '> flutter doctor -v (diagnostic; actual build steps are authoritative)' -ForegroundColor Cyan
+flutter doctor -v
+if ($LASTEXITCODE -ne 0) { Write-Warning 'flutter doctor reported warnings; continuing so tests/builds can show the specific missing components.' }
 Invoke-CheckedCommand 'flutter' @('pub', 'get')
 Invoke-CheckedCommand 'flutter' @('test')
 Invoke-CheckedCommand 'flutter' @('analyze', '--no-fatal-infos', '--no-fatal-warnings')

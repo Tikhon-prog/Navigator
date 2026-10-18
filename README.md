@@ -35,7 +35,7 @@ Flutter-приложение для школьной навигации, рас�
 
 ## Сборка APK и Windows EXE
 
-Полная инструкция, настройки GitHub Actions, устранение ошибки биллинга и сборка APK/Windows EXE одной командой описаны в [инструкции сборки и настройки](BUILD_INSTRUCTIONS.md). Для локальной сборки используй `build_all_release.ps1`.
+Для установки среды на новом Windows-ПК и сборки APK/EXE одной командой см. раздел «Быстрая установка» в [инструкции сборки и настройки](BUILD_INSTRUCTIONS.md). Скрипт: [setup_and_build.ps1](setup_and_build.ps1).
 
 Для Android нужны Flutter stable 3.47.4, Android SDK и JDK 21. Для Windows-сборки нужны Visual Studio 2022 / Build Tools с workload **Desktop development with C++** и ATL; для установщика нужен Inno Setup 6.
 
