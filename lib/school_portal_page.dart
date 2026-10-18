@@ -1385,7 +1385,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       leading: Icon(n['kind'] == 'emergency' ? Icons.warning_amber_rounded : Icons.campaign_rounded,
         color: n['kind'] == 'emergency' ? scheme.error : scheme.primary),
       title: Text(n['title']?.toString() ?? 'Оповещение', style: const TextStyle(fontWeight: FontWeight.w800)),
-      subtitle: Text('${n['body'] ?? ''}\n${n['delivery_status'] ?? ''}', maxLines: 4, overflow: TextOverflow.ellipsis),
+      subtitle: Text('${n['body'] ?? ''}\nСтатус: ${n['delivery_status'] ?? ''} • push: ${n['push_status'] ?? ''}\nДоставлено: ${n['delivered_count'] ?? 0}', maxLines: 4, overflow: TextOverflow.ellipsis),
       trailing: isLeadership && (n['delivery_status'] ?? '') != 'cancelled'
           ? IconButton(tooltip: 'Отменить или скрыть оповещение', onPressed: busy ? null : () => _cancelNotification(n), icon: const Icon(Icons.cancel_outlined))
           : null,

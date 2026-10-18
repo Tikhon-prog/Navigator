@@ -87,6 +87,22 @@ class NotificationScopeTests(unittest.TestCase):
         self.assertFalse(cancelled["push_already_sent"])
         self.assertEqual(notifications.list_notifications({"id": "student1", "role": "student", "class_id": "8A"})["data"], [])
 
+    def test_hiding_already_sent_notification_does_not_falsify_push_delivery_status(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,"
+                "delivery_status,push_status,delivered_count) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                ("already-sent", "Sent", "Push was delivered", "global", "all", None,
+                 "admin1", notifications._now(), "sent", "sent", 3),
+            )
+        result = notifications.cancel_notification("already-sent", {"id": "admin1", "role": "admin"})
+        self.assertTrue(result["push_already_sent"])
+        with core._db() as db:
+            row = db.execute("SELECT delivery_status,push_status,delivered_count FROM notifications WHERE id='already-sent'").fetchone()
+        self.assertEqual(row["delivery_status"], "cancelled")
+        self.assertEqual(row["push_status"], "sent")
+        self.assertEqual(row["delivered_count"], 3)
+
     def test_teacher_without_leadership_position_cannot_view_or_cancel_schoolwide_history(self):
         with self.assertRaises(HTTPException) as raised:
             notifications.list_admin_notifications(100, {"id": "teacher1", "role": "teacher"})

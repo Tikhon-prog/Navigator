@@ -541,8 +541,9 @@ def cancel_notification(notification_id: str,
             raise HTTPException(status_code=409, detail="Notification delivery is already in progress; retry after it finishes")
         already_sent = row["delivery_status"] in {"sent", "partial"} or row["push_status"] in {"sent", "partial"}
         db.execute(
-            "UPDATE notifications SET delivery_status='cancelled',push_status='cancelled',next_attempt_at=NULL "
-            "WHERE id=?", (notification_id,)
+            "UPDATE notifications SET delivery_status='cancelled',"
+            "push_status=CASE WHEN push_status IN ('sent','partial') THEN push_status ELSE 'cancelled' END,"
+            "next_attempt_at=NULL WHERE id=?", (notification_id,)
         )
     core._audit(actor["id"], "notification.cancelled", notification_id, {"push_already_sent": already_sent})
     return {
