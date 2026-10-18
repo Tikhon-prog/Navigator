@@ -81,7 +81,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins or ["*"],
     allow_credentials=False,
-    # This backend currently exposes read-only endpoints only.
+    # Public workbook endpoints are read-only; authenticated /api/v2 routes also
+    # use POST/PUT/PATCH/DELETE for account, DOP and notification workflows.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["Accept", "Authorization", "Content-Type"],
 )
