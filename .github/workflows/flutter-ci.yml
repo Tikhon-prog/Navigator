@@ -7,9 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   analyze-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +50,15 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Read application version
+        id: app-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk -F': *' '/^version:/ { print $2; exit }' pubspec.yaml)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -58,16 +71,68 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
 
-      - name: Prepare named APK and SHA-256 checksum
+      - name: Package APK, installer ZIP and source ZIP
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
+          set -euo pipefail
+          app_name="Pokolenie-${APP_VERSION}"
+          apk_source="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$apk_source"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Pokolenie-0.2.0+2.apk
-          sha256sum dist/Pokolenie-0.2.0+2.apk > dist/Pokolenie-0.2.0+2.apk.sha256
+          cp "$apk_source" "dist/${app_name}.apk"
+          (cd dist && sha256sum "${app_name}.apk" > "${app_name}.apk.sha256")
 
-      - name: Upload release APK and checksum
+          package_dir="$(mktemp -d)"
+          trap 'rm -rf "$package_dir"' EXIT
+          cp "dist/${app_name}.apk" "$package_dir/"
+          cp "dist/${app_name}.apk.sha256" "$package_dir/"
+          cat > "$package_dir/INSTALL.txt" <<'EOF'
+          Приложение школы «Поколение» — установка Android
+
+          1. Распакуйте этот ZIP-архив.
+          2. Откройте файл Pokolenie-<версия>.apk на устройстве Android.
+          3. Если Android попросит, разрешите установку приложений из выбранного источника.
+          4. Проверьте SHA-256 APK по файлу .apk.sha256 перед установкой.
+
+          Важно: CI собирает APK в release-режиме. Если в окружении сборки не настроен
+          постоянный приватный ключ релиза, Android Gradle использует debug-подпись.
+          Такой APK подходит для тестирования; следующие CI-сборки могут потребовать
+          удаления предыдущей тестовой версии перед установкой. Для стабильных обновлений
+          настройте и надёжно сохраните отдельный ключ релиза, не добавляя его в Git.
+          EOF
+          cp "$package_dir/INSTALL.txt" dist/INSTALL.txt
+          (cd "$package_dir" && zip -9 -q -r "$GITHUB_WORKSPACE/dist/${app_name}.zip" .)
+
+          git archive --format=zip --prefix="${app_name}-source/" HEAD \
+            -o "dist/${app_name}-source.zip"
+
+          unzip -t "dist/${app_name}.zip"
+          unzip -t "dist/${app_name}-source.zip"
+          test -s "dist/${app_name}.apk"
+          test -s "dist/${app_name}.apk.sha256"
+          test -s "dist/${app_name}.zip"
+          test -s "dist/${app_name}-source.zip"
+          echo "Created APK, APK checksum, installation ZIP, and source ZIP for ${APP_VERSION}."
+
+      - name: Upload Android APK and installation ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: pokolenie-0.2.0+2-apk
-          path: dist/*
+          name: pokolenie-${{ steps.app-version.outputs.version }}-android
+          path: |
+            dist/Pokolenie-*.apk
+            dist/Pokolenie-*.apk.sha256
+            dist/Pokolenie-*.zip
+            dist/INSTALL.txt
+            !dist/*-source.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: pokolenie-${{ steps.app-version.outputs.version }}-source
+          path: dist/*-source.zip
           if-no-files-found: error
           retention-days: 7
