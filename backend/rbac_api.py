@@ -73,6 +73,95 @@ def _init() -> None:
           created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL
         );
         """)
+    _bootstrap_director()
+
+
+def _bootstrap_director() -> None:
+    """Create the initial school director only when explicitly configured by school IT."""
+    username = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME", "").strip()
+    password = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_PASSWORD", "")
+    display_name = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_DISPLAY_NAME", "Директор школы").strip() or "Директор школы"
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    subject = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_SSO_SUBJECT", "").strip()
+
+    if not username and not password and not subject:
+        return
+    if not username or len(password) < 14:
+        raise RuntimeError(
+            "Director bootstrap requires POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME "
+            "and a password of at least 14 characters"
+        )
+    if subject and not issuer:
+        raise RuntimeError(
+            "POKOLENIE_BOOTSTRAP_DIRECTOR_SSO_SUBJECT requires NAVIGATOR_OIDC_ISSUER"
+        )
+
+    created = False
+    user_id = ""
+    with core._db() as db:
+        current_director = db.execute(
+            "SELECT u.id FROM users u JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.active=1 AND p.position='director' LIMIT 1"
+        ).fetchone()
+        if current_director:
+            return
+
+        existing = db.execute(
+            "SELECT id,role FROM users WHERE username=? COLLATE NOCASE", (username,)
+        ).fetchone()
+        if existing:
+            user_id = existing["id"]
+            if existing["role"] not in {"teacher", "admin"}:
+                raise RuntimeError(
+                    "Configured director username already belongs to a non-staff account"
+                )
+            current_position = db.execute(
+                "SELECT position FROM staff_positions WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if current_position and current_position["position"] != "director":
+                raise RuntimeError(
+                    "Configured director account already has a different school position"
+                )
+        else:
+            user_id = secrets.token_urlsafe(12)
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (user_id, username, core._hash_password(password), "teacher", display_name, None, core._utc_now()),
+            )
+            created = True
+
+        db.execute(
+            "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) "
+            "VALUES(?, 'director', NULL, NULL, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET position='director',scope_class=NULL,assigned_by=NULL,updated_at=excluded.updated_at",
+            (user_id, core._utc_now()),
+        )
+
+        if subject:
+            tables = {row["name"] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sso_identities'"
+            ).fetchall()}
+            if "sso_identities" not in tables:
+                raise RuntimeError("SSO tables have not been initialized before director bootstrap")
+            existing_identity = db.execute(
+                "SELECT user_id FROM sso_identities WHERE issuer=? AND subject=?", (issuer, subject)
+            ).fetchone()
+            if existing_identity and existing_identity["user_id"] != user_id:
+                raise RuntimeError("Configured director SSO subject is already linked to another account")
+            user_identity = db.execute(
+                "SELECT issuer,subject FROM sso_identities WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if user_identity and (user_identity["issuer"] != issuer or user_identity["subject"] != subject):
+                raise RuntimeError("Configured director account is already linked to a different SSO identity")
+            if not existing_identity:
+                db.execute(
+                    "INSERT INTO sso_identities(issuer,subject,user_id,linked_at) VALUES(?,?,?,?)",
+                    (issuer, subject, user_id, core._utc_now()),
+                )
+
+    if created:
+        core._audit(None, "bootstrap.director_created", user_id, {"position": "director", "sso_linked": bool(subject)})
 
 
 _auto_sync_task: asyncio.Task | None = None
@@ -296,6 +385,10 @@ def readiness() -> dict[str, Any]:
         active_admins = db.execute(
             "SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1"
         ).fetchone()["n"]
+        active_directors = db.execute(
+            "SELECT COUNT(*) AS n FROM users u JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.role IN ('teacher','admin') AND u.active=1 AND p.position='director'"
+        ).fetchone()["n"]
     return {
         "status": "ready",
         "source": os.getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower(),
@@ -303,6 +396,8 @@ def readiness() -> dict[str, Any]:
         "schedule_rows_available": len(schedule),
         "active_administrators": active_admins,
         "administration_ready": active_admins > 0,
+        "active_directors": active_directors,
+        "director_account_ready": active_directors > 0,
         "firebase_server_ready": firebase["server_ready"],
         "firebase_android_client_ready": firebase["android_client_ready"],
         "firebase_delivery_enabled": firebase["delivery_enabled"],

@@ -1,4 +1,4 @@
-# Navigator — release checklist 0.2.0
+# «Поколение» — release checklist 0.2.0
 
 ## Клиент и офлайн-функции
 - [x] Карты трёх этажей и поиск помещений.

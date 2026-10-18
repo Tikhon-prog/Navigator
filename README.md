@@ -76,6 +76,7 @@ flutter analyze --no-fatal-infos --no-fatal-warnings
 - [История изменений](CHANGELOG.md)
 - [Заметки о выпуске 0.2.0](docs/RELEASE_0.2.0.md)
 - [Развёртывание сервера и настройка SSO](docs/SERVER_INTEGRATION.md)
+- [Полный список серверных функций и требования к настройке](docs/SERVER_FEATURES.md)
 - [Модель безопасности](docs/SECURITY.md)
 - [Аудит геометрии маршрутов](docs/ROUTING_AUDIT.md)
 - [Инструкция по сборке](BUILD_INSTRUCTIONS.md)

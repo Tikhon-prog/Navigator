@@ -1,2 +1,2 @@
-Navigator 0.2.0+2
-Offline school navigator foundation
+Поколение 0.2.0+2
+Школьная карта, расписание, ДОПы и оповещения

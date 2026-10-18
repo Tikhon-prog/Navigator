@@ -46,6 +46,55 @@ class NotificationScopeTests(unittest.TestCase):
         self.db_patch.stop()
         self.tmp.cleanup()
 
+    def test_director_can_publish_schoolwide_notification_visible_to_all_accounts(self):
+        body = notifications.NotificationBody(
+            title="Общешкольное объявление",
+            body="Информация для всех учеников и сотрудников",
+            kind="global", target_type="all",
+        )
+        with patch("backend.rbac_api._position", return_value=("director", None)):
+            created = notifications.create_notification(body, {"id": "teacher1", "role": "teacher", "class_id": "8A"})
+        self.assertEqual(created["kind"], "global")
+        self.assertEqual(created["target_type"], "all")
+        for actor in (
+            {"id": "student1", "role": "student", "class_id": "8A"},
+            {"id": "student2", "role": "student", "class_id": "8B"},
+            {"id": "admin1", "role": "admin"},
+        ):
+            with self.subTest(role=actor["role"], user_id=actor["id"]):
+                feed = notifications.list_notifications(actor)["data"]
+                self.assertIn("Общешкольное объявление", [item["title"] for item in feed])
+
+    def test_non_leadership_cannot_publish_schoolwide_notification(self):
+        body = notifications.NotificationBody(
+            title="Not allowed", body="Students cannot broadcast to the whole school",
+            kind="global", target_type="all",
+        )
+        with self.assertRaises(HTTPException) as raised:
+            notifications.create_notification(body, {"id": "student1", "role": "student", "class_id": "8A"})
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_leadership_can_review_and_cancel_notifications(self):
+        body = notifications.NotificationBody(
+            title="Scheduled school alert", body="All school",
+            kind="global", target_type="all",
+        )
+        created = notifications.create_notification(body, {"id": "admin1", "role": "admin"})
+        history = notifications.list_admin_notifications(100, {"id": "admin1", "role": "admin"})["data"]
+        self.assertIn(created["id"], [row["id"] for row in history])
+        cancelled = notifications.cancel_notification(created["id"], {"id": "admin1", "role": "admin"})
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertFalse(cancelled["push_already_sent"])
+        self.assertEqual(notifications.list_notifications({"id": "student1", "role": "student", "class_id": "8A"})["data"], [])
+
+    def test_teacher_without_leadership_position_cannot_view_or_cancel_schoolwide_history(self):
+        with self.assertRaises(HTTPException) as raised:
+            notifications.list_admin_notifications(100, {"id": "teacher1", "role": "teacher"})
+        self.assertEqual(raised.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as raised:
+            notifications.cancel_notification("missing-id", {"id": "teacher1", "role": "teacher"})
+        self.assertEqual(raised.exception.status_code, 403)
+
     def test_personal_notification_is_visible_only_to_recipient(self):
         with core._db() as db:
             db.execute(

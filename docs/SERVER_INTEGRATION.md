@@ -45,6 +45,8 @@ Required for authenticated endpoints:
   initial technical admin account; password must be at least 14 characters. The bootstrap
   account is created only when there is no existing admin. Use this account for the first
   technical login, then link the school's SSO identities or enable trusted-claim provisioning.
+- `POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME`, `POKOLENIE_BOOTSTRAP_DIRECTOR_PASSWORD` and optional `POKOLENIE_BOOTSTRAP_DIRECTOR_DISPLAY_NAME`: create the initial director account and grant the `director` position if no active director exists. The password must be at least 14 characters and must stay in the server secret environment. This account is still subject to the default non-SSO password-login restriction.
+- `POKOLENIE_BOOTSTRAP_DIRECTOR_SSO_SUBJECT` (optional): the exact, stable `sub` from the configured school identity provider. Set it only together with `NAVIGATOR_OIDC_ISSUER` and only after school IT has verified the identity. The server links this subject during first-run bootstrap; it refuses to overwrite a different existing SSO link. Without this value, the technical administrator must link the director through `POST /api/v2/admin/sso-identities`.
 - `NAVIGATOR_TOKEN_TTL_SECONDS`: access token lifetime, default 8 hours.
 - `NAVIGATOR_REFRESH_TTL_SECONDS`: rotating refresh-token lifetime, default 30 days.
 - `NAVIGATOR_NOTIFICATION_WORKER_ENABLED` and `NAVIGATOR_NOTIFICATION_POLL_SECONDS`: enable and tune the single-container notification worker.
@@ -86,6 +88,8 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 - `GET /api/v2/announcements/source` — class-scoped source announcements; public announcement routes intentionally return school-wide notices only.
 - `POST /api/v2/devices/register`, `DELETE /api/v2/devices/me` — register and revoke FCM device tokens.
 - `GET /api/v2/notifications`, `POST /api/v2/admin/notifications` — list visible notifications and create global, class, group, personal, emergency, or scheduled messages.
+- `GET /api/v2/admin/notifications?limit=100` — director/deputy delivery history with status and sent counts; does not expose device tokens.
+- `DELETE /api/v2/admin/notifications/{id}` — cancel pending delivery and hide a notification from the in-app feed. It cannot recall a push already delivered to a device.
 - `GET/PUT /api/v2/notifications/preferences` — opt in/out of server-generated DOP reminders.
 - `GET /api/v2/announcements` — list announcements visible to the current user.
 - `POST /api/v2/admin/announcements` — publish info, warning, or emergency notice.

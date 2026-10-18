@@ -800,6 +800,26 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     });
   }
 
+  Future<void> _cancelNotification(Map<String, dynamic> notification) async {
+    final id = (notification['id'] ?? '').toString().trim();
+    if (id.isEmpty || !isLeadership) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Отменить оповещение?'),
+        content: const Text('Оповещение будет скрыто из ленты и запланированная доставка остановится. Если push уже доставлен на устройство, отозвать его нельзя.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Оставить')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Отменить')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _withBusy(() async {
+      await _request('DELETE', 'admin/notifications/$id');
+    });
+  }
+
   Future<void> _syncTeacherAssignments() async {
     if (busy) return;
     setState(() => busy = true);
@@ -1366,6 +1386,9 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         color: n['kind'] == 'emergency' ? scheme.error : scheme.primary),
       title: Text(n['title']?.toString() ?? 'Оповещение', style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('${n['body'] ?? ''}\n${n['delivery_status'] ?? ''}', maxLines: 4, overflow: TextOverflow.ellipsis),
+      trailing: isLeadership && (n['delivery_status'] ?? '') != 'cancelled'
+          ? IconButton(tooltip: 'Отменить или скрыть оповещение', onPressed: busy ? null : () => _cancelNotification(n), icon: const Icon(Icons.cancel_outlined))
+          : null,
       isThreeLine: true,
     )),
   ]);

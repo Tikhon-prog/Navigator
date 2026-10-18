@@ -1278,7 +1278,7 @@ class HomePage extends StatelessWidget {
                     child: Text('ШКОЛА «ПОКОЛЕНИЕ»', style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
                   ),
                   const SizedBox(height: 18),
-                  Text(userName.trim().isEmpty ? 'Твой школьный\nнавигатор' : 'Привет, $userName!', style: TextStyle(color: textColor, fontSize: width < 600 ? 30 : 38, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                  Text(userName.trim().isEmpty ? 'Всё для школы\nв одном месте' : 'Привет, $userName!', style: TextStyle(color: textColor, fontSize: width < 600 ? 30 : 38, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -1)),
                   const SizedBox(height: 12),
                   Text('Карта здания, расписание уроков и дополнительные занятия — всё в одном месте.', style: TextStyle(color: textColor.withValues(alpha: .9), fontSize: 15, height: 1.45)),
                   const SizedBox(height: 22),
@@ -2439,7 +2439,7 @@ class SettingsPage extends StatelessWidget {
       Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Сотрудникам — управление по роли; ученикам — школьные оповещения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openSchoolCabinet(context))),
       Card(child: ListTile(leading: Icon(Icons.cloud_sync_rounded, color: c.primary), title: const Text('Настройки подключения'), subtitle: const Text('Адрес API, включение онлайн-режима и проверка соединения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Офлайн-навигатор школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
+      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Приложение школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Приложение школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
     ]))));
   }
 

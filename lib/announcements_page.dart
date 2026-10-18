@@ -105,8 +105,11 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     });
 
     final prefs = await SharedPreferences.getInstance();
-    final base = (prefs.getString('navigator_api_url') ?? '').trim();
-    final enabled = prefs.getBool('navigator_api_enabled') ?? false;
+    final base = (prefs.getString('school_api_base_url_v1') ?? prefs.getString('navigator_api_url') ?? '').trim();
+    // A successful school sign-in is enough to enable authenticated feeds even
+    // when the older offline-data toggle is unset on this installation.
+    final schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
+    final enabled = (prefs.getBool('navigator_api_enabled') ?? false) || schoolToken.isNotEmpty;
     final storedClassId = (prefs.getString('student_class_id') ?? '').trim();
     final storedClassName = (prefs.getString('student_class_name') ?? '').trim();
     var currentUserId = '';
@@ -202,7 +205,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       // Authenticated v2 feeds include targeted/personal notifications and
       // leadership announcements. The public workbook feed remains available
       // for offline-compatible school-wide announcements.
-      final schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
       if (schoolToken.isNotEmpty) {
         final seen = parsed.map((item) => item.id).toSet();
         for (final endpoint in const ['announcements', 'notifications', 'announcements/workbook']) {

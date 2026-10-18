@@ -505,6 +505,54 @@ def create_notification(body: NotificationBody,
             "scheduled_at": scheduled_at, "expires_at": expires_at, "delivery_status": delivery_status, "push_status": "pending"}
 
 
+@router.get("/admin/notifications")
+def list_admin_notifications(limit: int = 100,
+                             actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    """Return recent delivery records to school leadership without exposing device tokens."""
+    from . import rbac_api
+    position, _ = (None, None) if actor["role"] == "admin" else rbac_api._position(actor["id"])
+    if actor["role"] != "admin" and position not in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="School leadership permission required")
+    limit = max(1, min(limit, 200))
+    with core._db() as db:
+        rows = db.execute(
+            "SELECT id,title,body,kind,target_type,target_id,created_by,created_at,scheduled_at,expires_at,"
+            "delivery_status,push_status,delivered_count,delivery_attempts,last_error_code "
+            "FROM notifications ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
+@router.delete("/admin/notifications/{notification_id}")
+def cancel_notification(notification_id: str,
+                        actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
+    """Cancel a notification in the in-app feed and stop any not-yet-started delivery."""
+    from . import rbac_api
+    position, _ = (None, None) if actor["role"] == "admin" else rbac_api._position(actor["id"])
+    if actor["role"] != "admin" and position not in {"director", "deputy"}:
+        raise HTTPException(status_code=403, detail="School leadership permission required")
+    with core._db() as db:
+        row = db.execute(
+            "SELECT id,delivery_status,push_status FROM notifications WHERE id=?", (notification_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        if row["delivery_status"] == "processing":
+            raise HTTPException(status_code=409, detail="Notification delivery is already in progress; retry after it finishes")
+        already_sent = row["delivery_status"] in {"sent", "partial"} or row["push_status"] in {"sent", "partial"}
+        db.execute(
+            "UPDATE notifications SET delivery_status='cancelled',push_status='cancelled',next_attempt_at=NULL "
+            "WHERE id=?", (notification_id,)
+        )
+    core._audit(actor["id"], "notification.cancelled", notification_id, {"push_already_sent": already_sent})
+    return {
+        "status": "cancelled",
+        "notification_id": notification_id,
+        "push_already_sent": already_sent,
+        "note": "A push already delivered to a device cannot be recalled." if already_sent else "Pending delivery cancelled.",
+    }
+
+
 @router.get("/notifications")
 def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> dict[str, Any]:
     from . import rbac_api
