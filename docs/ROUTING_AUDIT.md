@@ -26,7 +26,7 @@ The local geometry still contains a diagonal branch around doors 315–316 and a
 - Unknown origin/destination IDs fail gracefully (returning `null`) instead of looking up a room with a throwing accessor.
 - If a room's door anchor has no manual point entry, the router attaches its catalog point to the graph as a fallback. This improves coverage but still requires map review before a real route can be trusted.
 - Route display removes duplicate graph/door anchors and only collapses near-collinear road nodes; the graph itself is not altered by display simplification.
-- Turn instructions use the actual map pixel aspect ratio to avoid false left/right turns introduced by normalized coordinates. Small angle noise is ignored; stair transitions and semantic start/destination points are retained.
+- Turn instructions and path-simplification projection use the actual 7016×4960 map-pixel aspect ratio; normalized-coordinate projection would otherwise distort near-straight segments and could hide a real bend. Small angle noise is ignored; stair transitions and semantic start/destination points are retained.
 - Regression tests cover main entrance floor invariance, cross-floor origin behavior, invalid identifiers, identical origin/destination, all catalog destinations from the entrance, third-floor reachability from room 311, and single displayed entry/destination anchors.
 
 ## Recommended verification
