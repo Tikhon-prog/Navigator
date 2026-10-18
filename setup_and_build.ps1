@@ -4,11 +4,21 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $FlutterVersion = '3.47.4'
 $RepoName = 'Tikhon-prog/Navigator'
-$RepoDirectory = Join-Path $env:USERPROFILE 'source\Pokolenie'
-$ToolRoot = Join-Path $env:LOCALAPPDATA 'Programs\PokolenieToolchain'
+$DevRoot = 'D:\Dev'
+$RepoDirectory = Join-Path $DevRoot 'Pokolenie'
+$ToolRoot = Join-Path $DevRoot 'Programs\PokolenieToolchain'
 $FlutterParent = Join-Path $ToolRoot ("Flutter-" + $FlutterVersion)
 $FlutterSdk = Join-Path $FlutterParent 'flutter'
-$AndroidSdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+$AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
+$GradleHome = Join-Path $DevRoot 'Gradle'
+$PubCache = Join-Path $DevRoot 'PubCache'
+$BuildTemp = Join-Path $DevRoot 'Temp'
+New-Item -ItemType Directory -Force -Path $DevRoot, $ToolRoot, $AndroidSdk, $GradleHome, $PubCache, $BuildTemp | Out-Null
+# Keep large SDKs, repository, caches and downloaded archives on D:. Leave Windows TEMP on NTFS C:.
+foreach ($pair in @(@('GRADLE_USER_HOME',$GradleHome), @('PUB_CACHE',$PubCache))) {
+    [Environment]::SetEnvironmentVariable($pair[0], $pair[1], 'User')
+    Set-Item -Path ("Env:" + $pair[0]) -Value $pair[1]
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -19,11 +29,17 @@ if (-not [Environment]::Is64BitOperatingSystem) { throw 'This setup supports Win
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     throw 'winget is missing. Install/update App Installer from Microsoft Store, reboot, then rerun.'
 }
-$driveName = $env:SystemDrive.Substring(0, 1)
-$systemDrive = Get-PSDrive -Name $driveName
-$freeGiB = [math]::Round($systemDrive.Free / 1GB, 1)
-Write-Host ("Free space on " + $env:SystemDrive + ": " + $freeGiB + ' GiB')
-if ($systemDrive.Free -lt 25GB) { throw 'At least 25 GiB free space is recommended for Flutter, Android SDK, Visual Studio and builds.' }
+$devVolume = Get-Volume -DriveLetter D -ErrorAction Stop
+if ($devVolume.FileSystem -notin @('exFAT','NTFS')) { throw ('D: must be exFAT or NTFS; detected ' + $devVolume.FileSystem + '.') }
+$devDrive = Get-PSDrive -Name D
+$devFreeGiB = [math]::Round($devDrive.Free / 1GB, 1)
+Write-Host ("Free space on D:: " + $devFreeGiB + ' GiB (' + $devVolume.FileSystem + ')')
+if ($devDrive.Free -lt 40GB) { throw 'At least 40 GiB free space is recommended on D: for SDKs and builds.' }
+$systemDriveName = $env:SystemDrive.Substring(0, 1)
+$systemDrive = Get-PSDrive -Name $systemDriveName
+$systemFreeGiB = [math]::Round($systemDrive.Free / 1GB, 1)
+Write-Host ("Free space on " + $env:SystemDrive + ': ' + $systemFreeGiB + ' GiB for Windows/Visual Studio components')
+if ($systemDrive.Free -lt 12GB) { throw 'Keep at least 12 GiB free on the Windows system drive for Visual Studio and Windows components.' }
 
 function Write-Step {
     param([string]$Message)
@@ -68,7 +84,7 @@ function Install-WingetPackage {
     Write-Step ("Installing " + $Id)
     $wingetArgs = @('install', '--id', $Id, '--exact', '--source', 'winget', '--accept-source-agreements', '--accept-package-agreements')
     if ($Override) { $wingetArgs += @('--override', $Override) } else { $wingetArgs += '--silent' }
-    & winget @args
+    & winget @wingetArgs
     $code = $LASTEXITCODE
     Refresh-Path
     if ($code -ne 0) {
@@ -108,8 +124,14 @@ if (-not (Test-Path -LiteralPath $vswhere) -or -not (Test-Path -LiteralPath $vsI
     throw 'Visual Studio Installer tools were not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.'
 }
 $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
-if (-not $vsPath) { $vsPath = (& $vswhere -latest -products '*' -property installationPath 2>$null | Select-Object -First 1) }
-if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools.' }
+if (-not $vsPath) {
+    Write-Step 'Installing Visual Studio 2022 Build Tools (keeping this component on the Windows drive)'
+    $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
+    Install-WingetPackage -Id 'Microsoft.VisualStudio.2022.BuildTools' -Override $vsOverride
+    Refresh-Path
+    $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
+}
+if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
 Write-Step 'Ensuring Visual Studio C++ / ATL / Windows SDK components'
 $vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--wait', '--norestart')
 & $vsInstaller @vsArgs
@@ -182,7 +204,7 @@ $sdkManager = Join-Path $AndroidSdk 'cmdline-tools\latest\bin\sdkmanager.bat'
 if (-not (Test-Path -LiteralPath $sdkManager)) {
     $toolsUrl = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
     $toolsSha = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
-    $downloadDir = Join-Path $env:TEMP 'PokolenieBootstrap'
+    $downloadDir = Join-Path $BuildTemp 'PokolenieBootstrap'
     New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
     $toolsZip = Join-Path $downloadDir 'android-commandline-tools.zip'
     $toolsExtract = Join-Path $downloadDir 'android-commandline-tools-extract'
@@ -224,7 +246,7 @@ if (-not $hasFlutter) {
     $baseUrl = $manifest.base_url
     if (-not $baseUrl) { $baseUrl = 'https://storage.googleapis.com/flutter_infra_release/releases' }
     $flutterUrl = $baseUrl.TrimEnd('/') + '/' + $release.archive.TrimStart('/')
-    $flutterZip = Join-Path $env:TEMP ("flutter_windows_" + $FlutterVersion + '-stable.zip')
+    $flutterZip = Join-Path $BuildTemp ("flutter_windows_" + $FlutterVersion + '-stable.zip')
     if (Test-Path -LiteralPath $FlutterParent) { Remove-Item -LiteralPath $FlutterParent -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $FlutterParent | Out-Null
     Write-Host ("Downloading " + $flutterUrl)
