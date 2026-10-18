@@ -140,7 +140,7 @@ async def _auto_sync_loop() -> None:
                 except Exception as exc:
                     try:
                         _record_sync_failure(
-                            os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+                            os.getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower()
                             + ":automatic:" + name,
                             exc,
                         )
@@ -298,7 +298,7 @@ def readiness() -> dict[str, Any]:
         ).fetchone()["n"]
     return {
         "status": "ready",
-        "source": os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
+        "source": os.getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower(),
         "classes_available": len(classes),
         "schedule_rows_available": len(schedule),
         "active_administrators": active_admins,
@@ -756,7 +756,7 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
             for teacher_id in row["teacher_ids"]:
                 assignment_keys.add((student_id, teacher_id, row["subject"]))
 
-    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower()
     if not assignment_keys and not split_class_subjects:
         with core._db() as db:
             db.execute(
@@ -823,7 +823,7 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
     skipped = 0
     deactivated = 0
     seen_source_keys: set[str] = set()
-    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
+    source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower()
     with core._db() as db:
         for raw in rows:
             if not isinstance(raw, dict):
@@ -937,7 +937,7 @@ def sync_status(actor: dict[str, Any] = Depends(require_permission("dop.read_all
         "last_supplements": last_matching(lambda source: "supplements" in source),
         "last_teacher_assignments": last_matching(lambda source: "teacher_assignments" in source),
         "last_failure": last_matching(lambda source: "automatic" in source),
-        "configured_source": os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower(),
+        "configured_source": os.getenv("NAVIGATOR_DATA_SOURCE", "json").strip().lower(),
         "automatic_sync_interval_seconds": _auto_sync_interval(),
     }
 

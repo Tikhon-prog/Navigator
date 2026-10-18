@@ -1,25 +1,21 @@
-# Navigator 2.1 roadmap
+# Дорожная карта после версии 0.2.0
 
-## Completed in this package
-- class-aware schedule storage
-- current weekday default
-- local next-lesson reminder scheduling
-- extended supplements model/UI
-- administrator login and roles
-- SHA-256 password storage
-- online API client
-- Yandex Wiki grid backend skeleton
-- cloud data workbook
-- FCM integration skeleton
-- source map/PDF bundle
+## Входит в текущую версию
+- Офлайн-карты трёх этажей, поиск кабинетов и граф маршрутизации.
+- Локальное расписание, выбор групп и раздел ДОПов.
+- Школьный портал с серверными аккаунтами и разграничением доступа.
+- OIDC SSO и защищённое хранение мобильных токенов.
+- JSON/HTTPS адаптеры данных, SQLite-хранилище, аудит и API уведомлений.
+- Регрессионные проверки навигации, данных и прав доступа.
 
-## Next hardening pass
-1. Replace approximate route graph edges with a digitized walkable corridor graph for all three floors.
-2. Add explicit door/portal coordinates for each room instead of routing from room centers.
-3. Add class-specific remote schedule versioning and conflict resolution.
-4. Add authenticated admin sessions/JWT on the backend.
-5. Add server-side password hashing with a salted slow hash (SHA-256 is kept only because it was explicitly requested for this prototype).
-6. Add audit records for every admin mutation.
-7. Register FCM tokens per class and send targeted schedule changes/announcements.
-8. Add full admin CRUD for Classes, BaseSchedule, Supplements, Places, Announcements and Devices.
-9. Add notification preferences and quiet hours.
+## Следующие приоритеты
+1. Получить подтверждённый школой источник данных и описать сопоставление его колонок.
+2. Визуально проверить все маршруты на утверждённых планах, прежде всего отмеченные в \`docs/ROUTING_AUDIT.md\`.
+3. Провести интеграционное тестирование OIDC на школьном IdP и проверить отзыв сессий.
+4. Проверить синхронизацию на тестовом наборе, включая пустой/частичный источник и дубли.
+5. Проверить восстановление резервной копии базы и операционные сценарии деактивации учётной записи.
+6. Получить Firebase-конфигурацию, если школа согласует push-уведомления.
+7. Автоматизировать публикацию проверенного APK и хранить контрольную сумму вместе с заметками о выпуске.
+
+## Условия запуска с реальными данными
+Не подключать настоящие данные учащихся, пока школа не утвердит SSO, карту ролей, источник данных, сроки хранения, мониторинг, резервное копирование и обработку экстренных уведомлений.

@@ -1,35 +1,39 @@
-# Структура Navigator 1.0.0
+# Структура исходников — версия 0.2.0
 
-## Клиент
-- lib/main.dart — основной Flutter-клиент.
-- lib/security_service.dart — локальная защита администраторов.
-- lib/online_data_service.dart — HTTPS-клиент backend.
-- lib/door_points.dart — точки входа в кабинеты для маршрутизации.
-- lib/corridor_roads.dart — граф коридоров.
-- lib/local_notification_service.dart — расписание локальных уведомлений.
-- lib/admin_panel.dart — админ-панель.
-- lib/supplements_page.dart — ДОПы.
+## Flutter-клиент
+- `lib/main.dart` — главный интерфейс, локальное расписание, каталог помещений и маршруты.
+- `lib/corridor_roads.dart`, `lib/door_points.dart` — граф коридоров и точки входа.
+- `lib/admin_panel.dart`, `lib/security_service.dart` — локальные административные инструменты и защита прототипа.
+- `lib/announcements_page.dart` — объявления.
+- `lib/dop_parser.dart`, `lib/supplements_page.dart` — данные и интерфейс ДОПов.
+- `lib/school_account_service.dart`, `lib/school_portal_page.dart` — серверная учётная запись и школьный портал.
+- `lib/online_data_service.dart`, `lib/api_security.dart` — безопасная конфигурация клиентского API.
+- `lib/local_notification_service.dart` — локальные напоминания.
 
-## Данные
-- assets/data/ — расписание, кабинеты, места и точки.
-- assets/routing/ — коридорные дороги.
-- assets/maps/ — карты этажей и исходные планы.
+## Данные и карты
+- `assets/data/` — каталог помещений, места, координаты дверей и локальное расписание.
+- `assets/maps/` — три офлайн-карты и исходные планы школы.
+- `assets/routing/` — материалы по коридорным сегментам.
 
-## Android
-- android/app/ — Android application module.
-- Java 21 / Kotlin 2.2.20 / AGP 8.11.1.
-- локальные ключи подписи исключены через .gitignore.
+## Сервер
+- `backend/main.py` — публичный API и регистрация маршрутов.
+- `backend/data_sources.py` — источники школьных данных: JSON и HTTPS API.
+- `backend/school_api.py` — аккаунты, сессии, ученики и индивидуальные записи.
+- `backend/sso_api.py` — интеграция с OIDC.
+- `backend/rbac_api.py` — должности, области доступа и синхронизация.
+- `backend/notification_api.py` — push-уведомления и напоминания.
+- `backend/tests/` — серверные регрессионные и security-тесты.
+- `docker-compose.yml`, `backend/Dockerfile` — контейнерный запуск.
 
-## Backend
-- backend/create_tables.py
-- backend/yandex_cloud_function/
+## Проверки и сборка
 
-## QA
-- qa/ — аудит маршрутизации и материалы проверки.
-
-## Сборка
+```powershell
 flutter pub get
 flutter analyze
+flutter test
+python backend/security_check.py
+python -m unittest discover -s backend/tests -v
 flutter build apk --release
+```
 
-Полный архив Navigator_18.zip содержит также бинарные карты, PDF и XLSX. Большие бинарные файлы намеренно не дублируются в Git-репозитории через текущий коннектор.
+Секреты сервера и ключи подписи должны оставаться вне Git. Версия приложения задаётся в `pubspec.yaml`.

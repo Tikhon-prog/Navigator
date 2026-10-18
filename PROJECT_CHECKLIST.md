@@ -1,20 +1,26 @@
-# Navigator — development checklist
+# Navigator — release checklist 0.2.0
 
-Implemented in 1.0.0:
-- [x] Offline floor maps
-- [x] Search across all floors
-- [x] 90 numbered rooms from the supplied school plans
-- [x] Specialized spaces from the supplied floor schemes
-- [x] Route from entrance/floor
-- [x] Route from any indexed room/place to another
-- [x] Multi-floor route graph
-- [x] Full-screen map and zoom
-- [x] Adaptive phone/tablet/landscape layout
-- [x] Three persisted themes
-- [x] Persisted user name
-- [x] Local editable schedule
+## Клиент и офлайн-функции
+- [x] Карты трёх этажей и поиск помещений.
+- [x] Построение маршрутов, переходы между этажами и пошаговые инструкции.
+- [x] Локальное расписание и выбор учебных групп.
+- [x] Раздел ДОПов и локальные напоминания при указанном времени начала.
+- [x] Оповещения с кешем и экран школьного портала.
+- [x] Темы и сохранение пользовательских настроек.
 
-To be added only after real school data is supplied:
-- [ ] After-school activities (ДОПы) and their real rooms/times
-- [ ] Exact additional access points/entrances if school provides them
-- [ ] Any staff-only or restricted spaces that should not be public
+## Серверная интеграция
+- [x] FastAPI и SQLite для учётных записей и записей портала.
+- [x] Роли и ограничение доступа к ученикам, наставникам, учителям и ДОПам.
+- [x] OIDC Authorization Code + PKCE; мобильные токены хранятся в защищённом хранилище.
+- [x] Источник данных конфигурируется как локальный JSON или HTTPS API.
+- [x] Необязательные Firebase push-уведомления и серверные напоминания.
+- [x] Регрессионные тесты и сканирование репозитория на секреты.
+
+## Обязательно до реального запуска в школе
+- [ ] Подтвердить конфигурацию OIDC и утверждённую модель ролей у школьного IT.
+- [ ] Подготовить и проверить соответствие колонок реального источника данных.
+- [ ] Проверить запуск сервера, резервное копирование, восстановление и журналирование.
+- [ ] Получить согласование обработки персональных данных и сроков хранения.
+- [ ] Проверить маршруты на утверждённых планах; не считать их сертифицированной эвакуационной схемой.
+- [ ] Настроить HTTPS, секреты, rate limiting, мониторинг и Firebase при необходимости.
+- [ ] Выполнить Flutter-тесты, Python-тесты, анализ и Android Release-сборку на CI или локально.

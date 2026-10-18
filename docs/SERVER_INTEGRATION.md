@@ -1,9 +1,9 @@
 # Серверная интеграция школы «Поколение»
 
 This branch adds a first usable, separately versioned service API at `/api/v2`.
-The existing workbook-backed `/api/*` endpoints remain read-only for public reference data
+The existing source-backed `/api/*` endpoints remain read-only for public reference data
 (classes, base timetable, rooms, places, and school-wide/class-targeted announcements).
-The `Supplements` workbook sheet is now internal-only: generic `/api/data/Supplements`,
+The `Supplements` source collection is now internal-only: generic `/api/data/Supplements`,
 `/api/schema/Supplements`, and the legacy `/api/supplements` endpoint do not expose the
 whole student DOP roster. An authorized staff member imports it through the authenticated
 sync route. The new service stores identities, explicit mentor/teacher relationships,
@@ -53,7 +53,7 @@ Required for authenticated endpoints:
 - `NAVIGATOR_ALLOWED_ORIGINS`: comma-separated browser origins allowed by CORS; set the real school portal origin in production.
 - `NAVIGATOR_OIDC_ISSUER`, optional `NAVIGATOR_OIDC_JWKS_URL` and `NAVIGATOR_OIDC_USERINFO_URL`, plus `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. UserInfo/JWKS endpoints are discovered automatically when omitted. The backend verifies the ID-token signature/audience via the IdP JWKS (or OIDC discovery) and compares its subject to UserInfo. The redirect URI must match the Android intent filter and identity-provider registration.
 - `NAVIGATOR_OIDC_AUTO_LINK_USERNAME` and `NAVIGATOR_OIDC_AUTO_PROVISION`: optional first-login automation. Enable only if the configured IdP returns authoritative, non-user-editable username/role/class claims. Configure the claim names explicitly; student accounts require a class claim. Provisioning of `admin` accounts stays disabled unless `NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION=true`.
-- `NAVIGATOR_DATA_SOURCE`: `yandex`, `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
+- `NAVIGATOR_DATA_SOURCE`: `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
 - `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM.
 - `FIREBASE_CREDENTIALS_PATH`: optional path to a Firebase service-account JSON file mounted
   read-only as a secret, never committed to the repository. Alternatively, set
@@ -81,9 +81,9 @@ Create an FCM-enabled Firebase project first. For the one-line environment optio
 - `GET /api/v2/teachers/me/subjects` — list students explicitly assigned to the signed-in teacher by subject.
 - `GET /api/v2/students` and `GET /api/v2/students/{id}` — role-scoped student list/details.
 - `POST /api/v2/management/students/{id}/supplements`, `PATCH/DELETE /api/v2/management/supplements/{id}` — create/update/delete DOP records with permissions.
-- `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter. Unmatched rows are skipped; matching by display name is allowed only when unambiguous. Stale workbook-owned records are marked inactive (and pending reminders cancelled) only after a non-empty, fully mapped sync; empty or partial source responses preserve existing active records.
+- `POST /api/v2/management/sync/supplements` and `GET /api/v2/management/sync/status` — import student-linked DOP rows from the selected JSON/HTTPS adapter. Unmatched rows are skipped; matching by display name is allowed only when unambiguous. Stale source-owned records are marked inactive (and pending reminders cancelled) only after a non-empty, fully mapped sync; empty or partial source responses preserve existing active records.
 - `POST /api/v2/management/sync/teacher-assignments` and `PUT /api/v2/admin/schedule-teacher-aliases` — derive teacher/student/subject access from the authoritative timetable, with explicit aliases when timetable teacher names differ from account names. If the source is incompletely mapped, previous schedule-derived assignments are preserved. Subjects explicitly split across groups with different teachers are not assigned class-wide; configure those student-level relationships manually in the portal.
-- `GET /api/v2/announcements/workbook` — class-scoped workbook announcements; public announcement routes intentionally return school-wide notices only.
+- `GET /api/v2/announcements/source` — class-scoped source announcements; public announcement routes intentionally return school-wide notices only.
 - `POST /api/v2/devices/register`, `DELETE /api/v2/devices/me` — register and revoke FCM device tokens.
 - `GET /api/v2/notifications`, `POST /api/v2/admin/notifications` — list visible notifications and create global, class, group, personal, emergency, or scheduled messages.
 - `GET/PUT /api/v2/notifications/preferences` — opt in/out of server-generated DOP reminders.
@@ -174,18 +174,16 @@ Never use the app as the only channel for emergencies. It does not replace the s
 official alarm/PA process or emergency services. Global and emergency templates should
 be approved by school leadership and must not contain sensitive student data.
 
-## Multiple school-data sources
+## School-data sources
 
 Set `NAVIGATOR_DATA_SOURCE` to one of:
 
-- `yandex` (default): existing workbook and `YANDEX_OAUTH_TOKEN` flow.
-- `json`: read allowlisted sheet names from `NAVIGATOR_DATA_JSON_PATH`, a local UTF-8
-  JSON object whose values are arrays of row objects.
-- `http`: request `{NAVIGATOR_DATA_API_URL}/{SheetName}`; the endpoint may return a JSON
-  array or an object with a `data` array. Optional bearer token:
-  `NAVIGATOR_DATA_API_TOKEN`.
+- `json` (default): read allowlisted collection names from `NAVIGATOR_DATA_JSON_PATH`, a local UTF-8 JSON object whose values are arrays of row objects.
+- `http`: request `{NAVIGATOR_DATA_API_URL}/{CollectionName}`; the endpoint may return a JSON array or an object with a `data` array. An optional bearer token is configured with `NAVIGATOR_DATA_API_TOKEN`.
 
-Public workbook reads remain allowlisted/read-only. The authenticated account, assignments,
+Remote data APIs must use HTTPS. HTTP is permitted only for loopback development hosts. The public API only exposes the explicit allowlist; student-linked activity records and identity data remain behind role-scoped endpoints.
+
+Public source reads remain allowlisted/read-only. The authenticated account, assignments,
 private notifications and device registrations stay in the service database. The current
 DOP and teacher-assignment sync adapters map compatible source rows, skip unmatched
 records, and log each run. They do not automatically know which columns the actual school
