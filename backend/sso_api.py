@@ -165,7 +165,7 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         if existing:
             if not auto_link or not mapped_role:
                 return None
-            expected_base = mapped_role if mapped_role in {"student", "mentor", "admin"} else "mentor" if mapped_role == "mentor_coordinator" else "teacher"
+            expected_base = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
             if existing["role"] != expected_base:
                 return None
             position_roles = {"director", "deputy", "homeroom_teacher", "dop_coordinator", "mentor_coordinator", "librarian"}
@@ -194,7 +194,7 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         # The core users table stores account types only (admin/student/mentor/teacher).
         # All school job titles except the mentor account are represented by a
         # separate staff_positions row and must not be inserted as a base role.
-        base_role = mapped_role if mapped_role in {"student", "mentor", "admin"} else "mentor" if mapped_role == "mentor_coordinator" else "teacher"
+        base_role = mapped_role if mapped_role in {"student", "mentor", "admin"} else "teacher"
         user_id = secrets.token_urlsafe(12)
         random_password = secrets.token_urlsafe(48)
         assigned_class = class_id if mapped_role in {"student", "homeroom_teacher"} else None
