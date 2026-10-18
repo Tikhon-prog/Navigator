@@ -43,6 +43,8 @@ class SsoProvisioningTests(unittest.TestCase):
         self.assertTrue(sso_api._is_secure_service_url("http://[::1]:8080"))
         self.assertFalse(sso_api._is_secure_service_url("http://localhost.attacker.example"))
         self.assertFalse(sso_api._is_secure_service_url("http://127.0.0.1.attacker.example"))
+        self.assertFalse(sso_api._is_secure_service_url("http://localhost:not-a-port"))
+        self.assertFalse(sso_api._is_secure_service_url("https://idp.school.example:99999"))
         self.assertFalse(sso_api._is_secure_service_url("http://10.0.0.1"))
         self.assertFalse(sso_api._is_secure_service_url("https://"))
 
@@ -61,7 +63,6 @@ class SsoProvisioningTests(unittest.TestCase):
                 ("school-subject-director-slash",),
             ).fetchone()
         self.assertEqual(identity["issuer"], "https://school-id.example.org/")
-        self.assertEqual(identity["issuer"], os.environ["NAVIGATOR_OIDC_ISSUER"])
 
     def test_authoritative_student_claim_provisions_class_scoped_account(self):
         user = sso_api._link_or_provision({

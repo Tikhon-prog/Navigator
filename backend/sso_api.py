@@ -26,6 +26,8 @@ def _is_secure_service_url(value: str) -> bool:
     """Allow HTTPS endpoints, or HTTP only for explicit loopback development hosts."""
     try:
         parsed = urlsplit(value.strip())
+        # Accessing .port validates malformed/out-of-range ports as well.
+        _ = parsed.port
         host = (parsed.hostname or "").lower()
         if not host or parsed.username is not None or parsed.password is not None:
             return False
