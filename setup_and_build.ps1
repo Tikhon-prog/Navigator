@@ -133,7 +133,7 @@ if (-not $vsPath) {
 }
 if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
 Write-Step 'Ensuring Visual Studio C++ / ATL / Windows SDK components'
-$vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--wait', '--norestart')
+$vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--norestart')
 & $vsInstaller @vsArgs
 $vsCode = $LASTEXITCODE
 if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
@@ -219,6 +219,7 @@ if (-not (Test-Path -LiteralPath $sdkManager)) {
     $target = Join-Path $AndroidSdk 'cmdline-tools\latest'
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
     Copy-Item -Path (Join-Path $extracted '*') -Destination $target -Recurse -Force
     Remove-Item -LiteralPath $toolsZip -Force
     Remove-Item -LiteralPath $toolsExtract -Recurse -Force
