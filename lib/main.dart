@@ -963,16 +963,22 @@ class RouteEngine {
         final dot = v1.dx * v2.dx + v1.dy * v2.dy;
         // Only collapse forward collinear points, not U-turns or tight corners.
         if (dot <= 0 || cross / (len1 * len2) > 0.035) continue;
-        final chord = next.point - prev.point;
+        // Compute the projection in original map pixels. Projecting in normalized
+        // 0..1 coordinates would distort the result because the source map is not square.
+        final prevPx = Offset(prev.point.dx * _mapW, prev.point.dy * _mapH);
+        final currentPx = Offset(current.point.dx * _mapW, current.point.dy * _mapH);
+        final nextPx = Offset(next.point.dx * _mapW, next.point.dy * _mapH);
+        final chord = nextPx - prevPx;
         final chordLength2 = chord.dx * chord.dx + chord.dy * chord.dy;
         if (chordLength2 <= 1e-12) continue;
-        final t = (((current.point.dx - prev.point.dx) * chord.dx) +
-                ((current.point.dy - prev.point.dy) * chord.dy)) /
+        final t = (((currentPx.dx - prevPx.dx) * chord.dx) +
+                ((currentPx.dy - prevPx.dy) * chord.dy)) /
             chordLength2;
-        final projected = Offset(
-          prev.point.dx + chord.dx * t,
-          prev.point.dy + chord.dy * t,
+        final projectedPx = Offset(
+          prevPx.dx + chord.dx * t,
+          prevPx.dy + chord.dy * t,
         );
+        final projected = Offset(projectedPx.dx / _mapW, projectedPx.dy / _mapH);
         if (_pxDistance(current.point, projected) > 10) continue;
         points.removeAt(i);
         changed = true;
