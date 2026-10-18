@@ -33,7 +33,7 @@ PERMISSIONS = {
                  "staff.read", "staff.manage", "assignments.manage", "announcements.publish",
                  "notifications.publish", "audit.read"},
     "deputy": {"dashboard.read", "students.read_all", "dop.read_all", "dop.manage",
-               "staff.read", "assignments.manage", "announcements.publish",
+               "staff.read", "staff.manage", "assignments.manage", "announcements.publish",
                "notifications.publish", "audit.read"},
     "homeroom_teacher": {"dashboard.read", "students.read_class", "dop.read_class",
                          "announcements.publish_class", "notifications.publish_class"},
