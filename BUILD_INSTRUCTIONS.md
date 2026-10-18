@@ -1,9 +1,42 @@
-# Navigator 1.4 — build
+# Сборка Navigator 0.2.0
 
-1. Open this folder in VS Code.
-2. If `android/gradle/wrapper/gradle-wrapper.jar` is absent, run `setup_project.bat` once. It uses the installed Flutter SDK to restore the standard Android wrapper files without changing the app source.
-3. Then run `flutter pub get`.
-4. Run `flutter analyze` and fix any analyzer errors before building.
-5. Build with `flutter build apk --release`.
+## Требования
+- Flutter stable SDK, Dart из комплекта Flutter.
+- Android SDK с лицензиями и JDK 21.
+- Python 3.12+ для серверных тестов.
 
-The archive contains the Android application source, maps, school PDF, data and project configuration. A 100 MB APK is not required for a complete application; intentionally padding the APK would only waste storage.
+## Android APK (Windows / PowerShell)
+
+Из корня репозитория:
+
+```powershell
+flutter doctor
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --release
+```
+
+Готовый APK: `build/app/outputs/flutter-apk/app-release.apk`.
+
+Проверить, что версия — 0.2.0 и build number — 2:
+
+```powershell
+Select-String -Path pubspec.yaml -Pattern '^version:'
+```
+
+## Серверные проверки
+
+```powershell
+python -m pip install -r backend/requirements.txt
+python backend/security_check.py
+python -m unittest discover -s backend/tests -v
+```
+
+Для Firebase push-уведомлений отдельно установи `backend/requirements-firebase.txt`. Реальные ключи и заполненный `.env` не помещай в репозиторий.
+
+## CI
+
+Workflow `.github/workflows/flutter-ci.yml` выполняет сканирование секретов, проверку уязвимых Python-зависимостей, серверные тесты, Flutter-тесты, анализ и release-сборку APK. Артефакт сборки публикуется под именем `navigator-release-apk`.
+
+Если CI не запускает job или выдаёт ошибку до первого шага, это не доказывает ошибку исходного кода: проверь состояние runner и повтори запуск после восстановления GitHub Actions.

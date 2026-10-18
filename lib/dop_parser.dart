@@ -23,30 +23,64 @@ class DopStudent {
   String get className => classNumber + classLetter;
 }
 
+/// Keeps personally entered profile/supplement data isolated between school
+/// accounts on shared devices. Unauthenticated/offline-only use retains the
+/// original legacy preference keys for backward compatibility.
+String studentProfilePreferenceKey(String key, {String? userId}) {
+  final id = (userId ?? '').trim();
+  return id.isEmpty ? key : '${key}_${id}';
+}
+
 /// Временный источник данных ученика.
 ///
-/// Потом здесь можно заменить ключи на реальные ключи Navigator,
+/// Позже здесь можно сопоставить эти поля с официальным профилем «Поколение»,
 /// не меняя остальной парсер.
 class NavigatorStudentProvider {
   const NavigatorStudentProvider();
 
   Future<DopStudent?> load() async {
     final prefs = await SharedPreferences.getInstance();
+    String? schoolUserId;
+    var hasSchoolSession = false;
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map && account['id'] != null) {
+          schoolUserId = account['id'].toString();
+          hasSchoolSession = true;
+        }
+      } catch (_) {}
+    }
 
     String first(List<String> keys) {
       for (final key in keys) {
-        final value = prefs.getString(key)?.trim();
+        final scopedKey = studentProfilePreferenceKey(key, userId: schoolUserId);
+        // Once signed into a school account, never fall back to another user's
+        // legacy personal name/profile fields.
+        final value = prefs.getString(scopedKey)?.trim();
         if (value != null && value.isNotEmpty) return value;
+        if (!hasSchoolSession) {
+          final legacy = prefs.getString(key)?.trim();
+          if (legacy != null && legacy.isNotEmpty) return legacy;
+        }
       }
       return '';
     }
 
-    final classId = first([
+    var classId = first([
       'student_class_id',
       'student_class_name',
       'class_id',
       'class_name',
     ]);
+    // These two legacy keys are rewritten from the active SSO account on every
+    // successful login and removed on sign-out, so they are safe session scope
+    // fallbacks when a user has not manually completed the DOP profile yet.
+    if (classId.isEmpty && hasSchoolSession) {
+      classId = (prefs.getString('student_class_name') ??
+          prefs.getString('student_class_id') ?? '').trim();
+    }
 
     final classMatch = RegExp(
       r'^(\d{1,2})\s*([А-ЯЁA-Z])$',
@@ -216,7 +250,7 @@ class DopParser {
 
     if (student == null) {
       throw const DopParserException(
-        'Не найдены данные ученика в Navigator storage.',
+        'В хранилище профиля «Поколение» не найдены данные ученика.',
       );
     }
 

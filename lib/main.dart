@@ -6,17 +6,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_panel.dart';
+import 'announcements_page.dart';
 import 'door_points.dart';
 import 'corridor_roads.dart';
 import 'local_notification_service.dart';
 import 'security_service.dart';
 import 'supplements_page.dart';
+import 'school_account_service.dart';
+import 'dop_parser.dart';
+import 'school_portal_page.dart';
+import 'online_data_service.dart';
+
+const String _configuredApiBase = String.fromEnvironment('POKOLENIE_API_BASE_URL');
+
+Future<void> _seedOnlineSettings() async {
+  final base = _configuredApiBase.trim();
+  if (!NavigatorApiConfig(baseUrl: base).enabled) return;
+  final prefs = await SharedPreferences.getInstance();
+  final savedBase = (prefs.getString('navigator_api_url') ?? '').trim();
+  // A build-time URL is a default for new installs. Respect a user's explicit
+  // existing configuration (including disabling online mode).
+  if (savedBase.isEmpty) {
+    await prefs.setString('navigator_api_url', base);
+    if (prefs.getBool('navigator_api_enabled') == null) {
+      await prefs.setBool('navigator_api_enabled', true);
+    }
+  }
+  final selectedBase = (prefs.getString('navigator_api_url') ?? base).trim();
+  if ((prefs.getString('school_api_base_url_v1') ?? '').trim().isEmpty &&
+      NavigatorApiConfig(baseUrl: selectedBase).enabled) {
+    await prefs.setString('school_api_base_url_v1', selectedBase);
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  try { await _seedOnlineSettings(); } catch (_) {}
   try { await LocalNotificationService().initialize(); } catch (_) {}
-  runApp(const NavigatorApp());
+  runApp(const PokolenieApp());
+  // Re-register FCM token/listeners in the background after a prior SSO login.
+  unawaited(SchoolAccountService().restoreSession());
 }
 
 enum AppThemeType { yellow, turquoise, darkBlue, violet, coral, green }
@@ -137,13 +167,140 @@ class SchoolScheduleCatalog {
   static Map<String, dynamic>? _data;
   static Future<void> load() async {
     if (_data != null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('school_schedule_cache_v1');
+    if (cached != null) {
+      try {
+        _data = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        return;
+      } catch (_) {}
+    }
     final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
     _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
+
+  static Map<String, dynamic> _normalizedScheduleRow(Map<String, dynamic> row) {
+    final normalized = <String, dynamic>{};
+    for (final entry in row.entries) {
+      final key = entry.key.trim().toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9а-я]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      normalized[key] = entry.value;
+    }
+    return normalized;
+  }
+
+  static String _rowText(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key];
+      if (value != null && value.toString().trim().isNotEmpty) return value.toString().trim();
+    }
+    return '';
+  }
+
+  static int? _rowDay(String raw) {
+    final n = int.tryParse(raw.trim());
+    if (n != null && n >= 1 && n <= 7) return n;
+    const days = <String, int>{
+      'пн': 1, 'понедельник': 1, 'mon': 1, 'monday': 1,
+      'вт': 2, 'вторник': 2, 'tue': 2, 'tuesday': 2,
+      'ср': 3, 'среда': 3, 'wed': 3, 'wednesday': 3,
+      'чт': 4, 'четверг': 4, 'thu': 4, 'thursday': 4,
+      'пт': 5, 'пятница': 5, 'fri': 5, 'friday': 5,
+      'сб': 6, 'суббота': 6, 'sat': 6, 'saturday': 6,
+      'вс': 7, 'воскресенье': 7, 'sun': 7, 'sunday': 7,
+    };
+    return days[raw.trim().toLowerCase()];
+  }
+
+  /// Refreshes the existing schedule catalog from the configured source while
+  /// retaining the bundled schedule as an offline fallback.
+  static Future<int> refreshOnline() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('navigator_api_enabled') ?? false)) return 0;
+    final base = (prefs.getString('navigator_api_url') ?? '').trim();
+    if (!NavigatorApiConfig(baseUrl: base).enabled) return 0;
+    // Use the configured URL rather than a compile-time API address.
+    final service = OnlineDataService(NavigatorApiConfig(baseUrl: base));
+    final response = await service.get('data/BaseSchedule');
+    if (response == null) return 0;
+    final rawRows = response['data'];
+    if (rawRows is! List) return 0;
+    final classNames = <String, String>{};
+    try {
+      final classPayload = await service.get('data/Classes');
+      final classRows = classPayload?['data'];
+      if (classRows is List) {
+        for (final rawClass in classRows.whereType<Map>()) {
+          final item = _normalizedScheduleRow(Map<String, dynamic>.from(rawClass));
+          final id = _rowText(item, ['id', 'class_id', 'code']);
+          final name = _rowText(item, ['name', 'class_name', 'title', 'класс']);
+          if (id.isNotEmpty && name.isNotEmpty) classNames[id] = name;
+        }
+      }
+    } catch (_) {}
+    final variantsByClass = <String, List<Map<String, dynamic>>>{};
+    for (final raw in rawRows) {
+      if (raw is! Map) continue;
+      final row = _normalizedScheduleRow(Map<String, dynamic>.from(raw));
+      final classRef = _rowText(row, ['class_id', 'class', 'класс_id']);
+      final classLabel = _rowText(row, ['class_name', 'class_label', 'class_display_name', 'класс']);
+      final className = classLabel.isNotEmpty ? classLabel : (classNames[classRef] ?? classRef);
+      final subject = _rowText(row, ['subject', 'subject_name', 'discipline', 'discipline_name', 'lesson', 'предмет', 'дисциплина']);
+      final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
+      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_урока', 'время_начала', 'время_начала_урока']);
+      if (className.isEmpty || subject.isEmpty || day == null || time.isEmpty) continue;
+      final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'подгруппа', 'группа'])) ?? 1;
+      variantsByClass.putIfAbsent(className, () => <Map<String, dynamic>>[]).add({
+        'day': day, 'time': time, 'subject': subject,
+        'room': _rowText(row, ['room', 'room_name', 'cabinet', 'room_id', 'кабинет']),
+        'teacher': _rowText(row, ['teacher', 'teacher_name', 'педагог', 'учитель']),
+        'group': group,
+      });
+    }
+    if (variantsByClass.isEmpty) return 0;
+    final baseData = Map<String, dynamic>.from(_data ?? const {});
+    final classes = Map<String, dynamic>.from(baseData['classes'] as Map? ?? const {});
+    final classOrder = <String, dynamic>{};
+    for (final entry in (baseData['class_order'] as Map? ?? const {}).entries) {
+      classOrder[entry.key.toString()] = List<String>.from(entry.value as List);
+    }
+    for (final entry in variantsByClass.entries) {
+      classes[entry.key] = {'variants': entry.value};
+      final grade = RegExp(r'^\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
+      final list = List<String>.from(classOrder[grade] as List? ?? const <String>[]);
+      if (!list.contains(entry.key)) list.add(entry.key);
+      list.sort();
+      classOrder[grade] = list;
+    }
+    _data = {...baseData, 'classes': classes, 'class_order': classOrder};
+    await prefs.setString('school_schedule_cache_v1', jsonEncode(_data));
+    return variantsByClass.values.fold<int>(0, (sum, rows) => sum + rows.length);
+  }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
   static List<String> classesForGrade(String grade) => List<String>.from(((_data?['class_order'] as Map?)?[grade] as List?) ?? const []);
+  static String _normalizeClassName(String value) {
+    const lookalikes = <String, String>{
+      'А': 'A', 'В': 'B', 'С': 'C', 'Е': 'E', 'Н': 'H', 'К': 'K',
+      'М': 'M', 'О': 'O', 'Р': 'P', 'Т': 'T', 'Х': 'X', 'У': 'Y',
+    };
+    return value.trim().toUpperCase().replaceAll(' ', '').split('')
+        .map((letter) => lookalikes[letter] ?? letter).join();
+  }
+
   static List<Map<String, dynamic>> variants(String className) {
-    final raw = ((_data?['classes'] as Map?)?[className] as Map?)?['variants'];
+    final classes = _data?['classes'] as Map? ?? const {};
+    dynamic classData = classes[className];
+    if (classData == null) {
+      final wanted = _normalizeClassName(className);
+      for (final entry in classes.entries) {
+        if (_normalizeClassName(entry.key.toString()) == wanted) {
+          classData = entry.value;
+          break;
+        }
+      }
+    }
+    final raw = (classData as Map?)?['variants'];
     return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
   }
   static String baseSubject(String value) {
@@ -276,12 +433,28 @@ class _StudentClassDialogState extends State<_StudentClassDialog> {
     ])), actions: widget.requiredChoice ? null : [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена'))]);
   }
 }
+String _studentScopedPreferenceKey(SharedPreferences prefs, String key) {
+  var userId = '';
+  final raw = prefs.getString('school_user_v1');
+  if (raw != null) {
+    try {
+      final account = jsonDecode(raw);
+      if (account is Map && account['id'] != null) {
+        userId = account['id'].toString().trim();
+      }
+    } catch (_) {}
+  }
+  // Keeps the old keys for offline-only installs, while separating group
+  // choices for signed-in students sharing the same device.
+  return studentProfilePreferenceKey(key, userId: userId);
+}
+
 Future<void> showStudentGroupSelection(BuildContext context, String className) async {
   await SchoolScheduleCatalog.load();
   final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
   if (subjects.isEmpty || !context.mounted) return;
   final prefs = await SharedPreferences.getInstance();
-  final values = <String, int>{for (final s in subjects) s: prefs.getInt('student_group_${className}_$s') ?? 1};
+  final values = <String, int>{for (final s in subjects) s: prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_group_${className}_$s')) ?? 1};
   if (!context.mounted) return;
   await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
 }
@@ -332,7 +505,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     }).toList())),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt('student_group_${widget.className}_${e.key}', e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
+      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt(_studentScopedPreferenceKey(p, 'student_group_${widget.className}_${e.key}'), e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
     ],
   );
 }
@@ -498,12 +671,18 @@ class RouteEngine {
   static double _cross(Offset a, Offset b) => a.dx * b.dy - a.dy * b.dx;
 
   static Offset _project(Offset p, Offset a, Offset b) {
-    final v = b - a;
+    // Projection must be perpendicular in source-map pixels. The map is 7016×4960,
+    // so projecting directly in normalized 0..1 coordinates distorts the angle.
+    final pp = Offset(p.dx * _mapW, p.dy * _mapH);
+    final aa = Offset(a.dx * _mapW, a.dy * _mapH);
+    final bb = Offset(b.dx * _mapW, b.dy * _mapH);
+    final v = bb - aa;
     final len2 = v.dx * v.dx + v.dy * v.dy;
     if (len2 <= 1e-12) return a;
-    final t = ((p.dx - a.dx) * v.dx + (p.dy - a.dy) * v.dy) / len2;
+    final t = (((pp.dx - aa.dx) * v.dx) + ((pp.dy - aa.dy) * v.dy)) / len2;
     final clamped = t.clamp(0.0, 1.0);
-    return Offset(a.dx + v.dx * clamped, a.dy + v.dy * clamped);
+    final projected = Offset(aa.dx + v.dx * clamped, aa.dy + v.dy * clamped);
+    return Offset(projected.dx / _mapW, projected.dy / _mapH);
   }
 
   static Offset? _intersection(Offset a, Offset b, Offset c, Offset d) {
@@ -521,7 +700,25 @@ class RouteEngine {
   static Offset _nearestPointOnSegment(Offset p, CorridorSegment s) => _project(p, s.a, s.b);
 
   static RouteResult? build(String destinationId, {int startFloor = 1, String? startLocationId}) {
-    final destination = SchoolData.room(destinationId);
+    // startFloor is kept for callers that also select which floor to browse;
+    // the real origin is the main entrance unless an explicit location is saved.
+    assert(startFloor >= 1 && startFloor <= 3);
+    final destination = SchoolData.tryRoom(destinationId);
+    if (destination == null) return null;
+    final startRoom = startLocationId == null ? null : SchoolData.tryRoom(startLocationId);
+    if (startLocationId != null && startRoom == null) return null;
+    final effectiveStartFloor = startRoom?.floor ?? 1;
+
+    // A same-location request must succeed even when that point has no corridor
+    // connector, and should not build the full graph or show walking directions.
+    if (startRoom != null && startRoom.id == destination.id) {
+      final point = DoorPoints.of(destination.id, destination.point);
+      return RouteResult(
+        [RouteNode('same_start', destination.floor, point, 'Точка назначения')],
+        destination, 0, destination.floor, startLocationId,
+      );
+    }
+
     final segments = CorridorRoads.all;
     final nodes = <String, RouteNode>{};
     final segmentNodeIds = <int, List<String>>{};
@@ -573,7 +770,15 @@ class RouteEngine {
     final anchorRoadNode = <String, String>{};
     final requestedAnchors = <String>{destination.id};
     if (startLocationId != null) requestedAnchors.add(startLocationId);
-    for (final entry in _anchors.entries) {
+    // Keep the hand-mapped door points, but do not make routing depend on every
+    // room already having an explicit DoorPoints entry: use its catalog point
+    // as a safe, bounded fallback for the requested origin/destination.
+    final routeAnchors = <String, Offset>{..._anchors};
+    routeAnchors.putIfAbsent(destination.id, () => DoorPoints.of(destination.id, destination.point));
+    if (startRoom != null) {
+      routeAnchors.putIfAbsent(startRoom.id, () => DoorPoints.of(startRoom.id, startRoom.point));
+    }
+    for (final entry in routeAnchors.entries) {
       final id = entry.key;
       if (_blockedTransit.contains(id) && !requestedAnchors.contains(id)) continue;
       final p = entry.value;
@@ -652,18 +857,12 @@ class RouteEngine {
       }
     }
 
-    // Main entrance is the source when no room is selected.
-    final startRoom = startLocationId == null ? null : SchoolData.room(startLocationId);
-    final effectiveStartFloor = startRoom?.floor ?? startFloor;
+    // Main entrance is always on floor 1. A browsing-floor selection must not
+    // fabricate an origin point on the second or third floor.
     final sourceAnchor = startRoom == null ? 'entry' : startRoom.id;
     final source = anchorNode[sourceAnchor];
     final target = anchorNode[destination.id];
     if (source == null || target == null) return null;
-
-    if (startLocationId == destinationId) {
-      final p = DoorPoints.of(destination.id, destination.point);
-      return RouteResult([RouteNode('same_start', destination.floor, p, 'Точка назначения')], destination, 0, destination.floor, startLocationId);
-    }
 
     // Prefer a fully same-floor path whenever one exists. A large stair penalty
     // alone is not a guarantee: bad/overlapping map geometry can make a valid
@@ -717,6 +916,11 @@ class RouteEngine {
     }
     final path = ids.reversed.map((id) => nodes[id]!).toList();
 
+    // Graph anchor nodes exactly represent the same doorway points added below
+    // for display. Drop those duplicates so the route has one clean start and end.
+    if (path.isNotEmpty && path.first.id == source) path.removeAt(0);
+    if (path.isNotEmpty && path.last.id == target) path.removeLast();
+
     // Replace technical anchor nodes with readable door/start labels.
     if (startRoom != null) {
       path.insert(0, RouteNode('start_room_${startRoom.id}', startRoom.floor, DoorPoints.of(startRoom.id, startRoom.point), SchoolData.title(startRoom)));
@@ -726,7 +930,62 @@ class RouteEngine {
     }
     path.add(RouteNode('destination_door_${destination.id}', destination.floor, DoorPoints.of(destination.id, destination.point), SchoolData.title(destination)));
 
-    return RouteResult(path, destination, distance[target]!, effectiveStartFloor, startLocationId);
+    final displayPath = _simplifyPath(path);
+    return RouteResult(displayPath, destination, distance[target]!, effectiveStartFloor, startLocationId);
+  }
+
+  static List<RouteNode> _simplifyPath(List<RouteNode> input) {
+    if (input.length < 3) return List<RouteNode>.unmodifiable(input);
+    final points = List<RouteNode>.from(input);
+    var changed = true;
+    // Remove only geometry nodes that sit on a straight continuation. Semantic
+    // endpoints and stair anchors are retained; topology itself is never edited.
+    while (changed) {
+      changed = false;
+      for (var i = 1; i < points.length - 1; i++) {
+        final prev = points[i - 1];
+        final current = points[i];
+        final next = points[i + 1];
+        if (prev.floor != current.floor || current.floor != next.floor) continue;
+        if (!current.id.startsWith('road_')) continue;
+        final v1 = Offset(
+          (current.point.dx - prev.point.dx) * _mapW,
+          (current.point.dy - prev.point.dy) * _mapH,
+        );
+        final v2 = Offset(
+          (next.point.dx - current.point.dx) * _mapW,
+          (next.point.dy - current.point.dy) * _mapH,
+        );
+        final len1 = v1.distance;
+        final len2 = v2.distance;
+        if (len1 < 2 || len2 < 2) continue;
+        final cross = _cross(v1, v2).abs();
+        final dot = v1.dx * v2.dx + v1.dy * v2.dy;
+        // Only collapse forward collinear points, not U-turns or tight corners.
+        if (dot <= 0 || cross / (len1 * len2) > 0.035) continue;
+        // Compute the projection in original map pixels. Projecting in normalized
+        // 0..1 coordinates would distort the result because the source map is not square.
+        final prevPx = Offset(prev.point.dx * _mapW, prev.point.dy * _mapH);
+        final currentPx = Offset(current.point.dx * _mapW, current.point.dy * _mapH);
+        final nextPx = Offset(next.point.dx * _mapW, next.point.dy * _mapH);
+        final chord = nextPx - prevPx;
+        final chordLength2 = chord.dx * chord.dx + chord.dy * chord.dy;
+        if (chordLength2 <= 1e-12) continue;
+        final t = (((currentPx.dx - prevPx.dx) * chord.dx) +
+                ((currentPx.dy - prevPx.dy) * chord.dy)) /
+            chordLength2;
+        final projectedPx = Offset(
+          prevPx.dx + chord.dx * t,
+          prevPx.dy + chord.dy * t,
+        );
+        final projected = Offset(projectedPx.dx / _mapW, projectedPx.dy / _mapH);
+        if (_pxDistance(current.point, projected) > 10) continue;
+        points.removeAt(i);
+        changed = true;
+        break;
+      }
+    }
+    return List<RouteNode>.unmodifiable(points);
   }
 
   static int? _anchorFloor(String id) {
@@ -740,38 +999,60 @@ class RouteEngine {
   }
 
   static List<RouteStep> instructions(RouteResult result) {
-    final path = result.nodes;
+    final path = _simplifyPath(result.nodes);
     if (path.isEmpty) return const [];
+    if (path.any((node) => node.id == 'same_start')) {
+      return [RouteStep(
+        result.destination.floor,
+        'Вы уже находитесь у места «${SchoolData.title(result.destination)}».',
+        Icons.check_circle_outline_rounded,
+      )];
+    }
     final steps = <RouteStep>[];
     if (result.startLocationId == null) {
-      steps.add(RouteStep(result.startFloor, 'Начните от главного входа и двигайтесь по коридору.', Icons.directions_walk_rounded));
+      steps.add(RouteStep(1, 'Начните от главного входа на 1-м этаже.', Icons.directions_walk_rounded));
     } else {
-      steps.add(RouteStep(result.startFloor, 'Выйдите из ${SchoolData.title(SchoolData.room(result.startLocationId!))} через дверь в коридор.', Icons.exit_to_app_rounded));
+      final start = SchoolData.tryRoom(result.startLocationId!);
+      if (start == null) return const [];
+      steps.add(RouteStep(start.floor, 'Выйдите из ${SchoolData.title(start)} через дверь в коридор.', Icons.exit_to_app_rounded));
     }
     for (var i = 1; i < path.length; i++) {
       final prev = path[i - 1];
       final cur = path[i];
       if (cur.floor != prev.floor) {
         steps.add(RouteStep(cur.floor, cur.floor > prev.floor
-            ? 'Поднимитесь по лестнице на ${cur.floor} этаж.'
-            : 'Спуститесь по лестнице на ${cur.floor} этаж.', Icons.stairs_rounded));
+            ? 'Поднимитесь по лестнице на ${cur.floor}-й этаж.'
+            : 'Спуститесь по лестнице на ${cur.floor}-й этаж.', Icons.stairs_rounded));
         continue;
       }
       if (cur.id.startsWith('destination_door_')) {
-        steps.add(RouteStep(cur.floor, 'Подойдите к ${SchoolData.title(result.destination)} — вы на месте.', Icons.flag_rounded));
+        steps.add(RouteStep(cur.floor, 'Вы прибыли: ${SchoolData.title(result.destination)}.', Icons.flag_rounded));
         continue;
       }
       if (i + 1 < path.length) {
         final next = path[i + 1];
-        final v1 = cur.point - prev.point;
-        final v2 = next.point - cur.point;
-        if (v1.distance > .01 && v2.distance > .01) {
-          final cross = v1.dx * v2.dy - v1.dy * v2.dx;
-          final dot = v1.dx * v2.dx + v1.dy * v2.dy;
-          if (dot < 0.0 || cross.abs() > .015) {
-            final turn = cross > 0 ? 'Поверните направо' : 'Поверните налево';
-            steps.add(RouteStep(cur.floor, '$turn и продолжайте по коридору.', cross > 0 ? Icons.turn_right_rounded : Icons.turn_left_rounded));
-          }
+        final v1 = Offset(
+          (cur.point.dx - prev.point.dx) * _mapW,
+          (cur.point.dy - prev.point.dy) * _mapH,
+        );
+        final v2 = Offset(
+          (next.point.dx - cur.point.dx) * _mapW,
+          (next.point.dy - cur.point.dy) * _mapH,
+        );
+        if (v1.distance < 2 || v2.distance < 2) continue;
+        final cross = _cross(v1, v2);
+        final dot = v1.dx * v2.dx + v1.dy * v2.dy;
+        final angle = math.atan2(cross, dot) * 180 / math.pi;
+        if (angle.abs() < 28) continue;
+        if (angle.abs() >= 150) {
+          steps.add(RouteStep(cur.floor, 'Развернитесь и двигайтесь в обратном направлении.', Icons.turn_left_rounded));
+        } else {
+          final right = angle > 0;
+          steps.add(RouteStep(
+            cur.floor,
+            '${right ? 'Поверните направо' : 'Поверните налево'} и продолжайте по коридору.',
+            right ? Icons.turn_right_rounded : Icons.turn_left_rounded,
+          ));
         }
       }
     }
@@ -795,17 +1076,17 @@ class _QueueItem {
   const _QueueItem(this.id, this.g, this.priority);
 }
 
-class NavigatorApp extends StatefulWidget {
-  const NavigatorApp({super.key});
-  @override State<NavigatorApp> createState()=>_NavigatorAppState();
+class PokolenieApp extends StatefulWidget {
+  const PokolenieApp({super.key});
+  @override State<PokolenieApp> createState()=>_PokolenieAppState();
 }
-class _NavigatorAppState extends State<NavigatorApp>{
+class _PokolenieAppState extends State<PokolenieApp>{
   AppThemeType theme=AppThemeType.turquoise; String userName=''; bool ready=false;
   @override void initState(){super.initState();_load();}
   Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();userName=p.getString('user_name')??'';final t=p.getString('theme');theme=AppThemeType.values.firstWhere((x)=>x.name==t,orElse:()=>AppThemeType.turquoise);if(mounted)setState(()=>ready=true);}
   Future<void> setName(String v)async{v=v.trim();if(v.isEmpty)return;final p=await SharedPreferences.getInstance();await p.setString('user_name',v);if(mounted)setState(()=>userName=v);}
   Future<void> setTheme(AppThemeType v)async{final p=await SharedPreferences.getInstance();await p.setString('theme',v.name);if(mounted)setState(()=>theme=v);}
-  @override Widget build(BuildContext context){if(!ready)return MaterialApp(debugShowCheckedModeBanner:false,home:Scaffold(body:Center(child:CircularProgressIndicator(color:AppPalette.gradient(theme).first))));return MaterialApp(debugShowCheckedModeBanner:false,title:'Navigator — школа «Поколение»',theme:_theme(theme),home:AppShell(userName:userName,theme:theme,onThemeChanged:setTheme,onNameChanged:setName));}
+  @override Widget build(BuildContext context){if(!ready)return MaterialApp(debugShowCheckedModeBanner:false,home:Scaffold(body:Center(child:CircularProgressIndicator(color:AppPalette.gradient(theme).first))));return MaterialApp(debugShowCheckedModeBanner:false,title:'Поколение',theme:_theme(theme),home:AppShell(userName:userName,theme:theme,onThemeChanged:setTheme,onNameChanged:setName));}
   ThemeData _theme(AppThemeType type) {
     final dark = type == AppThemeType.darkBlue;
     final seed = AppPalette.gradient(type).first;
@@ -887,11 +1168,16 @@ class AppShell extends StatefulWidget{
 class _AppShellState extends State<AppShell>{
   int index=0;String? selectedRoom;final key=GlobalKey<ScaffoldState>();
   void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
+  Future<void> _openAnnouncements() async {
+    key.currentState?.closeDrawer();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+  }
   @override
   Widget build(BuildContext context) {
     final menu = () => key.currentState?.openDrawer();
     final pages = <Widget>[
-      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3)),
+      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
       SchedulePage(onMenu: menu),
       SupplementsPage(onMenu: menu),
@@ -937,13 +1223,13 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и админ')];return Drawer(width:330,child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Navigator',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap:()=>go(x.$1)))]))])));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else { go(x.$1); } }))]))])));}
 }
 class HomePage extends StatelessWidget {
   final String userName;
   final AppThemeType theme;
-  final VoidCallback onMenu, onMap, onSchedule, onDop;
-  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop});
+  final VoidCallback onMenu, onMap, onSchedule, onDop, onAnnouncements;
+  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop, required this.onAnnouncements});
 
   @override
   Widget build(BuildContext context) {
@@ -954,7 +1240,7 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(onPressed: onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
-        title: const Text('Navigator'),
+        title: const Text('Поколение'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -1005,7 +1291,7 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 28),
               Row(children: [
                 Expanded(child: Text('Быстрый доступ', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -.4))),
-                Text('3 раздела', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+                Text('4 раздела', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 14),
               GridView.count(
@@ -1019,6 +1305,7 @@ class HomePage extends StatelessWidget {
                   _DashboardCard(icon: Icons.map_rounded, title: 'Карта школы', subtitle: 'Найди кабинет и построй маршрут', accent: const Color(0xFF3284F5), onTap: onMap),
                   _DashboardCard(icon: Icons.calendar_month_rounded, title: 'Расписание', subtitle: 'Уроки, группы и кабинеты', accent: const Color(0xFF13A88A), onTap: onSchedule),
                   _DashboardCard(icon: Icons.auto_awesome_rounded, title: 'Дополнительные занятия', subtitle: 'ДОПы, время и преподаватели', accent: const Color(0xFF9667E8), onTap: onDop),
+                  _DashboardCard(icon: Icons.campaign_rounded, title: 'Объявления и оповещения', subtitle: 'Новости школы и важные сообщения', accent: const Color(0xFFE58B35), onTap: onAnnouncements),
                 ],
               ),
               const SizedBox(height: 24),
@@ -1256,7 +1543,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
       setState(() {
         for (var d = 1; d <= 6; d++) {
           for (var slot = 0; slot < 6; slot++) {
-            selected['$d|$slot'] = p.getString('math_subject_${widget.className}_${d}_$slot') ?? '';
+            selected['$d|$slot'] = p.getString(_studentScopedPreferenceKey(p, 'math_subject_${widget.className}_${d}_$slot')) ?? '';
           }
         }
       });
@@ -1285,7 +1572,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
         final p = await SharedPreferences.getInstance();
         for (var d = 1; d <= 6; d++) {
           for (var slot = 0; slot < 6; slot++) {
-            await p.setString('math_subject_${widget.className}_${d}_$slot', selected['$d|$slot'] ?? '');
+            await p.setString(_studentScopedPreferenceKey(p, 'math_subject_${widget.className}_${d}_$slot'), selected['$d|$slot'] ?? '');
           }
         }
         if (context.mounted) Navigator.pop(context);
@@ -1328,17 +1615,18 @@ class _SchedulePageState extends State<SchedulePage> {
   }
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
+    try { await SchoolScheduleCatalog.refreshOnline(); } catch (_) {}
     classId = p.getString('student_class_name') ?? '';
     final groups = <String,int>{};
     if (classId.isNotEmpty) {
       for (final s in SchoolScheduleCatalog.splitSubjects(classId)) {
-        groups[s] = p.getInt('student_group_${classId}_$s') ?? 1;
+        groups[s] = p.getInt(_studentScopedPreferenceKey(p, 'student_group_${classId}_$s')) ?? 1;
       }
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
         for (var slot = 0; slot < 6; slot++) {
-          dayNames.add(p.getString('math_subject_${classId}_${d}_$slot') ?? '');
+          dayNames.add(p.getString(_studentScopedPreferenceKey(p, 'math_subject_${classId}_${d}_$slot')) ?? '');
         }
         mathNames[d] = dayNames;
       }
@@ -1982,8 +2270,155 @@ class SettingsPage extends StatelessWidget {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(account: account)));
   }
 
+  Future<void> _serverAdminLogin(BuildContext context, String baseUrl) async {
+    final login = TextEditingController();
+    final password = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Технический вход администратора'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Только для первого запуска и восстановления доступа. Для обычной работы используй школьный SSO.'),
+          const SizedBox(height: 12),
+          TextField(controller: login, autofocus: true, decoration: const InputDecoration(labelText: 'Логин администратора')),
+          TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Пароль администратора')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (login.text.trim().isEmpty || password.text.isEmpty) return;
+            Navigator.pop(dialogContext, {'username': login.text.trim(), 'password': password.text});
+          }, child: const Text('Войти')),
+        ],
+      ),
+    );
+    login.dispose(); password.dispose();
+    if (result == null) return;
+    try {
+      await SchoolAccountService().signInAsServerAdmin(
+        baseUrl, username: result['username']!, password: result['password']!,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Технический вход выполнен.')));
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+      }
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', '')), duration: const Duration(seconds: 6)),
+      );
+    }
+  }
+
+  Future<void> _schoolAccount(BuildContext context) async {
+    final service = SchoolAccountService();
+    final current = await service.currentUser();
+    if (!context.mounted) return;
+    if (current != null) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Школьная учётная запись'),
+          content: Text('Вход выполнен: ${current['display_name'] ?? current['username'] ?? 'учётная запись'}\nРоль: ${current['role'] ?? 'не указана'}'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, 'close'), child: const Text('Закрыть')),
+            OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'signout'), child: const Text('Выйти')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, 'portal'),
+              child: Text(current['role'] == 'student' ? 'Мои оповещения' : 'Открыть кабинет'),
+            ),
+          ],
+        ),
+      );
+      if (action == 'signout') {
+        await service.signOut();
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
+      } else if (action == 'portal' && context.mounted) {
+        if (current['role'] == 'student') {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+        } else {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        }
+      }
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('navigator_api_enabled') ?? false;
+    final baseUrl = (prefs.getString('navigator_api_url') ?? '').trim();
+    if (!enabled || baseUrl.isEmpty) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала настрой адрес API в «Кабинет школы → Сервер».')));
+      return;
+    }
+    final loginMethod = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Вход в Поколение'),
+        content: const Text('Выбери школьный вход. Технический вход нужен только администратору для первоначальной настройки или восстановления доступа.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, 'cancel'), child: const Text('Отмена')),
+          OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'admin'), child: const Text('Технический вход')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, 'sso'), child: const Text('Школьный SSO')),
+        ],
+      ),
+    );
+    if (!context.mounted || loginMethod == null || loginMethod == 'cancel') return;
+    if (loginMethod == 'admin') {
+      await _serverAdminLogin(context, baseUrl);
+      return;
+    }
+    try {
+      final result = await service.signInWithSchoolAccount(baseUrl);
+      final user = Map<String, dynamic>.from(result['user'] as Map);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Вход выполнен: ${user['display_name'] ?? user['username'] ?? 'учётная запись'}.${result['push_registered'] == true ? ' Уведомления подключены.' : ' Push-уведомления пока не настроены.'}'),
+          duration: const Duration(seconds: 5),
+        ));
+        if (user['role'] == 'student') {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+        } else {
+          await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+        }
+      }
+    } catch (error) {
+      if (context.mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 6)));
+      }
+    }
+  }
+
+  Future<void> _openSchoolCabinet(BuildContext context) async {
+    final service = SchoolAccountService();
+    final current = await service.currentUser();
+    if (!context.mounted) return;
+    if (current != null) {
+      if (current['role'] == 'student') {
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
+      } else {
+        await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolPortalPage()));
+      }
+      return;
+    }
+    await _schoolAccount(context);
+  }
+
   Future<void> _editClass(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
+    final prefs = await SharedPreferences.getInstance();
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        final classId = (account is Map ? account['class_id'] : null)?.toString().trim() ?? '';
+        if (account is Map && account['role'] == 'student' && classId.isNotEmpty) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Класс поступает из школьной учётной записи. Если он неверный, обратись к школьному администратору.')),
+          );
+          return;
+        }
+      } catch (_) {}
+    }
+    await SchoolScheduleCatalog.load();
     final result = await showDialog<String>(context: context, builder: (_) => const _StudentClassDialog());
     if (!context.mounted || result == null || result.isEmpty) return;
     await prefs.setString('student_class_name', result); await prefs.setString('student_class_id', result); await showStudentGroupSelection(context, result);
@@ -1999,8 +2434,10 @@ class SettingsPage extends StatelessWidget {
       Card(child: ListTile(leading: Icon(Icons.groups_rounded, color: c.primary), title: const Text('Группы по предметам'), subtitle: const Text('Например: английский — 1, математика — 2'), trailing: const Icon(Icons.tune_rounded), onTap: () async { final p = await SharedPreferences.getInstance(); final cls = p.getString('student_class_name') ?? ''; if (cls.isNotEmpty && context.mounted) await showStudentGroupSelection(context, cls); })),
       const SizedBox(height: 18), const Text('Оформление', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: ListTile(leading: Icon(Icons.palette_rounded, color: c.primary), title: const Text('Цветовая тема'), subtitle: Text(AppPalette.name(theme)), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _pickTheme(context))),
-      const SizedBox(height: 18), const Text('Администрирование', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-      Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Вход для администраторов'), subtitle: const Text('Управление администраторами, расписанием, ДОПами и синхронизацией'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
+      const SizedBox(height: 18), const Text('Для сотрудников', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
+      Card(child: ListTile(leading: Icon(Icons.verified_user_rounded, color: c.primary), title: const Text('Школьная учётная запись'), subtitle: const Text('Безопасный вход через школьный SSO и регистрация уведомлений'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _schoolAccount(context))),
+      Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Сотрудникам — управление по роли; ученикам — школьные оповещения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openSchoolCabinet(context))),
+      Card(child: ListTile(leading: Icon(Icons.cloud_sync_rounded, color: c.primary), title: const Text('Настройки подключения'), subtitle: const Text('Адрес API, включение онлайн-режима и проверка соединения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
       Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Офлайн-навигатор школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Офлайн-навигатор школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
     ]))));

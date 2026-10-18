@@ -24,8 +24,19 @@ class OnlineDataService {
     if (cleanPath.isEmpty || cleanPath.split('/').contains('..')) return null;
 
     final base = Uri.parse(config.baseUrl.trim());
-    final basePath = base.path.replaceFirst(RegExp(r'/+$'), '');
-    return base.replace(path: '$basePath/$cleanPath');
+    var basePath = base.path.replaceFirst(RegExp(r'/+$'), '');
+    // Accept a site root, legacy API root (/api), or the versioned API root
+    // (/api/v2) while keeping these workbook reads on the public /api routes.
+    if (basePath.endsWith('/api/v2')) {
+      basePath = basePath.substring(0, basePath.length - '/api/v2'.length);
+    }
+    if (!basePath.endsWith('/api')) {
+      basePath = '$basePath/api';
+    }
+    final relativePath = cleanPath.startsWith('api/')
+        ? cleanPath.substring('api/'.length)
+        : cleanPath;
+    return base.replace(path: '$basePath/$relativePath', query: null, fragment: '', userInfo: '');
   }
 
   Future<Map<String, dynamic>?> get(String path) async {

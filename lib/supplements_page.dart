@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
 import 'dop_parser.dart';
+import 'local_notification_service.dart';
+import 'school_account_service.dart';
 
 class Supplement {
   final String id;
@@ -73,6 +75,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
   bool syncing = false;
   DopStudent? student;
   String lastSync = '';
+  bool remindersEnabled = false;
 
   @override
   void initState() {
@@ -82,7 +85,16 @@ class _SupplementsPageState extends State<SupplementsPage> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('supplements_local');
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
+    final raw = prefs.getString(storageKey);
     if (raw != null) {
       try {
         items = (jsonDecode(raw) as List)
@@ -91,29 +103,140 @@ class _SupplementsPageState extends State<SupplementsPage> {
       } catch (_) {
         items = [];
       }
+    } else {
+      // Do not import legacy global personal data into an authenticated profile.
+      items = [];
     }
     student = await const NavigatorStudentProvider().load();
     lastSync = prefs.getString('dop_last_sync') ?? '';
+    remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
+    final cachedSchoolUserId = prefs.getString('school_supplements_user_id_v1_$currentSchoolUserId') ?? '';
+    if (currentSchoolUserId.isNotEmpty && cachedSchoolUserId.isNotEmpty &&
+        cachedSchoolUserId != currentSchoolUserId) {
+      items = items.where((item) => !item.id.startsWith('server_')).toList();
+      await prefs.setString(storageKey, jsonEncode(items.map((e) => e.toJson()).toList()));
+      await prefs.remove('school_supplements_cache_v1_$currentSchoolUserId');
+      await prefs.remove('school_supplements_user_id_v1_$currentSchoolUserId');
+    }
     if (mounted) setState(() => loading = false);
+    try { await _refreshServerSupplements(); } catch (_) {}
+    if (remindersEnabled) {
+      try { await _refreshDopReminders(); } catch (_) {}
+    }
+  }
+
+  Future<void> _refreshServerSupplements() async {
+    final service = SchoolAccountService();
+    final count = await service.refreshMySupplements();
+    if (count == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    if (currentSchoolUserId.isEmpty) return;
+    final raw = prefs.getString('school_supplements_cache_v1_$currentSchoolUserId');
+    if (raw == null) return;
+    try {
+      final serverItems = (jsonDecode(raw) as List)
+          .map((e) => Supplement.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      final localItems = items.where((e) => !e.id.startsWith('server_')).toList();
+      items = [...localItems, ...serverItems];
+      if (mounted) setState(() {});
+      await _save();
+    } catch (_) {}
   }
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
+    var currentSchoolUserId = '';
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
     await prefs.setString(
-      'supplements_local',
+      storageKey,
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
+    if (remindersEnabled) {
+      try { await _refreshDopReminders(); } catch (_) {}
+    }
+  }
+
+  Future<void> _refreshDopReminders({bool clearWhenDisabled = false}) async {
+    final service = LocalNotificationService();
+    if (remindersEnabled) {
+      await service.scheduleUpcomingSupplements(
+        entries: items.map((item) => (
+          id: item.id,
+          day: item.weekday,
+          time: item.start,
+          title: item.title,
+          room: item.room,
+        )).toList(),
+      );
+    } else if (clearWhenDisabled) {
+      await service.scheduleUpcomingSupplements(entries: const []);
+    }
+  }
+
+  Future<void> _setReminders(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dop_reminders_enabled', value);
+    if (mounted) setState(() => remindersEnabled = value);
+    try {
+      await _refreshDopReminders(clearWhenDisabled: !value);
+      // When a school account is connected, mirror the preference to the server
+      // so server-side reminders can also be delivered while the app is closed.
+      try { await SchoolAccountService().setDopRemindersEnabled(value); } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось обновить уведомления. Проверь разрешение на уведомления в настройках Android.')),
+        );
+      }
+      return;
+    }
+    if (value && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Напоминания включены для занятий с временем в формате ЧЧ:ММ.')),
+      );
+    }
   }
 
   Future<void> _editStudent() async {
     final result = await showDialog<DopStudent>(context: context, builder: (_) => _DopStudentDialog(initial: student));
     if (result == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('student_last_name', result.lastName);
-    await prefs.setString('student_first_name', result.firstName);
-    await prefs.setString('student_class_number', result.classNumber);
-    await prefs.setString('student_class_letter', result.classLetter);
-    await prefs.setString('student_class_name', result.className);
+    var currentSchoolUserId = '';
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
+      } catch (_) {}
+    }
+    for (final entry in <String, String>{
+      'student_last_name': result.lastName,
+      'student_first_name': result.firstName,
+      'student_class_number': result.classNumber,
+      'student_class_letter': result.classLetter,
+      'student_class_name': result.className,
+    }.entries) {
+      await prefs.setString(
+        studentProfilePreferenceKey(entry.key, userId: currentSchoolUserId),
+        entry.value,
+      );
+    }
     student = result;
     if (mounted) setState(() {});
   }
@@ -237,6 +360,24 @@ class _SupplementsPageState extends State<SupplementsPage> {
                           else
                             IconButton(onPressed: _editStudent, tooltip: 'Изменить профиль', icon: const Icon(Icons.edit_outlined)),
                         ]),
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: SwitchListTile.adaptive(
+                          value: remindersEnabled,
+                          onChanged: _setReminders,
+                          secondary: Icon(
+                            remindersEnabled ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                            color: scheme.primary,
+                          ),
+                          title: const Text('Напоминания о ДОПах', style: TextStyle(fontWeight: FontWeight.w900)),
+                          subtitle: Text(
+                            remindersEnabled
+                                ? 'За 15 минут • только если указано реальное время'
+                                : 'Получай напоминание за 15 минут до занятия',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 18),
                       Row(children: [
@@ -533,7 +674,7 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
       TextField(controller:firstName,decoration:const InputDecoration(labelText:'Имя')),
       Row(children:[Expanded(child:TextField(controller:classNumber,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Класс'))),const SizedBox(width:10),Expanded(child:TextField(controller:classLetter,decoration:const InputDecoration(labelText:'Буква')))]),
       const SizedBox(height:10),
-      Text('Тип проживания Navigator определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
+      Text('Тип проживания Поколение определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
     ])),
     actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:(){if(lastName.text.trim().isEmpty||firstName.text.trim().isEmpty||classNumber.text.trim().isEmpty||classLetter.text.trim().isEmpty)return;Navigator.pop(context,DopStudent(lastName:lastName.text.trim(),firstName:firstName.text.trim(),classNumber:classNumber.text.trim(),classLetter:classLetter.text.trim().toUpperCase(),residenceType:'auto'));},child:const Text('Сохранить'))],
   );

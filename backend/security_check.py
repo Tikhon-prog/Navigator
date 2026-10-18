@@ -16,7 +16,7 @@ TOKEN_PATTERNS = [
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(
-        r"(?im)\b(?:YANDEX_OAUTH_TOKEN|WIKI_TOKEN|CLIENT_SECRET|API_SECRET)\b"
+        r"(?im)\b(?:NAVIGATOR_TOKEN_SECRET|NAVIGATOR_DATA_API_TOKEN|CLIENT_SECRET|API_SECRET)\b"
         r"\s*[:=]\s*['\"]?[A-Za-z0-9._-]{24,}"
     ),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -33,14 +33,12 @@ def main() -> int:
         relative = path.relative_to(ROOT)
         if any(part in SKIP_DIRS for part in relative.parts):
             continue
-
         if path.name.startswith(".env") and path.name != ".env.example":
             findings.append(f"{relative}: environment files must not be committed")
             continue
         if path.name in FORBIDDEN_FILENAMES or path.suffix.lower() in FORBIDDEN_SUFFIXES:
             findings.append(f"{relative}: local signing/private-key file must not be committed")
             continue
-
         if path.suffix.lower() not in TEXT_SUFFIXES:
             continue
         try:
@@ -52,13 +50,11 @@ def main() -> int:
             if pattern.search(content):
                 findings.append(f"{relative}: possible credential pattern detected")
                 break
-
     if findings:
         print("Security check failed:")
         for finding in findings:
             print(f" - {finding}")
         return 1
-
     print("Security check passed: no local env files, signing keys, or known token patterns found.")
     return 0
 

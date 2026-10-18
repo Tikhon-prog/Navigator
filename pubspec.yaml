@@ -1,7 +1,7 @@
 name: navigator
-description: Navigator for Generation school with offline navigation, class schedules, supplements, admin tools and online sync.
+description: Приложение школы «Поколение»: офлайн-навигация, расписание, ДОПы и школьные оповещения.
 publish_to: 'none'
-version: 0.1.0-alpha
+version: 0.2.0+2
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
@@ -11,8 +11,12 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.4
+  flutter_secure_storage: ^11.2.0
   crypto: ^3.0.6
   http: ^1.5.0
+  flutter_appauth: ^8.0.3
+  firebase_core: ^4.2.1
+  firebase_messaging: ^16.0.3
   flutter_local_notifications: ^19.4.2
   timezone: ^0.10.1
 
