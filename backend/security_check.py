@@ -8,6 +8,8 @@ SKIP_DIRS = {".git", ".dart_tool", "build", ".pub-cache", "__pycache__"}
 TEXT_SUFFIXES = {
     ".dart", ".py", ".yaml", ".yml", ".json", ".md", ".txt",
     ".gradle", ".kts", ".properties", ".xml", ".sh", ".bat",
+    ".plist", ".swift", ".xcconfig", ".pbxproj", ".entitlements",
+    ".strings", ".html", ".js", ".ts", ".css", ".toml", ".ini", ".cfg", ".conf",
 }
 TOKEN_PATTERNS = [
     re.compile(r"\bghp_[A-Za-z0-9]{30,}\b"),

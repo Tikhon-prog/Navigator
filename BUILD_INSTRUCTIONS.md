@@ -7,7 +7,7 @@
 
 ## Сборка одной командой
 
-В корне проекта запусти `build_apk_0.2.0.bat`. Скрипт проверит версию, восстановит зависимости, выполнит Flutter-тесты и анализ, затем соберёт APK. Сервер не требуется: по умолчанию это offline-first сборка.
+В корне проекта запусти `build_apk_0.2.0.bat` для быстрой автономной сборки: скрипт проверит версию, восстановит зависимости, выполнит Flutter-тесты и анализ, соберёт APK и контрольную сумму. Он использует резервную debug-подпись, если `android/key.properties` ещё нет; такой APK подходит для тестирования, но подписанный другим ключом APK нельзя установить поверх предыдущей версии.
 
 ## Android APK (Windows / PowerShell)
 
@@ -21,7 +21,7 @@ flutter test
 flutter build apk --release
 ```
 
-Готовый APK после ручной сборки: `build/app/outputs/flutter-apk/app-release.apk`. Скрипт `build_apk_0.2.0.bat` также копирует его в `dist/Pokolenie-0.2.0+2.apk` и создаёт рядом файл `Pokolenie-0.2.0+2.apk.sha256`.
+Готовый APK после ручной сборки: `build/app/outputs/flutter-apk/app-release.apk`. Скрипты `build_apk_0.2.0.bat` и `build_release.bat` также копируют его в `dist/Pokolenie-0.2.0+2.apk` и создают рядом файл `Pokolenie-0.2.0+2.apk.sha256`. Для долгосрочных установок предпочитай `build_release.bat`: он создаёт локальный ключ при первом запуске и проверяет подпись. Сохрани `android/app/navigator-release.jks` и `android/key.properties` в надёжном месте; без ключа нельзя выпускать совместимые обновления.
 
 Проверить, что версия — 0.2.0 и build number — 2:
 

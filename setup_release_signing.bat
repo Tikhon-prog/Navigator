@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d %~dp0
 
-echo === Navigator: release signing setup ===
+echo === Поколение: настройка подписи релизной сборки ===
 if not exist android\app mkdir android\app
 
 if exist android\key.properties if exist android\app\navigator-release.jks (
@@ -19,7 +19,7 @@ if errorlevel 1 if not exist "%KEYTOOL%" (
     exit /b 1
 )
 
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$r=New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Fill($r); [Convert]::ToBase64String($r).TrimEnd('=').Replace('+','A').Replace('/','B')"`) do set "STOREPASS=%%P"
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$r=New-Object byte[] 24; $g=[Security.Cryptography.RandomNumberGenerator]::Create(); $g.GetBytes($r); $g.Dispose(); [Convert]::ToBase64String($r).TrimEnd('=').Replace('+','A').Replace('/','B')"`) do set "STOREPASS=%%P"
 set "KEYPASS=%STOREPASS%"
 
 if "%STOREPASS%"=="" (
@@ -35,7 +35,7 @@ if "%STOREPASS%"=="" (
   -keyalg RSA ^
   -keysize 4096 ^
   -validity 10000 ^
-  -dname "CN=Navigator Test, OU=Navigator, O=Navigator, L=Local, ST=Local, C=RU"
+  -dname "CN=Pokolenie App, OU=Pokolenie, O=Pokolenie, L=Local, ST=Local, C=RU"
 if errorlevel 1 (
     echo ERROR: key generation failed.
     exit /b 1
@@ -48,5 +48,5 @@ if errorlevel 1 (
 
 echo.
 echo Release signing key created locally.
-echo It is ignored by Git and is NOT included in Navigator ZIP archives.
+echo The local signing key is ignored by Git and must NOT be shared.
 endlocal
