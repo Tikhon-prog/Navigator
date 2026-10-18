@@ -46,9 +46,16 @@ if not exist "%APK_PATH%" (
 )
 
 echo.
-echo [5/5] Build completed.
-for %%F in ("%APK_PATH%") do echo APK size: %%~zF bytes
-echo File: %CD%\%APK_PATH%
+echo [5/5] Preparing named release files...
+if not exist "dist" mkdir "dist"
+if errorlevel 1 exit /b 1
+copy /y "%APK_PATH%" "dist\Pokolenie-0.2.0+2.apk" >nul
+if errorlevel 1 exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.0+2.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.0+2.apk.sha256' -Value ($hash + '  Pokolenie-0.2.0+2.apk') -Encoding ascii"
+if errorlevel 1 exit /b 1
+for %%F in ("dist\Pokolenie-0.2.0+2.apk") do echo APK size: %%~zF bytes
+echo APK: %CD%\dist\Pokolenie-0.2.0+2.apk
+echo SHA-256: %CD%\dist\Pokolenie-0.2.0+2.apk.sha256
 echo Version: 0.2.0 ^(build 2^)
 echo.
 echo This offline-first build does not embed a school API URL.

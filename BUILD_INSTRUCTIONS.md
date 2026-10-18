@@ -21,7 +21,7 @@ flutter test
 flutter build apk --release
 ```
 
-Готовый APK: `build/app/outputs/flutter-apk/app-release.apk`.
+Готовый APK после ручной сборки: `build/app/outputs/flutter-apk/app-release.apk`. Скрипт `build_apk_0.2.0.bat` также копирует его в `dist/Pokolenie-0.2.0+2.apk` и создаёт рядом файл `Pokolenie-0.2.0+2.apk.sha256`.
 
 Проверить, что версия — 0.2.0 и build number — 2:
 
@@ -41,6 +41,6 @@ python -m unittest discover -s backend/tests -v
 
 ## CI
 
-Workflow `.github/workflows/flutter-ci.yml` выполняет сканирование секретов, проверку уязвимых Python-зависимостей, серверные тесты, Flutter-тесты, анализ и release-сборку APK. Артефакт сборки публикуется под именем `pokolenie-release-apk`.
+Workflow `.github/workflows/flutter-ci.yml` выполняет сканирование секретов, проверку уязвимых Python-зависимостей, серверные тесты, Flutter-тесты, анализ и release-сборку APK. После успешной сборки CI публикует APK с именем `Pokolenie-0.2.0+2.apk` и контрольную сумму SHA-256 в артефакте `pokolenie-0.2.0+2-apk`.
 
 Если CI не запускает job или выдаёт ошибку до первого шага, это не доказывает ошибку исходного кода: проверь состояние runner и повтори запуск после восстановления GitHub Actions.
