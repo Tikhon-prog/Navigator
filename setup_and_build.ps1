@@ -195,13 +195,25 @@ if (-not $javaHome) { throw 'Microsoft OpenJDK 21 was not found. Repair the JDK 
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
 
-# Install Android command-line SDK; no Android Studio first-run wizard is needed.
+# Pin Android command-line tools to 22.0. Version 23+ replaced the legacy license
+# prompt with a new CLI path that Flutter currently cannot reliably validate.
 Write-Step 'Preparing Android SDK'
 New-Item -ItemType Directory -Force -Path $AndroidSdk | Out-Null
 Set-UserVariable -Name 'ANDROID_HOME' -Value $AndroidSdk
 Set-UserVariable -Name 'ANDROID_SDK_ROOT' -Value $AndroidSdk
 $sdkManager = Join-Path $AndroidSdk 'cmdline-tools\latest\bin\sdkmanager.bat'
-if (-not (Test-Path -LiteralPath $sdkManager)) {
+$toolsRevision = '22.0'
+$installedToolsRevision = $null
+$toolsProperties = Join-Path $AndroidSdk 'cmdline-tools\latest\source.properties'
+if (Test-Path -LiteralPath $toolsProperties) {
+    $toolsMetadata = Get-Content -LiteralPath $toolsProperties -Raw
+    if ($toolsMetadata -match '(?m)^Pkg\.Revision\s*=\s*([^\r\n]+)') {
+        $installedToolsRevision = $Matches[1].Trim()
+    }
+}
+# Do not trust an existing sdkmanager path alone: a prior/latest install may be v23+.
+if ($installedToolsRevision -ne $toolsRevision -or -not (Test-Path -LiteralPath $sdkManager)) {
+    Write-Host 'Installing pinned Android command-line tools 22.0...'
     $toolsUrl = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
     $toolsSha = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
     $downloadDir = Join-Path $BuildTemp 'PokolenieBootstrap'
@@ -226,11 +238,13 @@ if (-not (Test-Path -LiteralPath $sdkManager)) {
 }
 if (-not (Test-Path -LiteralPath $sdkManager)) { throw 'Android sdkmanager.bat was not installed correctly.' }
 Add-UserPath -Paths @((Join-Path $AndroidSdk 'platform-tools'), (Join-Path $AndroidSdk 'cmdline-tools\latest\bin'))
+# Accept licenses before installing packages; otherwise sdkmanager skips them.
+Write-Host 'Accept the Android SDK license terms in the terminal when prompted...'
+& $sdkManager "--sdk_root=$AndroidSdk" --licenses
+if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed. Ensure command-line tools 22.0 is installed.' }
 Write-Host 'Installing platform-tools, Android API 36 and build-tools 36.0.0...'
 & $sdkManager "--sdk_root=$AndroidSdk" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
-& $sdkManager "--sdk_root=$AndroidSdk" --licenses
-if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed.' }
 
 # Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
 Write-Step ("Installing Flutter " + $FlutterVersion)
