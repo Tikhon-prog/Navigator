@@ -26,7 +26,7 @@ class SsoProvisioningTests(unittest.TestCase):
         })
         self.env_patch.start()
         core.init_db()
-        sso_api._init()
+        sso_api.init_sso_tables()
         rbac_api._init()
 
     def tearDown(self):

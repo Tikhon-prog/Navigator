@@ -45,7 +45,7 @@ flutter analyze
 flutter build apk --release
 ```
 
-Артефакт: `build/app/outputs/flutter-apk/app-release.apk`. Workflow CI загружает APK как `pokolenie-release-apk` с ограниченным сроком хранения.
+Артефакт локальной Flutter-сборки: `build/app/outputs/flutter-apk/app-release.apk`. Оба Android CI workflow копируют его в `dist/Pokolenie-0.2.0+2.apk` и рядом формируют `Pokolenie-0.2.0+2.apk.sha256`; загружаемый артефакт называется `pokolenie-0.2.0+2-apk` и хранится 7 дней.
 
 ## Примечание
 

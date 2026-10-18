@@ -1,6 +1,6 @@
 # Серверная интеграция школы «Поколение»
 
-This branch adds a first usable, separately versioned service API at `/api/v2`.
+This repository contains a separately versioned school service API at `/api/v2`.
 The existing source-backed `/api/*` endpoints remain read-only for public reference data
 (classes, base timetable, rooms, places, and school-wide/class-targeted announcements).
 The `Supplements` source collection is now internal-only: generic `/api/data/Supplements`,
@@ -32,7 +32,7 @@ administrator must import or approve it.
 
 ## First-run mobile server URL
 
-The server `.env` configures the server, but cannot be read directly by an already-built APK. For a preconfigured Android install, set the non-secret GitHub repository variable `POKOLENIE_API_BASE_URL` to the public HTTPS API origin, for example `https://api.school.example`. The current Flutter CI embeds it as a default in the release APK; new installs then enable online mode automatically. No iOS build workflow is currently configured. Existing device settings are respected, and the value can still be changed in the app's server settings. Do not put access tokens, OAuth secrets or Firebase service-account credentials in this variable.
+The server `.env` configures the server, but cannot be read directly by an already-built APK. For a preconfigured Android install, set the non-secret GitHub repository variable `POKOLENIE_API_BASE_URL` to the public HTTPS API origin, for example `https://api.school.example`. The current Flutter CI embeds it as a default in the release APK; new installs then enable online mode automatically. The repository also defines an unsigned iOS build workflow and a separate signed IPA workflow. The signed workflow requires valid Apple signing secrets and provisioning assets; these are not needed for Android-only builds. Existing device settings are respected, and the value can still be changed in the app's server settings. Do not put access tokens, OAuth secrets or Firebase service-account credentials in this variable.
 
 ## Environment
 
