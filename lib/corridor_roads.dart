@@ -65,7 +65,7 @@ class CorridorRoads {
     CorridorSegment(3, Offset(325 / 7016, 2429 / 4960), Offset(1069 / 7016, 2429 / 4960), 'Короткий зелёный коридор'),
     CorridorSegment(3, Offset(2877 / 7016, 909 / 4960), Offset(2877 / 7016, 2417 / 4960), 'Длинный фиолетовый коридор'),
     CorridorSegment(3, Offset(2965 / 7016, 2417 / 4960), Offset(2229 / 7016, 2417 / 4960), 'Короткий фиолетовый коридор'),
-    CorridorSegment(3, Offset(2845 / 7016, 2414 / 4960), Offset(2229 / 7016, 2402 / 4960), 'Короткое фиолетовое крыло'),
+    // Removed a second near-parallel copy of the short purple corridor; the preceding segment already covers it.
     CorridorSegment(3, Offset(2833 / 7016, 1367 / 4960), Offset(2929 / 7016, 1367 / 4960), 'фиолетовый', hidden: true),
     CorridorSegment(3, Offset(1081 / 7016, 2391 / 4960), Offset(1253 / 7016, 2391 / 4960), 'маленький голубой проход', hidden: true),
     CorridorSegment(3, Offset(1257 / 7016, 2380 / 4960), Offset(1257 / 7016, 2704 / 4960), 'перпендикулярный проход', hidden: true),
@@ -80,7 +80,7 @@ class CorridorRoads {
     CorridorSegment(3, Offset(2713 / 7016, 3517 / 4960), Offset(3557 / 7016, 3517 / 4960), 'Длинное бирюзовое крыло'),
     // Connect the local 316–318 corridor to the mapped long corridor; verify exact path against the floor plan.
     CorridorSegment(3, Offset(2285 / 7016, 3540 / 4960), Offset(2713 / 7016, 3517 / 4960), 'Соединение локального коридора 316–318 с длинным коридором', hidden: true),
-    CorridorSegment(3, Offset(3557 / 7016, 3517 / 4960), Offset(2813 / 7016, 3517 / 4960), 'Подход к Информационно-библиотечному центру'),
+    // The library anchor projects directly onto the long turquoise corridor above; no second collinear road is needed.
     CorridorSegment(3, Offset(1881 / 7016, 3292 / 4960), Offset(1913 / 7016, 3448 / 4960), 'Коридор у кабинета 318', hidden: true),
     CorridorSegment(3, Offset(1913 / 7016, 3448 / 4960), Offset(2285 / 7016, 3540 / 4960), 'Коридор у кабинетов 317–316', hidden: true),
     CorridorSegment(3, Offset(2125 / 7016, 3540 / 4960), Offset(2285 / 7016, 3388 / 4960), 'Коридор у кабинетов 316–315', hidden: true),

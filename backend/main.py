@@ -12,6 +12,18 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+BASE_DIR = Path(__file__).resolve().parent
+# Load both supported .env locations before importing modules that capture
+# authentication/database settings at import time. Root .env takes precedence.
+load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR / ".env")
+
+from .school_api import router as school_services_router
+from .sso_api import router as school_sso_router
+from .notification_api import router as notification_router
+from .rbac_api import router as school_rbac_router
+from .data_sources import load_configured_sheet
+
 
 
 
@@ -20,9 +32,6 @@ from dotenv import load_dotenv
 # ============================================================
 # CONFIG
 # ============================================================
-
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
 
 YANDEX_API = "https://cloud-api.yandex.net/v1/disk"
 
@@ -44,29 +53,38 @@ _cached_workbook_at = 0.0
 # ============================================================
 
 # Only these sheets are intended for unauthenticated, read-only school app access.
-# Never expose Admins, Devices, AuditLog, or Settings through generic endpoints.
+# Supplements contains student-linked records and is internal-only.
 PUBLIC_READ_SHEETS = frozenset({
     "Classes",
     "BaseSchedule",
-    "Supplements",
     "Rooms",
     "Places",
     "Announcements",
 })
+INTERNAL_READ_SHEETS = PUBLIC_READ_SHEETS | {"Supplements"}
 
 app = FastAPI(
-    title="Navigator Backend",
+    title="Поколение — сервер школы",
     description="Backend школьного навигатора",
     version="1.0.0",
 )
 
+# Separate authenticated API for accounts, scoped student access, and announcements.
+app.include_router(school_services_router)
+app.include_router(school_sso_router)
+app.include_router(notification_router)
+app.include_router(school_rbac_router)
+
+_cors_origins = [origin.strip() for origin in os.getenv("NAVIGATOR_ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins or ["*"],
     allow_credentials=False,
-    # This backend currently exposes read-only endpoints only.
-    allow_methods=["GET", "HEAD", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    # Public workbook endpoints are read-only; authenticated /api/v2 routes also
+    # use POST/PUT/PATCH/DELETE for account, DOP and notification workflows.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
 )
 
 
@@ -94,7 +112,7 @@ def yandex_headers():
 
 def download_master_file():
     """
-    Получает Navigator_Master.xlsx непосредственно
+    Получает книгу школьных данных непосредственно
     с Яндекс Диска через OAuth.
     """
     global _cached_workbook_bytes, _cached_workbook_at
@@ -179,9 +197,14 @@ def normalize_value(value: Any):
 
 
 def read_sheet(sheet_name: str):
-    # Enforce the allowlist here too, so future callers cannot bypass route guards.
-    if sheet_name not in PUBLIC_READ_SHEETS:
+    # Internal sync workers may read Supplements, but public endpoints must
+    # validate against PUBLIC_READ_SHEETS before calling this helper.
+    if sheet_name not in INTERNAL_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
+
+    configured_data = load_configured_sheet(sheet_name)
+    if configured_data is not None:
+        return configured_data
 
     workbook = load_workbook()
 
@@ -241,7 +264,7 @@ def read_sheet(sheet_name: str):
 @app.get("/")
 def root():
     return {
-        "name": "Navigator Backend",
+        "name": "Поколение — сервер школы",
         "version": "1.0.0",
         "status": "ok",
         "source": "Yandex Disk",
@@ -250,25 +273,17 @@ def root():
 
 @app.get("/api/health")
 def health():
-
+    source = os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     try:
-        data = download_master_file()
-
-        return {
-            "status": "ok",
-            "source": "Yandex Disk",
-            "file": YANDEX_FILE_PATH,
-            "size": len(data),
-        }
-
+        if source == "yandex":
+            data = download_master_file()
+            return {"status": "ok", "source": "yandex", "file": YANDEX_FILE_PATH, "size": len(data)}
+        sample = load_configured_sheet("Classes")
+        return {"status": "ok", "source": source, "sample_rows": len(sample or [])}
     except HTTPException:
         raise
-
     except Exception:
-        raise HTTPException(
-            status_code=502,
-            detail="School data source is temporarily unavailable",
-        )
+        raise HTTPException(status_code=502, detail="School data source is temporarily unavailable")
 
 
 # ============================================================
@@ -277,14 +292,11 @@ def health():
 
 @app.get("/api/sheets")
 def get_sheets():
-
+    if os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower() in {"json", "http"}:
+        return {"sheets": sorted(PUBLIC_READ_SHEETS)}
     workbook = load_workbook()
-
     try:
-        return {
-            "sheets": [name for name in workbook.sheetnames if name in PUBLIC_READ_SHEETS]
-        }
-
+        return {"sheets": [name for name in workbook.sheetnames if name in PUBLIC_READ_SHEETS]}
     finally:
         workbook.close()
 
@@ -294,6 +306,10 @@ def get_schema(sheet_name: str):
     # Reject private sheet names before making any upstream request.
     if sheet_name not in PUBLIC_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
+
+    if os.getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower() in {"json", "http"}:
+        rows = load_configured_sheet(sheet_name) or []
+        return {"sheet": sheet_name, "columns": list(rows[0].keys()) if rows else []}
 
     workbook = load_workbook()
 
@@ -433,23 +449,14 @@ def get_class_schedule(
 # ============================================================
 
 @app.get("/api/supplements")
-def get_supplements(
-    weekday: int | None = Query(None, ge=1, le=7),
-):
-
-    data = read_sheet("Supplements")
-
-    if weekday is not None:
-
-        data = [
-            item
-            for item in data
-            if str(item.get("weekday")) == str(weekday)
-        ]
-
-    return {
-        "data": data
-    }
+def get_supplements():
+    # This legacy endpoint used to return every student's DOP rows anonymously.
+    # Personal DOP records are now available only through authenticated,
+    # role-scoped /api/v2 endpoints after the approved import/sync process.
+    raise HTTPException(
+        status_code=403,
+        detail="Student DOP data is private; use authenticated /api/v2 student endpoints",
+    )
 
 
 # ============================================================
@@ -532,36 +539,36 @@ def get_places(
 # ANNOUNCEMENTS
 # ============================================================
 
-@app.get("/api/announcements")
-def get_announcements(
-    class_id: str | None = None,
-):
+def _normalize_class_key(value: Any) -> str:
+    # Normalize visually identical Cyrillic/Latin class letters for matching only.
+    lookalikes = str.maketrans({
+        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+        "Х": "X", "У": "Y",
+    })
+    return str(value or "").strip().upper().replace(" ", "").translate(lookalikes)
 
+
+def _visible_announcements(class_id: str | None = None, *, include_class_targeted: bool = False) -> list[dict[str, Any]]:
     data = read_sheet("Announcements")
-
-    if class_id is not None:
-
+    target_key = _normalize_class_key(class_id)
+    # Public endpoints must never trust a caller-supplied class ID. Only the
+    # authenticated v2 endpoint may return a matching class-targeted notice.
+    if not include_class_targeted or not target_key:
+        data = [item for item in data if not _normalize_class_key(item.get("target_class_id"))]
+    else:
         data = [
-            item
-            for item in data
-            if (
-                str(item.get("target_class_id"))
-                == class_id
-                or item.get("target_class_id")
-                in (None, "")
-            )
+            item for item in data
+            if not _normalize_class_key(item.get("target_class_id"))
+            or _normalize_class_key(item.get("target_class_id")) == target_key
         ]
+    data.sort(key=lambda item: str(item.get("published_at") or ""), reverse=True)
+    return data
 
-    data.sort(
-        key=lambda item: str(
-            item.get("published_at") or ""
-        ),
-        reverse=True,
-    )
 
-    return {
-        "data": data
-    }
+@app.get("/api/announcements")
+def get_announcements(class_id: str | None = None):
+    return {"data": _visible_announcements(class_id)}
 
 
 # ============================================================
@@ -589,12 +596,10 @@ def get_devices():
 # ============================================================
 
 @app.get("/api/data/{sheet_name}")
-def get_sheet_data(sheet_name: str):
+def get_sheet_data(sheet_name: str, class_id: str | None = None):
     # Prevent arbitrary reads such as /api/data/Admins or /api/data/AuditLog.
     if sheet_name not in PUBLIC_READ_SHEETS:
         raise HTTPException(status_code=404, detail="Sheet not found")
 
-    return {
-        "sheet": sheet_name,
-        "data": read_sheet(sheet_name),
-    }
+    data = _visible_announcements(class_id) if sheet_name == "Announcements" else read_sheet(sheet_name)
+    return {"sheet": sheet_name, "data": data}

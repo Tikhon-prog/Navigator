@@ -66,10 +66,26 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
   }
 
   @override Widget build(BuildContext context) => AlertDialog(
-    title: Text(setupMode ? 'Создание главного администратора' : 'Вход для администраторов'),
+    title: Text(setupMode ? 'Создание локального администратора' : 'Вход в кабинет школы'),
+    scrollable: true,
     content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      if (setupMode)
-        const Text('Первый запуск: создай уникальный логин и пароль не короче 12 символов. Пароль по умолчанию не используется.'),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Text(
+          'Это локальные инструменты управления приложением на этом устройстве. Школьный SSO и серверные права подключаются отдельно после настройки со стороны IT.',
+          style: TextStyle(fontSize: 12, height: 1.4),
+        ),
+      ),
+      if (setupMode) ...[
+        const SizedBox(height: 10),
+        const Text('Первый запуск: создай уникальный локальный логин и пароль не короче 12 символов. Пароль по умолчанию не используется.'),
+      ],
+      const SizedBox(height: 10),
       TextField(controller: login, autofocus: true, decoration: InputDecoration(labelText: setupMode ? 'Новый логин' : 'Логин')),
       const SizedBox(height: 10),
       TextField(controller: password, obscureText: hidden, onSubmitted: (_) => _submit(), decoration: InputDecoration(labelText: setupMode ? 'Новый пароль (от 12 символов)' : 'Пароль', suffixIcon: IconButton(onPressed: () => setState(() => hidden = !hidden), icon: Icon(hidden ? Icons.visibility_rounded : Icons.visibility_off_rounded)))),
@@ -244,7 +260,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     if (!can(AdminPermissions.manageAdmins) || account.id == 'root') return;
     final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
       title: const Text('Удалить администратора?'),
-      content: Text('Аккаунт «${account.login}» больше не сможет войти в Navigator.'),
+      content: Text('Аккаунт «${account.login}» больше не сможет войти в «Поколение».'),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить'))],
     )) ?? false;
     if (!ok) return;
@@ -275,7 +291,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     if (mounted) {
       setState(() {
         saving = false;
-        apiStatus = apiEnabled && raw.isNotEmpty ? 'Синхронизация включена. Секреты OAuth и пароли в APK не сохраняются.' : 'Синхронизация выключена — приложение работает локально.';
+        apiStatus = apiEnabled && raw.isNotEmpty ? 'Адрес API сохранён. Экран «Оповещения» сможет загружать объявления; карта и расписание пока остаются офлайн.' : 'Серверное подключение выключено — приложение работает на локальных данных.';
       });
     }
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Настройки сервера сохранены')));
@@ -289,15 +305,35 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       setState(() => apiStatus = 'Адрес API должен использовать HTTPS и не содержать логин, пароль, query или fragment.');
       return;
     }
+    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    final healthPath = path.endsWith('/api/v2')
+        ? '$path/health/ready'
+        : path.endsWith('/api')
+            ? '$path/v2/health/ready'
+            : '$path/api/v2/health/ready';
+    final healthUri = uri.replace(path: healthPath, fragment: '');
     setState(() => apiStatus = 'Проверяю соединение…');
     try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 6));
+      final response = await http.get(healthUri).timeout(const Duration(seconds: 8));
       if (!mounted) return;
-      setState(() => apiStatus = 'Сервер отвечает: HTTP ${response.statusCode}.');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final readiness = jsonDecode(response.body);
+        final source = readiness is Map ? readiness['source']?.toString() ?? 'unknown' : 'unknown';
+        final classes = readiness is Map ? readiness['classes_available']?.toString() ?? '?' : '?';
+        final scheduleRows = readiness is Map ? readiness['schedule_rows_available']?.toString() ?? '?' : '?';
+        final adminReady = readiness is Map && readiness['administration_ready'] == true;
+        setState(() => apiStatus = adminReady
+            ? 'Сервер готов. Источник: $source • классов: $classes • строк расписания: $scheduleRows.'
+            : 'Источник готов, но нет активного технического администратора. Заполни NAVIGATOR_BOOTSTRAP_ADMIN_USERNAME/PASSWORD в .env.');
+      } else if (response.statusCode == 503) {
+        setState(() => apiStatus = 'Сервер запущен, но не готов: настрой NAVIGATOR_TOKEN_SECRET и источник школьных данных в .env.');
+      } else {
+        setState(() => apiStatus = 'Сервер отвечает, но вернул HTTP ${response.statusCode}.');
+      }
       await AdminRepository().audit(widget.account, 'Проверено подключение API');
     } catch (_) {
       if (!mounted) return;
-      setState(() => apiStatus = 'Не удалось подключиться. Проверь адрес и доступность сервера.');
+      setState(() => apiStatus = 'Не удалось подключиться. Проверь адрес, HTTPS и доступность школьной сети.');
     }
   }
 
@@ -313,23 +349,52 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     tab = tab.clamp(0, sections.length - 1);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Админ-панель', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('Кабинет школы', style: TextStyle(fontWeight: FontWeight.w900)),
         actions: [
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Center(child: Text('${widget.account.login} • ${_roleName(widget.account.role)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))),
         ],
       ),
-      body: Row(children: [
-        NavigationRail(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), labelType: NavigationRailLabelType.all,
-          destinations: [for (final s in sections) NavigationRailDestination(icon: Icon(s.icon), label: Text(s.title))]),
-        const VerticalDivider(width: 1),
-        Expanded(child: IndexedStack(index: tab, children: [
+      body: LayoutBuilder(builder: (context, constraints) {
+        final panelContent = IndexedStack(index: tab, children: [
           for (final s in sections)
             s.permission == AdminPermissions.manageAdmins ? _admins() :
             s.permission == AdminPermissions.manageSync ? _sync() :
-            s.permission == AdminPermissions.manageSecurity ? _security() : 
+            s.permission == AdminPermissions.manageSecurity ? _security() :
             s.permission == AdminPermissions.viewAudit ? _audit() : _data(),
-        ])),
-      ]),
+        ]);
+        if (constraints.maxWidth < 760) {
+          return Column(children: [
+            Expanded(child: panelContent),
+            NavigationBar(
+              height: 68,
+              selectedIndex: tab,
+              onDestinationSelected: (v) => setState(() => tab = v),
+              destinations: [
+                for (final s in sections)
+                  NavigationDestination(
+                    icon: Icon(s.icon),
+                    label: switch (s.title) {
+                      'Администраторы' => 'Аккаунты',
+                      'Синхронизация' => 'Сервер',
+                      'Безопасность' => 'Защита',
+                      _ => s.title,
+                    },
+                  ),
+              ],
+            ),
+          ]);
+        }
+        return Row(children: [
+          NavigationRail(
+            selectedIndex: tab,
+            onDestinationSelected: (v) => setState(() => tab = v),
+            labelType: NavigationRailLabelType.all,
+            destinations: [for (final s in sections) NavigationRailDestination(icon: Icon(s.icon), label: Text(s.title))],
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: panelContent),
+        ]);
+      }),
     );
   }
 

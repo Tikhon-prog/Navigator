@@ -1,4 +1,4 @@
-/// URL validation for Navigator's optional online data API.
+/// URL validation for the optional online data API of «Поколение».
 ///
 /// Remote API traffic must use HTTPS. A client-side API URL is configuration,
 /// not an authentication secret.
