@@ -44,6 +44,23 @@ class SchoolApiTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def test_manual_supplement_rejects_invalid_clock_time(self):
+        body = api.SupplementBody(title="Robotics", weekday=3, time="25:90", status="active")
+        with self.assertRaises(HTTPException) as raised:
+            api._validate_supplement_body(body)
+        self.assertEqual(raised.exception.status_code, 422)
+
+    def test_manual_supplement_rejects_unknown_status(self):
+        body = api.SupplementBody(title="Robotics", weekday=3, time="15:30", status="maybe")
+        with self.assertRaises(HTTPException) as raised:
+            api._validate_supplement_body(body)
+        self.assertEqual(raised.exception.status_code, 422)
+
+    def test_manual_supplement_accepts_valid_optional_time(self):
+        body = api.SupplementBody(title="Robotics", weekday=3, time="15:30", status="active")
+        api._validate_supplement_body(body)
+        api._validate_supplement_body(api.SupplementBody(title="Robotics", weekday=3, time="", status="inactive"))
+
     def test_password_hash_is_salted_and_verifies(self):
         first = api._hash_password("password")
         second = api._hash_password("password")
