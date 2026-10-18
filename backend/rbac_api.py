@@ -1018,6 +1018,7 @@ def _cancel_pending_dop_reminders(db, supplement_id: str) -> None:
 @router.patch("/management/supplements/{supplement_id}")
 def update_supplement(supplement_id: str, body: core.SupplementBody,
                       actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, Any]:
+    core._validate_supplement_body(body)
     with core._db() as db:
         row = db.execute("SELECT student_id FROM student_supplements WHERE id=?", (supplement_id,)).fetchone()
         if not row:
