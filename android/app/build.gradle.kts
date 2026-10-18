@@ -6,7 +6,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Navigator test/release builds use the local Android debug keystore unless a
+// «Поколение» uses the local Android debug keystore for test/release builds unless a
 // dedicated release key.properties file is supplied. This prevents generating
 // an unsigned APK (which Android reports as INSTALL_PARSE_FAILED_NO_CERTIFICATES).
 val releaseKeyPropertiesFile = rootProject.file("key.properties")
@@ -39,7 +39,7 @@ android {
         // is configured. A locally generated key.properties file takes priority.
         getByName("debug")
 
-        create("navigatorRelease") {
+        create("pokolenieRelease") {
             if (releaseKeyPropertiesFile.exists()) {
                 val storePath = releaseKeyProperties.getProperty("storeFile")
                 if (!storePath.isNullOrBlank()) {
@@ -55,7 +55,7 @@ android {
     buildTypes {
         getByName("release") {
             signingConfig = if (releaseKeyPropertiesFile.exists()) {
-                signingConfigs.getByName("navigatorRelease")
+                signingConfigs.getByName("pokolenieRelease")
             } else {
                 signingConfigs.getByName("debug")
             }
