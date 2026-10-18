@@ -448,6 +448,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     if (item['weekday'] != null) 'День: ${item['weekday']}',
                     if ('${item['time'] ?? ''}'.isNotEmpty) '${item['time']}',
                     if ('${item['room'] ?? ''}'.isNotEmpty) 'Кабинет ${item['room']}',
+                    if ('${item['status'] ?? 'active'}' == 'inactive') 'Неактивно / отменено',
                   ].join(' • ')),
                   trailing: canManageDop ? Row(mainAxisSize: MainAxisSize.min, children: [
                     IconButton(
