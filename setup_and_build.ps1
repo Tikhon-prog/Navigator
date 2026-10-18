@@ -211,8 +211,14 @@ if (Test-Path -LiteralPath $toolsProperties) {
         $installedToolsRevision = $Matches[1].Trim()
     }
 }
-# Do not trust an existing sdkmanager path alone: a prior/latest install may be v23+.
-if ($installedToolsRevision -ne $toolsRevision -or -not (Test-Path -LiteralPath $sdkManager)) {
+# v23+ uses a new Android CLI wrapper for sdkmanager --licenses; Flutter 3.47 still
+# expects the legacy interactive license command. Replace it if either version or wrapper is wrong.
+$needsToolsInstall = $installedToolsRevision -ne $toolsRevision -or -not (Test-Path -LiteralPath $sdkManager)
+if (-not $needsToolsInstall) {
+    $sdkManagerText = Get-Content -LiteralPath $sdkManager -Raw
+    if ($sdkManagerText -match 'Android CLI will be used instead') { $needsToolsInstall = $true }
+}
+if ($needsToolsInstall) {
     Write-Host 'Installing pinned Android command-line tools 22.0...'
     $toolsUrl = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
     $toolsSha = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
@@ -237,6 +243,96 @@ if ($installedToolsRevision -ne $toolsRevision -or -not (Test-Path -LiteralPath 
     Remove-Item -LiteralPath $toolsExtract -Recurse -Force
 }
 if (-not (Test-Path -LiteralPath $sdkManager)) { throw 'Android sdkmanager.bat was not installed correctly.' }
+$installedToolsMetadata = Get-Content -LiteralPath $toolsProperties -Raw
+if ($installedToolsMetadata -notmatch '(?m)^Pkg\.Revision\s*=\s*22\.0\s* -Paths @((Join-Path $AndroidSdk 'platform-tools'), (Join-Path $AndroidSdk 'cmdline-tools\latest\bin'))
+# Accept licenses before installing packages; otherwise sdkmanager skips them.
+Write-Host 'Accept the Android SDK license terms in the terminal when prompted...'
+& $sdkManager "--sdk_root=$AndroidSdk" --licenses
+if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed. Ensure command-line tools 22.0 is installed.' }
+Write-Host 'Installing platform-tools, Android API 36 and build-tools 36.0.0...'
+& $sdkManager "--sdk_root=$AndroidSdk" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
+
+# Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
+Write-Step ("Installing Flutter " + $FlutterVersion)
+$flutterExe = Join-Path $FlutterSdk 'bin\flutter.bat'
+$hasFlutter = $false
+if (Test-Path -LiteralPath $flutterExe) {
+    $oldVersion = (& $flutterExe --version 2>&1 | Out-String)
+    if ($oldVersion -match [regex]::Escape($FlutterVersion)) { $hasFlutter = $true }
+}
+if (-not $hasFlutter) {
+    $manifest = Invoke-RestMethod -Uri 'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json' -TimeoutSec 120
+    $release = $manifest.releases | Where-Object { $_.version -eq $FlutterVersion -and $_.channel -eq 'stable' } | Select-Object -First 1
+    if (-not $release -or -not $release.archive -or -not $release.sha256) { throw ("Flutter stable " + $FlutterVersion + ' was not found in the official manifest.') }
+    $baseUrl = $manifest.base_url
+    if (-not $baseUrl) { $baseUrl = 'https://storage.googleapis.com/flutter_infra_release/releases' }
+    $flutterUrl = $baseUrl.TrimEnd('/') + '/' + $release.archive.TrimStart('/')
+    $flutterZip = Join-Path $BuildTemp ("flutter_windows_" + $FlutterVersion + '-stable.zip')
+    if (Test-Path -LiteralPath $FlutterParent) { Remove-Item -LiteralPath $FlutterParent -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $FlutterParent | Out-Null
+    Write-Host ("Downloading " + $flutterUrl)
+    Invoke-WebRequest -UseBasicParsing -Uri $flutterUrl -OutFile $flutterZip
+    $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $flutterZip).Hash.ToLowerInvariant()
+    if ($actualSha -ne $release.sha256.ToLowerInvariant()) { throw 'Flutter SDK checksum mismatch against official manifest; refusing to install.' }
+    Expand-Archive -LiteralPath $flutterZip -DestinationPath $FlutterParent -Force
+    Remove-Item -LiteralPath $flutterZip -Force
+}
+if (-not (Test-Path -LiteralPath $flutterExe)) { throw 'flutter.bat was not found after SDK extraction.' }
+Add-UserPath -Paths @((Join-Path $FlutterSdk 'bin'))
+Invoke-Checked -File $flutterExe -Arguments @('--version')
+Invoke-Checked -File $flutterExe -Arguments @('config', '--enable-windows-desktop')
+& $flutterExe doctor --android-licenses
+if ($LASTEXITCODE -ne 0) { throw 'Flutter could not validate Android SDK licenses.' }
+Invoke-Checked -File $flutterExe -Arguments @('precache', '--android', '--windows')
+
+# Clone/update repository without discarding local modifications.
+Write-Step 'Downloading or updating repository'
+if (Test-Path -LiteralPath $RepoDirectory) {
+    if (-not (Test-Path -LiteralPath (Join-Path $RepoDirectory '.git'))) { throw ("Directory exists but is not a Git repository: " + $RepoDirectory + '. Move/rename it and rerun.') }
+    $origin = (& git -C $RepoDirectory remote get-url origin 2>$null | Select-Object -First 1)
+    if ($origin -notmatch 'github\.com[:/]Tikhon-prog/Navigator(?:\.git)?$') { throw ("Existing repository has unexpected origin: " + $origin) }
+    $changes = (& git -C $RepoDirectory status --porcelain --untracked-files=all | Out-String).Trim()
+    if ($changes) { throw ("Local edits exist in " + $RepoDirectory + '. Commit/stash or move them first; the script will not delete edits.') }
+    Invoke-Checked -File (Get-Command git).Source -Arguments @('-C', $RepoDirectory, 'switch', 'main')
+    Invoke-Checked -File (Get-Command git).Source -Arguments @('-C', $RepoDirectory, 'pull', '--ff-only', 'origin', 'main')
+} else {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $RepoDirectory) | Out-Null
+    Invoke-Checked -File $gh -Arguments @('repo', 'clone', $RepoName, $RepoDirectory)
+}
+
+# This URL is public configuration, not a password/token.
+$apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
+if ([string]::IsNullOrWhiteSpace($apiBase)) { $apiBase = Read-Host 'School backend HTTPS URL (press Enter for offline-only build)' }
+if (-not [string]::IsNullOrWhiteSpace($apiBase)) {
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'API URL must be public HTTPS, without credentials or whitespace.' }
+    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
+} else {
+    Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
+}
+
+Write-Step 'Building and testing Android APK + Windows EXE'
+Set-Location $RepoDirectory
+$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
+if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
+& $buildScript
+if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
+
+$dist = Join-Path $RepoDirectory 'dist'
+Write-Step 'Outputs'
+Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
+Write-Host ("Output folder: " + $dist) -ForegroundColor Green
+Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
+Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
+Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+) {
+    throw 'The downloaded Android command-line tools are not revision 22.0; refusing to continue with the incompatible license CLI.'
+}
+$sdkManagerText = Get-Content -LiteralPath $sdkManager -Raw
+if ($sdkManagerText -match 'Android CLI will be used instead') {
+    throw 'The downloaded SDK manager uses the newer Android CLI wrapper. The legacy 22.0 license manager is required for this Flutter toolchain.'
+}
 Add-UserPath -Paths @((Join-Path $AndroidSdk 'platform-tools'), (Join-Path $AndroidSdk 'cmdline-tools\latest\bin'))
 # Accept licenses before installing packages; otherwise sdkmanager skips them.
 Write-Host 'Accept the Android SDK license terms in the terminal when prompted...'
