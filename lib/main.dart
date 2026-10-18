@@ -1670,7 +1670,12 @@ class _SchedulePageState extends State<SchedulePage> {
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Расписание'),
         actions: [
-          IconButton(tooltip: 'Мои заметки', onPressed: widget.onNotes, icon: const Icon(Icons.note_alt_outlined)),
+          if (width >= 460)
+            IconButton(
+              tooltip: 'Мои заметки',
+              onPressed: widget.onNotes,
+              icon: const Icon(Icons.note_alt_outlined),
+            ),
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
           if (classId.isNotEmpty) ...[
             IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
