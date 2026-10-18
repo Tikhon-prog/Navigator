@@ -203,11 +203,10 @@ if (-not (Test-Path -LiteralPath $sdkManager)) {
 }
 if (-not (Test-Path -LiteralPath $sdkManager)) { throw 'Android sdkmanager.bat was not installed correctly.' }
 Add-UserPath -Paths @((Join-Path $AndroidSdk 'platform-tools'), (Join-Path $AndroidSdk 'cmdline-tools\latest\bin'))
-$yesAnswers = (1..100 | ForEach-Object { 'y' }) -join ([Environment]::NewLine)
 Write-Host 'Installing platform-tools, Android API 36 and build-tools 36.0.0...'
 & $sdkManager "--sdk_root=$AndroidSdk" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
-$yesAnswers | & $sdkManager "--sdk_root=$AndroidSdk" --licenses
+& $sdkManager "--sdk_root=$AndroidSdk" --licenses
 if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed.' }
 
 # Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
@@ -239,7 +238,7 @@ if (-not (Test-Path -LiteralPath $flutterExe)) { throw 'flutter.bat was not foun
 Add-UserPath -Paths @((Join-Path $FlutterSdk 'bin'))
 Invoke-Checked -File $flutterExe -Arguments @('--version')
 Invoke-Checked -File $flutterExe -Arguments @('config', '--enable-windows-desktop')
-$yesAnswers | & $flutterExe doctor --android-licenses
+& $flutterExe doctor --android-licenses
 if ($LASTEXITCODE -ne 0) { throw 'Flutter could not validate Android SDK licenses.' }
 Invoke-Checked -File $flutterExe -Arguments @('precache', '--android', '--windows')
 
