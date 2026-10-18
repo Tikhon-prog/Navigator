@@ -480,9 +480,9 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         if (mounted) await _openStudent(student);
       } else if (action != null && action.startsWith('edit:') && canManageDop && mounted) {
         final supplementId = action.substring('edit:'.length);
-        final existing = supplements.whereType<Map>().where((item) => '${item['id']}' == supplementId).firstOrNull;
-        if (existing != null) {
-          await _editSupplement(id, existing: Map<String, dynamic>.from(existing));
+        final matches = supplements.whereType<Map>().where((item) => '${item['id']}' == supplementId).toList();
+        if (matches.isNotEmpty) {
+          await _editSupplement(id, existing: Map<String, dynamic>.from(matches.first));
         }
         if (mounted) await _openStudent(student);
       } else if (action != null && action.startsWith('delete:') && canManageDop && mounted) {
@@ -561,7 +561,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           FilledButton(onPressed: () {
             if (title.text.trim().isEmpty) return;
             final timeValue = time.text.trim();
-            if (timeValue.isNotEmpty && !RegExp(r'^([01]?\\d|2[0-3]):[0-5]\\d$').hasMatch(timeValue)) {
+            if (timeValue.isNotEmpty && !RegExp(r'^([01]?\d|2[0-3]):[0-5]\d$').hasMatch(timeValue)) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажи время в формате ЧЧ:ММ, например 15:30.')));
               return;
             }
