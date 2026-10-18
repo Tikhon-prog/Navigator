@@ -37,6 +37,6 @@ python -m unittest discover -s backend/tests -v
 
 ## CI
 
-Workflow `.github/workflows/flutter-ci.yml` выполняет сканирование секретов, проверку уязвимых Python-зависимостей, серверные тесты, Flutter-тесты, анализ и release-сборку APK. Артефакт сборки публикуется под именем `navigator-release-apk`.
+Workflow `.github/workflows/flutter-ci.yml` выполняет сканирование секретов, проверку уязвимых Python-зависимостей, серверные тесты, Flutter-тесты, анализ и release-сборку APK. Артефакт сборки публикуется под именем `pokolenie-release-apk`.
 
 Если CI не запускает job или выдаёт ошибку до первого шага, это не доказывает ошибку исходного кода: проверь состояние runner и повтори запуск после восстановления GitHub Actions.

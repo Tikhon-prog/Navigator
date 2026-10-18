@@ -2,7 +2,7 @@
 setlocal
 cd /d %~dp0
 
-echo === Navigator: signed release APK ===
+echo === Поколение: signed release APK ===
 if not exist android\key.properties (
     call setup_release_signing.bat
     if errorlevel 1 exit /b 1
@@ -38,5 +38,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo Navigator release APK is signed and verified.
+echo Поколение release APK is signed and verified.
 endlocal
