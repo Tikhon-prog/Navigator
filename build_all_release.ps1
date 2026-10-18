@@ -71,6 +71,7 @@ Invoke-CheckedCommand 'python' @('-m', 'pip', 'install', '-r', 'backend/requirem
 Invoke-CheckedCommand 'python' @('backend/security_check.py')
 Invoke-CheckedCommand 'python' @('-m', 'unittest', 'discover', '-s', 'backend/tests', '-v')
 
+Invoke-CheckedCommand 'flutter' @('config', '--enable-windows-desktop')
 Invoke-CheckedCommand 'flutter' @('doctor', '-v')
 Invoke-CheckedCommand 'flutter' @('pub', 'get')
 Invoke-CheckedCommand 'flutter' @('test')
@@ -78,7 +79,6 @@ Invoke-CheckedCommand 'flutter' @('analyze', '--no-fatal-infos', '--no-fatal-war
 
 $dartDefine = "POKOLENIE_API_BASE_URL=$apiBase"
 Invoke-CheckedCommand 'flutter' @('build', 'apk', '--release', "--dart-define=$dartDefine")
-Invoke-CheckedCommand 'flutter' @('config', '--enable-windows-desktop')
 Invoke-CheckedCommand 'flutter' @('build', 'windows', '--release', "--dart-define=$dartDefine")
 
 $apk = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
