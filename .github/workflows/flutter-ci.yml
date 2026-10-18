@@ -17,7 +17,7 @@ concurrency:
 jobs:
   quality:
     name: Tests, analysis and security checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
       version: ${{ steps.app-version.outputs.version }}
@@ -71,7 +71,7 @@ jobs:
 
   dependency-audit:
     name: Audit backend dependencies
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
     steps:
@@ -92,7 +92,7 @@ jobs:
   android-build:
     name: Android APK
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout
