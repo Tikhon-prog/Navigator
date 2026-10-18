@@ -130,9 +130,6 @@ def init_db() -> None:
         user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "token_version" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
-        user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
-        if "token_version" not in user_columns:
-            db.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
         refresh_columns = {row["name"] for row in db.execute("PRAGMA table_info(refresh_tokens)").fetchall()}
         if "auth_method" not in refresh_columns:
             db.execute("ALTER TABLE refresh_tokens ADD COLUMN auth_method TEXT NOT NULL DEFAULT 'password'")

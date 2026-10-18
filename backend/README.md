@@ -23,6 +23,8 @@ docker compose logs -f navigator-api
 
 Контейнер слушает `127.0.0.1:8000`; опубликовывать его наружу можно только через настроенный HTTPS reverse proxy.
 
+Firebase push по умолчанию выключен. Для его включения настрой сервисный JSON и публичные настройки Android, установи `NAVIGATOR_ENABLE_FIREBASE=true` в `.env`, затем обязательно пересобери образ командой `docker compose up --build -d`: Firebase Admin SDK устанавливается на этапе сборки. Без этих шагов серверные ленты работают, но push-доставка не выполняется.
+
 ## Источники данных
 
 `NAVIGATOR_DATA_SOURCE=json` читает UTF-8 JSON из `NAVIGATOR_DATA_JSON_PATH`. Верхний уровень — объект, ключи — имена коллекций, значения — массивы объектов. Поддерживаемые коллекции: `Classes`, `BaseSchedule`, `Supplements`, `Rooms`, `Places`, `Announcements`.

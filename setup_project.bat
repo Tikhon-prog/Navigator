@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo === Navigator project setup ===
+echo === Настройка проекта «Поколение» ===
 where flutter >nul 2>nul
 if errorlevel 1 (
   echo Flutter was not found in PATH.

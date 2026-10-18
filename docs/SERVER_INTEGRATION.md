@@ -56,7 +56,7 @@ Required for authenticated endpoints:
 - `NAVIGATOR_OIDC_ISSUER`, optional `NAVIGATOR_OIDC_JWKS_URL` and `NAVIGATOR_OIDC_USERINFO_URL`, plus `NAVIGATOR_OIDC_CLIENT_ID` and `NAVIGATOR_OIDC_REDIRECT_URI`: values registered by school IT. UserInfo/JWKS endpoints are discovered automatically when omitted. The backend verifies the ID-token signature/audience via the IdP JWKS (or OIDC discovery) and compares its subject to UserInfo. The redirect URI must match the Android intent filter and identity-provider registration.
 - `NAVIGATOR_OIDC_AUTO_LINK_USERNAME` and `NAVIGATOR_OIDC_AUTO_PROVISION`: optional first-login automation. Enable only if the configured IdP returns authoritative, non-user-editable username/role/class claims. Configure the claim names explicitly; student accounts require a class claim. Provisioning of `admin` accounts stays disabled unless `NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION=true`.
 - `NAVIGATOR_DATA_SOURCE`: `json` or `http`; the selected source must expose compatible `Classes` and `BaseSchedule` rows.
-- `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM.
+- `NAVIGATOR_ENABLE_FIREBASE`, the four `FIREBASE_*` public app settings and one server credential source: required for end-to-end FCM. It is `false` in the examples. With Docker, set it to `true` before `docker compose up --build -d` because `firebase-admin` is installed at image build time.
 - `FIREBASE_CREDENTIALS_PATH`: optional path to a Firebase service-account JSON file mounted
   read-only as a secret, never committed to the repository. Alternatively, set
   `FIREBASE_CREDENTIALS_JSON_BASE64` to the one-line Base64 encoding of that JSON. Protect
@@ -64,6 +64,7 @@ Required for authenticated endpoints:
 
 Install base dependencies with `pip install -r backend/requirements.txt`.
 For push delivery additionally run `pip install -r backend/requirements-firebase.txt`.
+The Docker image installs this optional package only when the build argument `ENABLE_FIREBASE=true` is selected through `NAVIGATOR_ENABLE_FIREBASE=true` in `.env` before rebuilding.
 Create an FCM-enabled Firebase project first. For the one-line environment option, generate the value with `base64 -w0 service-account.json` on Linux or `[Convert]::ToBase64String([IO.File]::ReadAllBytes('service-account.json'))` in PowerShell. The Android app also needs the public Firebase Android app settings (`FIREBASE_WEB_API_KEY`, `FIREBASE_ANDROID_APP_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_PROJECT_ID`) so it can initialize Firebase at runtime.
 
 ## Routes
