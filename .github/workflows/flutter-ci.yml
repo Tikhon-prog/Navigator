@@ -231,7 +231,7 @@ jobs:
             Write-Host ("Created {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
           }
 
-      - name: Upload Windows installer and app executable
+      - name: Upload Windows installer and portable application
         uses: actions/upload-artifact@v7
         with:
           name: pokolenie-windows-${{ steps.app-version.outputs.version }}
