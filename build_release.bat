@@ -3,11 +3,19 @@ setlocal
 cd /d %~dp0
 
 echo === Поколение: signed release APK ===
+if exist android\key.properties if exist android\app\navigator-release.jks goto SIGNING_READY
+call setup_release_signing.bat
+if errorlevel 1 exit /b 1
 if not exist android\key.properties (
-    call setup_release_signing.bat
-    if errorlevel 1 exit /b 1
+    echo ERROR: signing properties were not created.
+    exit /b 1
+)
+if not exist android\app\navigator-release.jks (
+    echo ERROR: release keystore was not created.
+    exit /b 1
 )
 
+:SIGNING_READY
 flutter clean
 if errorlevel 1 exit /b 1
 flutter pub get
