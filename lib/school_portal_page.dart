@@ -449,11 +449,18 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     if ('${item['time'] ?? ''}'.isNotEmpty) '${item['time']}',
                     if ('${item['room'] ?? ''}'.isNotEmpty) 'Кабинет ${item['room']}',
                   ].join(' • ')),
-                  trailing: canManageDop ? IconButton(
-                    tooltip: 'Удалить ДОП',
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    onPressed: () => Navigator.pop(dialogContext, 'delete:${item['id']}'),
-                  ) : null,
+                  trailing: canManageDop ? Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: 'Изменить ДОП',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: () => Navigator.pop(dialogContext, 'edit:${item['id']}'),
+                    ),
+                    IconButton(
+                      tooltip: 'Удалить ДОП',
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      onPressed: () => Navigator.pop(dialogContext, 'delete:${item['id']}'),
+                    ),
+                  ]) : null,
                 ),
             ],
           ))),
@@ -469,7 +476,14 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         ),
       );
       if (action == 'add_dop' && canManageDop && mounted) {
-        await _addSupplement(id);
+        await _editSupplement(id);
+        if (mounted) await _openStudent(student);
+      } else if (action != null && action.startsWith('edit:') && canManageDop && mounted) {
+        final supplementId = action.substring('edit:'.length);
+        final existing = supplements.whereType<Map>().where((item) => '${item['id']}' == supplementId).firstOrNull;
+        if (existing != null) {
+          await _editSupplement(id, existing: Map<String, dynamic>.from(existing));
+        }
         if (mounted) await _openStudent(student);
       } else if (action != null && action.startsWith('delete:') && canManageDop && mounted) {
         final supplementId = action.substring('delete:'.length);
@@ -498,18 +512,21 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     }
   }
 
-  Future<void> _addSupplement(String studentId) async {
-    final title = TextEditingController();
-    final time = TextEditingController();
-    final teacher = TextEditingController();
-    final room = TextEditingController();
-    int weekday = 1;
+  Future<void> _editSupplement(String studentId, {Map<String, dynamic>? existing}) async {
+    final editing = existing != null;
+    final title = TextEditingController(text: existing?['title']?.toString() ?? '');
+    final time = TextEditingController(text: existing?['time']?.toString() ?? '');
+    final teacher = TextEditingController(text: existing?['teacher']?.toString() ?? '');
+    final room = TextEditingController(text: existing?['room']?.toString() ?? '');
+    int weekday = (existing?['weekday'] as num?)?.toInt() ?? int.tryParse('${existing?['weekday'] ?? ''}') ?? 1;
+    String status = (existing?['status']?.toString() ?? 'active') == 'inactive' ? 'inactive' : 'active';
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
-        title: const Text('Добавить дополнительное занятие'),
+        title: Text(editing ? 'Изменить дополнительное занятие' : 'Добавить дополнительное занятие'),
         content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: title, decoration: const InputDecoration(labelText: 'Название занятия')),
+          TextField(controller: title, textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Название занятия')),
           DropdownButtonFormField<int>(
             value: weekday,
             decoration: const InputDecoration(labelText: 'День недели'),
@@ -524,16 +541,35 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             ],
             onChanged: (v) => setDialogState(() => weekday = v ?? 1),
           ),
-          TextField(controller: time, decoration: const InputDecoration(labelText: 'Время начала', hintText: '15:30')),
-          TextField(controller: teacher, decoration: const InputDecoration(labelText: 'Педагог / наставник')),
+          TextField(controller: time, keyboardType: TextInputType.datetime,
+            decoration: const InputDecoration(labelText: 'Время начала', hintText: '15:30')),
+          TextField(controller: teacher, textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Педагог / наставник')),
           TextField(controller: room, decoration: const InputDecoration(labelText: 'Кабинет / место')),
+          DropdownButtonFormField<String>(
+            value: status,
+            decoration: const InputDecoration(labelText: 'Статус занятия'),
+            items: const [
+              DropdownMenuItem(value: 'active', child: Text('Активно')),
+              DropdownMenuItem(value: 'inactive', child: Text('Неактивно / отменено')),
+            ],
+            onChanged: (v) => setDialogState(() => status = v ?? 'active'),
+          ),
         ]))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
             if (title.text.trim().isEmpty) return;
-            Navigator.pop(dialogContext, {'title': title.text.trim(), 'weekday': weekday,
-              'time': time.text.trim(), 'teacher': teacher.text.trim(), 'room': room.text.trim()});
+            final timeValue = time.text.trim();
+            if (timeValue.isNotEmpty && !RegExp(r'^([01]?\\d|2[0-3]):[0-5]\\d$').hasMatch(timeValue)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажи время в формате ЧЧ:ММ, например 15:30.')));
+              return;
+            }
+            Navigator.pop(dialogContext, {
+              'title': title.text.trim(), 'weekday': weekday,
+              'time': timeValue, 'teacher': teacher.text.trim(),
+              'room': room.text.trim(), 'status': status,
+            });
           }, child: const Text('Сохранить')),
         ],
       )),
@@ -541,7 +577,11 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
     title.dispose(); time.dispose(); teacher.dispose(); room.dispose();
     if (result == null) return;
     await _withBusy(() async {
-      await _request('POST', 'management/students/$studentId/supplements', body: result);
+      if (editing) {
+        await _request('PATCH', 'management/supplements/${existing['id']}', body: result);
+      } else {
+        await _request('POST', 'management/students/$studentId/supplements', body: result);
+      }
     });
   }
 
