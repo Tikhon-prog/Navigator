@@ -16,7 +16,7 @@ if (releaseKeyPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.navigator"
+    namespace = "ru.pokolenie.navigator"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -27,7 +27,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.navigator"
+        applicationId = "ru.pokolenie.navigator"
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -1,4 +1,4 @@
-package com.example.navigator
+package ru.pokolenie.navigator
 
 import io.flutter.embedding.android.FlutterActivity
 
