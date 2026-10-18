@@ -35,6 +35,34 @@ class SsoProvisioningTests(unittest.TestCase):
         self.db_patch.stop()
         self.tmp.cleanup()
 
+
+    def test_secure_service_url_allows_https_and_exact_loopback_only(self):
+        self.assertTrue(sso_api._is_secure_service_url("https://idp.school.example"))
+        self.assertTrue(sso_api._is_secure_service_url("http://localhost:8080"))
+        self.assertTrue(sso_api._is_secure_service_url("http://127.0.0.1:8080"))
+        self.assertTrue(sso_api._is_secure_service_url("http://[::1]:8080"))
+        self.assertFalse(sso_api._is_secure_service_url("http://localhost.attacker.example"))
+        self.assertFalse(sso_api._is_secure_service_url("http://127.0.0.1.attacker.example"))
+        self.assertFalse(sso_api._is_secure_service_url("http://10.0.0.1"))
+        self.assertFalse(sso_api._is_secure_service_url("https://"))
+
+    def test_director_bootstrap_preserves_exact_issuer_with_trailing_slash(self):
+        env = {
+            "POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME": "director.slash",
+            "POKOLENIE_BOOTSTRAP_DIRECTOR_PASSWORD": "director-bootstrap-password-44",
+            "NAVIGATOR_OIDC_ISSUER": "https://school-id.example.org/",
+            "POKOLENIE_BOOTSTRAP_DIRECTOR_SSO_SUBJECT": "school-subject-director-slash",
+        }
+        with patch.dict(os.environ, env):
+            rbac_api._bootstrap_director()
+        with core._db() as db:
+            identity = db.execute(
+                "SELECT issuer,subject FROM sso_identities WHERE subject=?",
+                ("school-subject-director-slash",),
+            ).fetchone()
+        self.assertEqual(identity["issuer"], "https://school-id.example.org/")
+        self.assertEqual(identity["issuer"], os.environ["NAVIGATOR_OIDC_ISSUER"])
+
     def test_authoritative_student_claim_provisions_class_scoped_account(self):
         user = sso_api._link_or_provision({
             "sub": "school-sub-001", "preferred_username": "student.001",

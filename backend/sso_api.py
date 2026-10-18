@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+from urllib.parse import urlsplit
 from functools import lru_cache
 from typing import Any
 
@@ -19,6 +20,20 @@ from pydantic import BaseModel, Field
 from . import school_api as core
 
 router = APIRouter(prefix="/api/v2", tags=["school SSO"])
+
+
+def _is_secure_service_url(value: str) -> bool:
+    """Allow HTTPS endpoints, or HTTP only for explicit loopback development hosts."""
+    try:
+        parsed = urlsplit(value.strip())
+        host = (parsed.hostname or "").lower()
+        if not host or parsed.username is not None or parsed.password is not None:
+            return False
+        if parsed.scheme.lower() == "https":
+            return True
+        return parsed.scheme.lower() == "http" and host in {"localhost", "127.0.0.1", "::1"}
+    except ValueError:
+        return False
 
 
 class SsoLoginBody(BaseModel):
@@ -47,12 +62,12 @@ def _verify_id_token(id_token: str) -> dict[str, Any]:
     jwks_url = os.getenv("NAVIGATOR_OIDC_JWKS_URL", "").strip()
     if not issuer or not client_id:
         raise HTTPException(status_code=503, detail="School OIDC issuer/client ID is not configured")
-    if not issuer.startswith("https://") and not issuer.startswith("http://localhost"):
+    if not _is_secure_service_url(issuer):
         raise HTTPException(status_code=503, detail="OIDC issuer must use HTTPS")
     try:
         if not jwks_url:
             jwks_url = str(_oidc_metadata(issuer).get("jwks_uri", "")).strip()
-        if not jwks_url or (not jwks_url.startswith("https://") and not jwks_url.startswith("http://localhost")):
+        if not jwks_url or not _is_secure_service_url(jwks_url):
             raise HTTPException(status_code=503, detail="OIDC JWKS endpoint must use HTTPS")
         import jwt
         key = jwt.PyJWKClient(jwks_url, timeout=5).get_signing_key_from_jwt(id_token).key
@@ -83,9 +98,9 @@ def _userinfo(access_token: str) -> dict[str, Any]:
             raise HTTPException(status_code=503, detail="OIDC discovery did not provide a UserInfo endpoint")
     if not endpoint:
         raise HTTPException(status_code=503, detail="OIDC UserInfo endpoint is not configured")
-    if not issuer.startswith("https://") and not issuer.startswith("http://localhost"):
+    if not _is_secure_service_url(issuer):
         raise HTTPException(status_code=503, detail="SSO issuer must use HTTPS")
-    if not endpoint.startswith("https://") and not endpoint.startswith("http://localhost"):
+    if not _is_secure_service_url(endpoint):
         raise HTTPException(status_code=503, detail="SSO userinfo endpoint must use HTTPS")
     try:
         response = requests.get(
@@ -100,7 +115,7 @@ def _userinfo(access_token: str) -> dict[str, Any]:
             raise HTTPException(status_code=401, detail="School SSO returned no stable subject")
         # If the provider exposes issuer in userinfo, require it to match the configured issuer.
         returned_issuer = claims.get("iss")
-        if returned_issuer and str(returned_issuer).rstrip("/") != issuer:
+        if returned_issuer and str(returned_issuer) != issuer:
             raise HTTPException(status_code=401, detail="School SSO issuer mismatch")
         return claims
     except HTTPException:
@@ -249,7 +264,7 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
 
 @router.post("/admin/sso-identities", status_code=201)
 def link_sso_identity(body: SsoLinkBody, actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     if not issuer:
         raise HTTPException(status_code=503, detail="School SSO is not configured")
     with core._db() as db:

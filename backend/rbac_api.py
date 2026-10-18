@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import school_api as core
+from .sso_api import _is_secure_service_url
 
 router = APIRouter(prefix="/api/v2", tags=["school roles and management"])
 
@@ -81,7 +82,7 @@ def _bootstrap_director() -> None:
     username = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME", "").strip()
     password = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_PASSWORD", "")
     display_name = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_DISPLAY_NAME", "Директор школы").strip() or "Директор школы"
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     subject = os.getenv("POKOLENIE_BOOTSTRAP_DIRECTOR_SSO_SUBJECT", "").strip()
 
     if not username and not password and not subject:
@@ -404,10 +405,7 @@ def readiness() -> dict[str, Any]:
         "school_sso_enabled": bool(
             os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
             and os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
-            and (
-                os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().startswith("https://")
-                or os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().startswith("http://localhost")
-            )
+            and _is_secure_service_url(os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip())
         ),
     }
 
@@ -423,14 +421,14 @@ def public_config() -> dict[str, Any]:
         "project_id": os.getenv("FIREBASE_PROJECT_ID", "").strip(),
     }
     firebase_enabled = _firebase_status()["delivery_enabled"]
-    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip().rstrip("/")
+    issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
     userinfo_url = os.getenv("NAVIGATOR_OIDC_USERINFO_URL", "").strip()
     client_id = os.getenv("NAVIGATOR_OIDC_CLIENT_ID", "").strip()
     redirect_uri = os.getenv("NAVIGATOR_OIDC_REDIRECT_URI", "ru.pokolenie.navigator:/oauthredirect").strip()
-    issuer_secure = issuer.startswith("https://") or issuer.startswith("http://localhost")
+    issuer_secure = bool(issuer) and _is_secure_service_url(issuer)
     # UserInfo may be discovered from the issuer's standard OIDC metadata if
     # the school IT team leaves NAVIGATOR_OIDC_USERINFO_URL empty.
-    userinfo_secure = not userinfo_url or userinfo_url.startswith("https://") or userinfo_url.startswith("http://localhost")
+    userinfo_secure = not userinfo_url or _is_secure_service_url(userinfo_url)
     return {
         "school_name": os.getenv("NAVIGATOR_SCHOOL_NAME", "Школа «Поколение»"),
         "api_version": "v2",
