@@ -821,6 +821,8 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
         raise HTTPException(status_code=502, detail="Supplements source did not return a row list")
     imported = 0
     skipped = 0
+    deactivated = 0
+    seen_source_keys: set[str] = set()
     source_name = __import__("os").getenv("NAVIGATOR_DATA_SOURCE", "yandex").strip().lower()
     with core._db() as db:
         for raw in rows:
@@ -866,6 +868,7 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                 ensure_ascii=False, separators=(",", ":")
             )
             source_key = "workbook:" + student["id"] + ":" + (("id:" + external_id) if external_id else hashlib.sha256(stable_payload.encode()).hexdigest())
+            seen_source_keys.add(source_key)
             existing = db.execute(
                 "SELECT id,title,weekday,time,teacher,room,status FROM student_supplements WHERE source_key=?",
                 (source_key,)
@@ -885,15 +888,38 @@ def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.man
                  time_value, teacher, room, status, _now(), source_key)
             )
             imported += 1
+
+        # Reconcile stale workbook-owned rows only after a non-empty, fully mapped
+        # import. Empty/partially mapped responses must never wipe active DOP records.
+        if rows and skipped == 0:
+            stale_rows = db.execute(
+                "SELECT id FROM student_supplements WHERE source_key LIKE 'workbook:%' "
+                "AND status='active'"
+            ).fetchall()
+            for stale in stale_rows:
+                with_source_key = db.execute(
+                    "SELECT source_key FROM student_supplements WHERE id=?", (stale["id"],)
+                ).fetchone()
+                if with_source_key and with_source_key["source_key"] not in seen_source_keys:
+                    _cancel_pending_dop_reminders(db, stale["id"])
+                    db.execute(
+                        "UPDATE student_supplements SET status='inactive',updated_at=? WHERE id=?",
+                        (_now(), stale["id"])
+                    )
+                    deactivated += 1
+
         db.execute(
             "INSERT INTO school_sync_runs(source,imported,skipped,created_at,result_json) VALUES(?,?,?,?,?)",
-            (source_name, imported, skipped, _now(), json.dumps({"sheet": "Supplements"}, ensure_ascii=False))
+            (source_name, imported, skipped, _now(),
+             json.dumps({"sheet": "Supplements", "deactivated": deactivated,
+                         "complete_source": bool(rows) and skipped == 0}, ensure_ascii=False))
         )
     core._audit(actor["id"], "school_data.supplements_synced", None,
-                {"source": source_name, "imported": imported, "skipped": skipped})
-    return {"status": "completed", "source": source_name, "rows_seen": len(rows),
-            "imported_or_updated": imported, "skipped": skipped,
-            "note": "Only rows mapped to an active student account are imported. Unmatched rows are skipped safely."}
+                {"source": source_name, "imported": imported, "skipped": skipped, "deactivated": deactivated})
+    return {"status": "completed" if rows and skipped == 0 else "partial_preserved_previous",
+            "source": source_name, "rows_seen": len(rows),
+            "imported_or_updated": imported, "deactivated": deactivated, "skipped": skipped,
+            "note": "Only rows mapped to an active student account are imported. Stale workbook-owned records are marked inactive only after a complete non-empty import; unmatched rows and empty sources preserve prior records."}
 
 
 @router.get("/management/sync/status")
