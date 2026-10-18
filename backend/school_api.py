@@ -670,9 +670,16 @@ def get_student(student_id: str, actor: dict[str, Any] = Depends(require_roles("
 
 @router.post("/admin/students/{student_id}/supplements", status_code=201)
 def _validate_supplement_body(body: SupplementBody) -> None:
-    if body.time.strip() and not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", body.time.strip()):
+    body.title = body.title.strip()
+    body.time = body.time.strip()
+    body.teacher = body.teacher.strip()
+    body.room = body.room.strip()
+    body.status = body.status.strip().lower()
+    if not body.title:
+        raise HTTPException(status_code=422, detail="Supplement title cannot be empty")
+    if body.time and not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", body.time):
         raise HTTPException(status_code=422, detail="Supplement time must use HH:MM, for example 15:30")
-    if body.status.strip().lower() not in {"active", "inactive"}:
+    if body.status not in {"active", "inactive"}:
         raise HTTPException(status_code=422, detail="Supplement status must be active or inactive")
 
 
