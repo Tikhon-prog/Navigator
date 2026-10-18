@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -668,7 +669,15 @@ def get_student(student_id: str, actor: dict[str, Any] = Depends(require_roles("
 
 
 @router.post("/admin/students/{student_id}/supplements", status_code=201)
+def _validate_supplement_body(body: SupplementBody) -> None:
+    if body.time.strip() and not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", body.time.strip()):
+        raise HTTPException(status_code=422, detail="Supplement time must use HH:MM, for example 15:30")
+    if body.status.strip().lower() not in {"active", "inactive"}:
+        raise HTTPException(status_code=422, detail="Supplement status must be active or inactive")
+
+
 def add_student_supplement(student_id: str, body: SupplementBody, actor: dict[str, Any] = Depends(require_roles("admin"))) -> dict[str, Any]:
+    _validate_supplement_body(body)
     supplement_id = secrets.token_urlsafe(12)
     with _db() as db:
         student = db.execute("SELECT id FROM users WHERE id=? AND role='student' AND active=1", (student_id,)).fetchone()
