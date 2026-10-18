@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'bell_countdown.dart';
+import 'notes_page.dart';
 import 'admin_panel.dart';
 import 'announcements_page.dart';
 import 'door_points.dart';
@@ -1173,13 +1175,18 @@ class _AppShellState extends State<AppShell>{
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
   }
+  Future<void> _openNotes() async {
+    key.currentState?.closeDrawer();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PersonalNotesPage()));
+  }
   @override
   Widget build(BuildContext context) {
     final menu = () => key.currentState?.openDrawer();
     final pages = <Widget>[
       HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
-      SchedulePage(onMenu: menu),
+      SchedulePage(onMenu: menu, onNotes: _openNotes),
       SupplementsPage(onMenu: menu),
       SettingsPage(theme: widget.theme, userName: widget.userName, onThemeChanged: widget.onThemeChanged, onNameChanged: widget.onNameChanged, onMenu: menu),
     ];
@@ -1223,7 +1230,7 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else { go(x.$1); } }))]))])));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else { go(x.$1); } }))]))])));}
 }
 class HomePage extends StatelessWidget {
   final String userName;
@@ -1583,7 +1590,8 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
 
 class SchedulePage extends StatefulWidget {
   final VoidCallback onMenu;
-  const SchedulePage({super.key, required this.onMenu});
+  final VoidCallback onNotes;
+  const SchedulePage({super.key, required this.onMenu, required this.onNotes});
   @override State<SchedulePage> createState() => _SchedulePageState();
 }
 class _SchedulePageState extends State<SchedulePage> {
@@ -1591,28 +1599,13 @@ class _SchedulePageState extends State<SchedulePage> {
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
-  @override void initState() { super.initState(); _load(); _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) setState(() => _now = DateTime.now()); }); }
+  @override void initState() { super.initState(); _load(); _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() => _now = DateTime.now()); }); }
   @override void dispose() { _clockTimer?.cancel(); super.dispose(); }
-  String? _nextLessonCountdown(List<ScheduleEntry> dayEntries) {
-    if (day != DateTime.now().weekday || day > 6) return null;
-    final upcoming = <({ScheduleEntry entry, DateTime start})>[];
-    for (final entry in dayEntries) {
-      final match = RegExp(r'\d{1,2}:\d{2}').firstMatch(entry.time);
-      if (match == null) continue;
-      final parts = match.group(0)!.split(':');
-      final start = DateTime(_now.year, _now.month, _now.day, int.parse(parts[0]), int.parse(parts[1]));
-      if (start.isAfter(_now)) upcoming.add((entry: entry, start: start));
-    }
-    upcoming.sort((a, b) => a.start.compareTo(b.start));
-    if (upcoming.isEmpty) return dayEntries.isEmpty ? null : 'Уроки на сегодня закончились';
-    final next = upcoming.first;
-    final remaining = next.start.difference(_now);
-    final hours = remaining.inHours;
-    final minutes = remaining.inMinutes.remainder(60);
-    final seconds = remaining.inSeconds.remainder(60);
-    final countdown = hours > 0 ? '${hours} ч ${minutes.toString().padLeft(2, '0')} мин' : '${minutes} мин ${seconds.toString().padLeft(2, '0')} сек';
-    return 'До следующего урока: $countdown • ${next.entry.subject} (${next.entry.time.split(RegExp(r'[-–—]')).first.trim()})';
-  }
+  String? _breakCountdown(List<ScheduleEntry> dayEntries) => SchoolBellCountdown.describe(
+    selectedDay: day,
+    now: _now,
+    lessons: dayEntries.map((entry) => (time: entry.time, subject: entry.subject)).toList(),
+  );
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
     try { await SchoolScheduleCatalog.refreshOnline(); } catch (_) {}
@@ -1669,6 +1662,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
+    final breakCountdown = _breakCountdown(list);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
     return Scaffold(
@@ -1676,6 +1670,7 @@ class _SchedulePageState extends State<SchedulePage> {
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Расписание'),
         actions: [
+          IconButton(tooltip: 'Мои заметки', onPressed: widget.onNotes, icon: const Icon(Icons.note_alt_outlined)),
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
           if (classId.isNotEmpty) ...[
             IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
@@ -1735,7 +1730,7 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (!loading && classId.isNotEmpty && _nextLessonCountdown(list) != null) ...[
+                if (!loading && classId.isNotEmpty && breakCountdown != null) ...[
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
@@ -1747,7 +1742,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Row(children: [
                       Icon(Icons.hourglass_bottom_rounded, color: scheme.onTertiaryContainer),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(_nextLessonCountdown(list)!, style: TextStyle(color: scheme.onTertiaryContainer, fontWeight: FontWeight.w800, fontSize: 13))),
+                      Expanded(child: Text(breakCountdown, style: TextStyle(color: scheme.onTertiaryContainer, fontWeight: FontWeight.w800, fontSize: 13))),
                     ]),
                   ),
                 ],
