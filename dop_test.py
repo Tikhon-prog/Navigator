@@ -390,7 +390,7 @@ def merge_current(programs, choices):
 
 def ask_student():
     print("=" * 60)
-    print("Navigator ДОП parser — проверка")
+    print("«Поколение» — тест парсера ДОП")
     print("=" * 60)
     print()
 
@@ -454,7 +454,7 @@ def main():
     opener.addheaders = [
         (
             "User-Agent",
-            "Navigator-Dop-Test/1.1 "
+            "Pokolenie-Dop-Test/1.1 "
             "(Python urllib)",
         )
     ]
