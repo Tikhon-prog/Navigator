@@ -69,7 +69,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setu
 
 Сервер — отдельное приложение в `backend/`. Прежде чем включать функции, требующие сети:
 
-1. Разверни backend согласно [документации серверной интеграции](docs/SERVER_INTEGRATION.md) и [перечню функций](docs/SERVER_FEATURES.md). Для контейнерного запуска проверь `docker-compose.yml`.
+1. Разверни backend согласно [документации серверной интеграции](SERVER_INTEGRATION.md) и [перечню функций](SERVER_FEATURES.md). Для контейнерного запуска проверь `docker-compose.yml`.
 2. На сервере создай настоящий `.env` из корневого `.env.example` или `backend/.env.example` согласно выбранному способу запуска. Не коммить заполненный файл.
 3. Задай уникальный `NAVIGATOR_TOKEN_SECRET` (минимум 32 случайных символа), постоянное записываемое хранилище SQLite и bootstrap-данные технического администратора. Не используй пример `CHANGE_ME` в реальной установке.
 4. Подготовь официальный источник школьных данных. При `NAVIGATOR_DATA_SOURCE=json` он должен содержать коллекции `Classes`, `BaseSchedule`, `Rooms`, `Places` и `Announcements`; каждая коллекция — массив объектов. При необходимости добавь `Supplements`. Альтернатива — HTTPS API с подходящими полями. Данные реального расписания и назначений должен подтвердить ответственный сотрудник.
@@ -93,7 +93,7 @@ http://127.0.0.1:43827/oauth/callback
 
 Задай на сервере `NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI` в соответствии с зарегистрированным адресом. Значение передаётся клиенту через публичную конфигурацию; пароль клиента и `client_secret` не нужны и не должны встраиваться в EXE. Windows вход открывает системный браузер и использует Authorization Code + PKCE. На OIDC-провайдере должен быть разрешён этот точный адрес loopback и метод PKCE S256; некоторые провайдеры требуют отдельную регистрацию desktop-клиента. Без регистрации redirect URI школьный SSO не заработает.
 
-Также необходимо настроить `NAVIGATOR_OIDC_ISSUER`, `NAVIGATOR_OIDC_CLIENT_ID`, корректный mobile `NAVIGATOR_OIDC_REDIRECT_URI` и правила привязки `sub`/учётной записи в соответствии с [моделью безопасности](docs/SECURITY.md).
+Также необходимо настроить `NAVIGATOR_OIDC_ISSUER`, `NAVIGATOR_OIDC_CLIENT_ID`, корректный mobile `NAVIGATOR_OIDC_REDIRECT_URI` и правила привязки `sub`/учётной записи в соответствии с [моделью безопасности](SECURITY.md).
 
 ### Общешкольные оповещения и Firebase
 

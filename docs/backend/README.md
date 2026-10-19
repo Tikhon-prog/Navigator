@@ -6,7 +6,7 @@ FastAPI-сервис поддерживает публичные справоч�
 
 1. Установить Python 3.12 или новее.
 2. Скопировать корневой `.env.example` в `.env` и заполнить серверные параметры.
-3. Подготовить JSON-источник или HTTPS API согласно [SERVER_INTEGRATION.md](../docs/SERVER_INTEGRATION.md).
+3. Подготовить JSON-источник или HTTPS API согласно [SERVER_INTEGRATION.md](../SERVER_INTEGRATION.md).
 4. Установить зависимости:
 
 ```bash
