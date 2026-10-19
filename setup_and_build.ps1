@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# One-file Windows setup: installs toolchains, SDKs, caches and source under C:\Dev.
+# One-file setup: installs toolchains, SDKs, caches and source under C:\Dev.
 $ErrorActionPreference = 'Stop'
 $script:TranscriptStarted = $false
 trap {
@@ -14,24 +14,18 @@ trap {
     exit 1
 }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-# Elevate automatically. The user only needs to download this .ps1 and launch it.
+# Request elevation automatically, so no separate administrator command is needed.
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    if (-not $PSCommandPath -or -not (Test-Path -LiteralPath $PSCommandPath)) {
-        throw 'Не удалось определить путь к установщику. Скачай setup_and_build.ps1 и запусти файл напрямую.'
-    }
+    if (-not $PSCommandPath -or -not (Test-Path -LiteralPath $PSCommandPath)) { throw 'Не удалось определить путь к установщику. Скачай setup_and_build.ps1 и запусти файл напрямую.' }
     Write-Host 'Запрашиваю права администратора Windows...' -ForegroundColor Yellow
     $elevatedArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
     $elevated = Start-Process -FilePath 'powershell.exe' -ArgumentList $elevatedArgs -Verb RunAs -Wait -PassThru
     exit $elevated.ExitCode
 }
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'This setup supports Windows x64 only.' }
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.'
-}
-
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.' }
 $FlutterVersion = '3.47.4'
 $RepoName = 'Tikhon-prog/Navigator'
 $DevRoot = 'C:\Dev'
@@ -45,46 +39,23 @@ $PubCache = Join-Path $DevRoot 'PubCache'
 $BuildTemp = Join-Path $DevRoot 'Temp'
 $LogRoot = Join-Path $DevRoot 'Logs'
 $logPath = Join-Path $LogRoot ("setup-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
-
 $pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
 $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
 $vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
-$requiredVsComponents = @(
-    'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-    'Microsoft.VisualStudio.Component.VC.ATL',
-    'Microsoft.VisualStudio.Component.Windows10SDK.19041'
-)
-$vsQueryArgs = @('-latest', '-products', '*', '-version', '[17.0,18.0)', '-requires') + $requiredVsComponents + @('-property', 'installationPath')
+$requiredVsComponents = @('Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows10SDK.19041')
+$vsQueryArgs = @('-latest','-products','*','-version','[17.0,18.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
 $vsToolchainPath = $null
-if (Test-Path -LiteralPath $vswhere) {
-    $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
-}
+if (Test-Path -LiteralPath $vswhere) { $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1) }
 $cDrive = Get-PSDrive -Name C -ErrorAction Stop
-$cFreeGiB = [math]::Round($cDrive.Free / 1GB, 1)
+$cFreeGiB = [math]::Round($cDrive.Free / 1GB,1)
 $minimumFreeBytes = if ($vsToolchainPath) { 12GB } else { 30GB }
 Write-Host ("Свободно на C:: " + $cFreeGiB + ' GiB')
-if ($cDrive.Free -lt $minimumFreeBytes) {
-    $minimumGiB = [math]::Round($minimumFreeBytes / 1GB, 0)
-    throw ("На C: свободно " + $cFreeGiB + ' GiB. Для этого этапа требуется не менее ' + $minimumGiB + ' GiB. Освободи место и запусти этот файл повторно.')
-}
-if ($cDrive.Free -lt 20GB) {
-    Write-Warning 'Свободного места немного; убедись, что на C: нет больших временных файлов. SD-карта для сборки больше не используется.'
-}
-
-New-Item -ItemType Directory -Force -Path $DevRoot, $ToolRoot, $AndroidSdk, $GradleHome, $PubCache, $BuildTemp, $LogRoot | Out-Null
-try {
-    Start-Transcript -Path $logPath -Force | Out-Null
-    $script:TranscriptStarted = $true
-    Write-Host ("Журнал установки: " + $logPath) -ForegroundColor DarkGray
-} catch {
-    Write-Warning 'Не удалось включить журналирование; установка продолжится.'
-}
-# Put Flutter caches and Dart/Gradle dependencies on C: persistently.
-foreach ($pair in @(@('GRADLE_USER_HOME',$GradleHome), @('PUB_CACHE',$PubCache))) {
-    [Environment]::SetEnvironmentVariable($pair[0], $pair[1], 'User')
-    Set-Item -Path ("Env:" + $pair[0]) -Value $pair[1]
-}
+if ($cDrive.Free -lt $minimumFreeBytes) { $minimumGiB=[math]::Round($minimumFreeBytes/1GB,0); throw ("На C: свободно " + $cFreeGiB + ' GiB. Требуется не менее ' + $minimumGiB + ' GiB. Освободи место и запусти файл повторно.') }
+if ($cDrive.Free -lt 20GB) { Write-Warning 'Свободного места немного; SD-карта для сборки больше не используется.' }
+New-Item -ItemType Directory -Force -Path $DevRoot,$ToolRoot,$AndroidSdk,$GradleHome,$PubCache,$BuildTemp,$LogRoot | Out-Null
+try { Start-Transcript -Path $logPath -Force | Out-Null; $script:TranscriptStarted=$true; Write-Host ("Журнал установки: "+$logPath) -ForegroundColor DarkGray } catch { Write-Warning 'Не удалось включить журналирование; установка продолжится.' }
+foreach ($pair in @(@('GRADLE_USER_HOME',$GradleHome),@('PUB_CACHE',$PubCache))) { [Environment]::SetEnvironmentVariable($pair[0],$pair[1],'User'); Set-Item -Path ("Env:"+$pair[0]) -Value $pair[1] }
 
 function Write-Step {
     param([string]$Message)
@@ -154,12 +125,10 @@ Install-WingetPackage -Id 'Python.Python.3.12'
 Install-WingetPackage -Id 'Microsoft.OpenJDK.21'
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
 
-# Check for the exact C++/ATL/Windows SDK components first; modify only if something is missing.
+# Check Visual Studio components first and modify only if required items are missing.
 $vsInstaller = Join-Path $vsInstallerDir 'vs_installer.exe'
 $vsPath = $null
-if (Test-Path -LiteralPath $vswhere) {
-    $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
-}
+if (Test-Path -LiteralPath $vswhere) { $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1) }
 if (-not $vsPath) {
     Write-Step 'Installing Visual Studio 2022 Build Tools'
     $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
@@ -169,15 +138,13 @@ if (-not $vsPath) {
     $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
 }
 if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
-if (-not (Test-Path -LiteralPath $vsInstaller)) {
-    throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.'
-}
+if (-not (Test-Path -LiteralPath $vsInstaller)) { throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.' }
 $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
 if ($vsToolchainPath) {
     Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
 } else {
     Write-Step 'Adding missing Visual Studio C++ / ATL / Windows SDK components'
-    $vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--norestart')
+    $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.VCTools','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows10SDK.19041','--quiet','--norestart')
     & $vsInstaller @vsArgs
     $vsCode = $LASTEXITCODE
     if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
@@ -291,7 +258,7 @@ if ($needsToolsInstall) {
 }
 if (-not (Test-Path -LiteralPath $sdkManager)) { throw 'Android sdkmanager.bat was not installed correctly.' }
 $installedToolsMetadata = Get-Content -LiteralPath $toolsProperties -Raw
-if ($installedToolsMetadata -notmatch '(?m)^Pkg\.Revision\s*=\s*22\.0\s*$') {
+if ($installedToolsMetadata -notmatch '(?m)^Pkg\.Revision\s*=\s*19\.0\s*$') {
     throw 'The downloaded Android command-line tools are not revision 19.0; refusing to continue with the incompatible license CLI.'
 }
 $sdkManagerText = Get-Content -LiteralPath $sdkManager -Raw
@@ -371,30 +338,7 @@ if ([string]::IsNullOrWhiteSpace($apiBase)) {
     Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
     Write-Host 'Backend URL is not configured; creating the offline-first build.' -ForegroundColor Yellow
 } else {
-    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?
-
-Write-Step 'Building and testing Android APK + Windows EXE'
-Set-Location $RepoDirectory
-$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
-if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
-& $buildScript
-if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
-
-$dist = Join-Path $RepoDirectory 'dist'
-Write-Step 'Outputs'
-Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
-Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
-Write-Host ("Output folder: " + $dist) -ForegroundColor Green
-Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
-Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
-Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
-Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
-if ($script:TranscriptStarted) {
-    Stop-Transcript | Out-Null
-    $script:TranscriptStarted = $false
-}
-Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
-) -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
     $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
 }
 
@@ -413,3 +357,6 @@ Write-Host ("Output folder: " + $dist) -ForegroundColor Green
 Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
 Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
 Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
+if ($script:TranscriptStarted) { Stop-Transcript | Out-Null; $script:TranscriptStarted = $false }
+Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
