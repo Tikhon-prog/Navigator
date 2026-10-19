@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 $script:TranscriptStarted = $false
 trap {
     $fatalMessage = $_.Exception.Message
-    Write-Host ("\nSETUP FAILED: " + $fatalMessage) -ForegroundColor Red
+    Write-Host ''
+    Write-Host ("SETUP FAILED: " + $fatalMessage) -ForegroundColor Red
     if ($script:TranscriptStarted) {
         try { Stop-Transcript | Out-Null } catch {}
         $script:TranscriptStarted = $false
@@ -49,10 +50,10 @@ $vsToolchainPath = $null
 if (Test-Path -LiteralPath $vswhere) { $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1) }
 $cDrive = Get-PSDrive -Name C -ErrorAction Stop
 $cFreeGiB = [math]::Round($cDrive.Free / 1GB,1)
-$minimumFreeBytes = if ($vsToolchainPath) { 12GB } else { 30GB }
+$minimumFreeBytes = if ($vsToolchainPath) { 20GB } else { 35GB }
 Write-Host ("Свободно на C:: " + $cFreeGiB + ' GiB')
 if ($cDrive.Free -lt $minimumFreeBytes) { $minimumGiB=[math]::Round($minimumFreeBytes/1GB,0); throw ("На C: свободно " + $cFreeGiB + ' GiB. Требуется не менее ' + $minimumGiB + ' GiB. Освободи место и запусти файл повторно.') }
-if ($cDrive.Free -lt 20GB) { Write-Warning 'Свободного места немного; SD-карта для сборки больше не используется.' }
+if ($cDrive.Free -lt 25GB) { Write-Warning 'После установки и сборки свободного места станет меньше; рекомендуется освободить дополнительное место.' }
 New-Item -ItemType Directory -Force -Path $DevRoot,$ToolRoot,$AndroidSdk,$GradleHome,$PubCache,$BuildTemp,$LogRoot | Out-Null
 try { Start-Transcript -Path $logPath -Force | Out-Null; $script:TranscriptStarted=$true; Write-Host ("Журнал установки: "+$logPath) -ForegroundColor DarkGray } catch { Write-Warning 'Не удалось включить журналирование; установка продолжится.' }
 foreach ($pair in @(@('GRADLE_USER_HOME',$GradleHome),@('PUB_CACHE',$PubCache))) { [Environment]::SetEnvironmentVariable($pair[0],$pair[1],'User'); Set-Item -Path ("Env:"+$pair[0]) -Value $pair[1] }
