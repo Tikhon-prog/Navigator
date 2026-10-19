@@ -26,6 +26,16 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit $elevated.ExitCode
 }
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'This setup supports Windows x64 only.' }
+# Diagnose centrally enforced script policies before doing any installation.
+$policyList = Get-ExecutionPolicy -List
+$forcedPolicy = $policyList | Where-Object { $_.Scope -in @('MachinePolicy','UserPolicy') -and $_.ExecutionPolicy -ne 'Undefined' } | Select-Object -First 1
+if ($forcedPolicy -and $forcedPolicy.ExecutionPolicy -in @('Restricted','AllSigned','RemoteSigned')) {
+    Write-Host 'Обнаружена политика PowerShell, заданная администратором:' -ForegroundColor Yellow
+    $policyList | Format-Table Scope, ExecutionPolicy -AutoSize | Out-Host
+    Write-Host 'Команда с -ExecutionPolicy Bypass не может переопределить MachinePolicy/UserPolicy. Не меняй корпоративную политику самостоятельно; запусти скрипт на личном ПК или попроси администратора разрешить его.' -ForegroundColor Red
+    Read-Host 'Нажми Enter для выхода'
+    exit 1
+}
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.' }
 $FlutterVersion = '3.47.4'
 $RepoName = 'Tikhon-prog/Navigator'
