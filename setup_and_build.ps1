@@ -1,10 +1,40 @@
 #Requires -Version 5.1
-# Bootstrap for a clean Windows 10/11 x64 machine. Run PowerShell as Administrator.
+# One-file Windows setup: installs toolchains, SDKs, caches and source under C:\Dev.
 $ErrorActionPreference = 'Stop'
+$script:TranscriptStarted = $false
+trap {
+    $fatalMessage = $_.Exception.Message
+    Write-Host ("\nSETUP FAILED: " + $fatalMessage) -ForegroundColor Red
+    if ($script:TranscriptStarted) {
+        try { Stop-Transcript | Out-Null } catch {}
+        $script:TranscriptStarted = $false
+    }
+    Write-Host 'Подробный журнал сохранён в C:\Dev\Logs (если запись журнала успела начаться).' -ForegroundColor Yellow
+    Read-Host 'Нажми Enter, чтобы закрыть окно'
+    exit 1
+}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Elevate automatically. The user only needs to download this .ps1 and launch it.
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if (-not $PSCommandPath -or -not (Test-Path -LiteralPath $PSCommandPath)) {
+        throw 'Не удалось определить путь к установщику. Скачай setup_and_build.ps1 и запусти файл напрямую.'
+    }
+    Write-Host 'Запрашиваю права администратора Windows...' -ForegroundColor Yellow
+    $elevatedArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+    $elevated = Start-Process -FilePath 'powershell.exe' -ArgumentList $elevatedArgs -Verb RunAs -Wait -PassThru
+    exit $elevated.ExitCode
+}
+if (-not [Environment]::Is64BitOperatingSystem) { throw 'This setup supports Windows x64 only.' }
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.'
+}
+
 $FlutterVersion = '3.47.4'
 $RepoName = 'Tikhon-prog/Navigator'
-$DevRoot = 'D:\Dev'
+$DevRoot = 'C:\Dev'
 $RepoDirectory = Join-Path $DevRoot 'Pokolenie'
 $ToolRoot = Join-Path $DevRoot 'Programs\PokolenieToolchain'
 $FlutterParent = Join-Path $ToolRoot ("Flutter-" + $FlutterVersion)
@@ -13,33 +43,48 @@ $AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
 $GradleHome = Join-Path $DevRoot 'Gradle'
 $PubCache = Join-Path $DevRoot 'PubCache'
 $BuildTemp = Join-Path $DevRoot 'Temp'
-New-Item -ItemType Directory -Force -Path $DevRoot, $ToolRoot, $AndroidSdk, $GradleHome, $PubCache, $BuildTemp | Out-Null
-# Keep large SDKs, repository, caches and downloaded archives on D:. Leave Windows TEMP on NTFS C:.
+$LogRoot = Join-Path $DevRoot 'Logs'
+$logPath = Join-Path $LogRoot ("setup-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+
+$pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
+$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+$vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
+$vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
+$requiredVsComponents = @(
+    'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+    'Microsoft.VisualStudio.Component.VC.ATL',
+    'Microsoft.VisualStudio.Component.Windows10SDK.19041'
+)
+$vsQueryArgs = @('-latest', '-products', '*', '-version', '[17.0,18.0)', '-requires') + $requiredVsComponents + @('-property', 'installationPath')
+$vsToolchainPath = $null
+if (Test-Path -LiteralPath $vswhere) {
+    $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+}
+$cDrive = Get-PSDrive -Name C -ErrorAction Stop
+$cFreeGiB = [math]::Round($cDrive.Free / 1GB, 1)
+$minimumFreeBytes = if ($vsToolchainPath) { 12GB } else { 30GB }
+Write-Host ("Свободно на C:: " + $cFreeGiB + ' GiB')
+if ($cDrive.Free -lt $minimumFreeBytes) {
+    $minimumGiB = [math]::Round($minimumFreeBytes / 1GB, 0)
+    throw ("На C: свободно " + $cFreeGiB + ' GiB. Для этого этапа требуется не менее ' + $minimumGiB + ' GiB. Освободи место и запусти этот файл повторно.')
+}
+if ($cDrive.Free -lt 20GB) {
+    Write-Warning 'Свободного места немного; убедись, что на C: нет больших временных файлов. SD-карта для сборки больше не используется.'
+}
+
+New-Item -ItemType Directory -Force -Path $DevRoot, $ToolRoot, $AndroidSdk, $GradleHome, $PubCache, $BuildTemp, $LogRoot | Out-Null
+try {
+    Start-Transcript -Path $logPath -Force | Out-Null
+    $script:TranscriptStarted = $true
+    Write-Host ("Журнал установки: " + $logPath) -ForegroundColor DarkGray
+} catch {
+    Write-Warning 'Не удалось включить журналирование; установка продолжится.'
+}
+# Put Flutter caches and Dart/Gradle dependencies on C: persistently.
 foreach ($pair in @(@('GRADLE_USER_HOME',$GradleHome), @('PUB_CACHE',$PubCache))) {
     [Environment]::SetEnvironmentVariable($pair[0], $pair[1], 'User')
     Set-Item -Path ("Env:" + $pair[0]) -Value $pair[1]
 }
-
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Open Windows PowerShell/Terminal with Run as administrator, then rerun. UAC is needed for Visual Studio C++ Build Tools.'
-}
-if (-not [Environment]::Is64BitOperatingSystem) { throw 'This setup supports Windows x64 only.' }
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw 'winget is missing. Install/update App Installer from Microsoft Store, reboot, then rerun.'
-}
-$devVolume = Get-Volume -DriveLetter D -ErrorAction Stop
-if ($devVolume.FileSystem -notin @('exFAT','NTFS')) { throw ('D: must be exFAT or NTFS; detected ' + $devVolume.FileSystem + '.') }
-$devDrive = Get-PSDrive -Name D
-$devFreeGiB = [math]::Round($devDrive.Free / 1GB, 1)
-Write-Host ("Free space on D:: " + $devFreeGiB + ' GiB (' + $devVolume.FileSystem + ')')
-if ($devDrive.Free -lt 40GB) { throw 'At least 40 GiB free space is recommended on D: for SDKs and builds.' }
-$systemDriveName = $env:SystemDrive.Substring(0, 1)
-$systemDrive = Get-PSDrive -Name $systemDriveName
-$systemFreeGiB = [math]::Round($systemDrive.Free / 1GB, 1)
-Write-Host ("Free space on " + $env:SystemDrive + ': ' + $systemFreeGiB + ' GiB for Windows/Visual Studio components')
-if ($systemDrive.Free -lt 12GB) { throw 'Keep at least 12 GiB free on the Windows system drive for Visual Studio and Windows components.' }
 
 function Write-Step {
     param([string]$Message)
@@ -109,36 +154,38 @@ Install-WingetPackage -Id 'Python.Python.3.12'
 Install-WingetPackage -Id 'Microsoft.OpenJDK.21'
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
 
-# Install or repair the native C++ toolchain, including ATL used by secure storage.
-$pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
-$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-$vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
-$vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
-if (-not (Test-Path -LiteralPath $vswhere)) {
-    $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
-    Install-WingetPackage -Id 'Microsoft.VisualStudio.2022.BuildTools' -Override $vsOverride
-    Refresh-Path
-}
+# Check for the exact C++/ATL/Windows SDK components first; modify only if something is missing.
 $vsInstaller = Join-Path $vsInstallerDir 'vs_installer.exe'
-if (-not (Test-Path -LiteralPath $vswhere) -or -not (Test-Path -LiteralPath $vsInstaller)) {
-    throw 'Visual Studio Installer tools were not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.'
+$vsPath = $null
+if (Test-Path -LiteralPath $vswhere) {
+    $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
 }
-$vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
 if (-not $vsPath) {
-    Write-Step 'Installing Visual Studio 2022 Build Tools (keeping this component on the Windows drive)'
+    Write-Step 'Installing Visual Studio 2022 Build Tools'
     $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
     Install-WingetPackage -Id 'Microsoft.VisualStudio.2022.BuildTools' -Override $vsOverride
     Refresh-Path
+    if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio Installer did not create vswhere.exe. Check the setup log and repair Build Tools.' }
     $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
 }
 if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
-Write-Step 'Ensuring Visual Studio C++ / ATL / Windows SDK components'
-$vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--norestart')
-& $vsInstaller @vsArgs
-$vsCode = $LASTEXITCODE
-if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
-if (($vsCode -eq 3010) -or ($vsCode -eq 1641)) { Write-Warning 'Windows may need a restart before the Windows desktop build works.' }
-Refresh-Path
+if (-not (Test-Path -LiteralPath $vsInstaller)) {
+    throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.'
+}
+$vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+if ($vsToolchainPath) {
+    Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
+} else {
+    Write-Step 'Adding missing Visual Studio C++ / ATL / Windows SDK components'
+    $vsArgs = @('modify', '--installPath', $vsPath, '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended', '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--add', 'Microsoft.VisualStudio.Component.Windows10SDK.19041', '--quiet', '--norestart')
+    & $vsInstaller @vsArgs
+    $vsCode = $LASTEXITCODE
+    if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
+    if (($vsCode -eq 3010) -or ($vsCode -eq 1641)) { Write-Warning 'Windows may need a restart before the Windows desktop build works.' }
+    Refresh-Path
+    $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+    if (-not $vsToolchainPath) { throw 'Visual Studio is missing a required C++/ATL/Windows SDK component after modify.' }
+}
 
 # Make the installed Python/Git folders take priority over WindowsApps aliases.
 $gitPaths = @()
@@ -195,14 +242,14 @@ if (-not $javaHome) { throw 'Microsoft OpenJDK 21 was not found. Repair the JDK 
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
 
-# Pin Android command-line tools to 22.0. Version 23+ replaced the legacy license
-# prompt with a new CLI path that Flutter currently cannot reliably validate.
+# Pin Android command-line tools 19.0. The newer command-line package changed the legacy license flow
+# and caused this project's previous sdkmanager --licenses call to fail.
 Write-Step 'Preparing Android SDK'
 New-Item -ItemType Directory -Force -Path $AndroidSdk | Out-Null
 Set-UserVariable -Name 'ANDROID_HOME' -Value $AndroidSdk
 Set-UserVariable -Name 'ANDROID_SDK_ROOT' -Value $AndroidSdk
 $sdkManager = Join-Path $AndroidSdk 'cmdline-tools\latest\bin\sdkmanager.bat'
-$toolsRevision = '22.0'
+$toolsRevision = '19.0'
 $installedToolsRevision = $null
 $toolsProperties = Join-Path $AndroidSdk 'cmdline-tools\latest\source.properties'
 if (Test-Path -LiteralPath $toolsProperties) {
@@ -219,9 +266,9 @@ if (-not $needsToolsInstall) {
     if ($sdkManagerText -match 'Android CLI will be used instead') { $needsToolsInstall = $true }
 }
 if ($needsToolsInstall) {
-    Write-Host 'Installing pinned Android command-line tools 22.0...'
-    $toolsUrl = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
-    $toolsSha = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+    Write-Host 'Installing pinned Android command-line tools 19.0...'
+    $toolsUrl = 'https://dl.google.com/android/repository/commandlinetools-win-13114758_latest.zip'
+    $toolsSha = '98b565cb657b012dae6794cefc0f66ae1efb4690c699b78a614b4a6a3505b003'
     $downloadDir = Join-Path $BuildTemp 'PokolenieBootstrap'
     New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
     $toolsZip = Join-Path $downloadDir 'android-commandline-tools.zip'
@@ -245,20 +292,29 @@ if ($needsToolsInstall) {
 if (-not (Test-Path -LiteralPath $sdkManager)) { throw 'Android sdkmanager.bat was not installed correctly.' }
 $installedToolsMetadata = Get-Content -LiteralPath $toolsProperties -Raw
 if ($installedToolsMetadata -notmatch '(?m)^Pkg\.Revision\s*=\s*22\.0\s*$') {
-    throw 'The downloaded Android command-line tools are not revision 22.0; refusing to continue with the incompatible license CLI.'
+    throw 'The downloaded Android command-line tools are not revision 19.0; refusing to continue with the incompatible license CLI.'
 }
 $sdkManagerText = Get-Content -LiteralPath $sdkManager -Raw
 if ($sdkManagerText -match 'Android CLI will be used instead') {
-    throw 'The downloaded SDK manager uses the newer Android CLI wrapper. The legacy 22.0 license manager is required for this Flutter toolchain.'
+    throw 'The downloaded SDK manager uses the newer Android CLI wrapper. The legacy 19.0 license manager is required for this Flutter toolchain.'
 }
 Add-UserPath -Paths @((Join-Path $AndroidSdk 'platform-tools'), (Join-Path $AndroidSdk 'cmdline-tools\latest\bin'))
 # Accept licenses before installing packages; otherwise sdkmanager skips them.
 Write-Host 'Accept the Android SDK license terms in the terminal when prompted...'
 & $sdkManager "--sdk_root=$AndroidSdk" --licenses
-if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed. Ensure command-line tools 22.0 is installed.' }
-Write-Host 'Installing platform-tools, Android API 36 and build-tools 36.0.0...'
-& $sdkManager "--sdk_root=$AndroidSdk" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
-if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
+if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed. Ensure command-line tools 19.0 is installed.' }
+# Check each Android package and only ask sdkmanager for components that are absent.
+$missingSdkPackages = @()
+if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'platform-tools\adb.exe'))) { $missingSdkPackages += 'platform-tools' }
+if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'platforms\android-36\android.jar'))) { $missingSdkPackages += 'platforms;android-36' }
+if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'build-tools\36.0.0\aapt.exe'))) { $missingSdkPackages += 'build-tools;36.0.0' }
+if ($missingSdkPackages.Count -gt 0) {
+    Write-Host ('Installing missing Android SDK packages: ' + ($missingSdkPackages -join ', '))
+    & $sdkManager "--sdk_root=$AndroidSdk" --install @missingSdkPackages
+    if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
+} else {
+    Write-Host 'Android platform-tools, API 36 and build-tools 36.0.0 are already present.' -ForegroundColor DarkGray
+}
 
 # Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
 Write-Step ("Installing Flutter " + $FlutterVersion)
@@ -308,14 +364,38 @@ if (Test-Path -LiteralPath $RepoDirectory) {
     Invoke-Checked -File $gh -Arguments @('repo', 'clone', $RepoName, $RepoDirectory)
 }
 
-# This URL is public configuration, not a password/token.
+# No manual configuration is required. Without a configured HTTPS endpoint, build offline-first.
 $apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
-if ([string]::IsNullOrWhiteSpace($apiBase)) { $apiBase = Read-Host 'School backend HTTPS URL (press Enter for offline-only build)' }
-if (-not [string]::IsNullOrWhiteSpace($apiBase)) {
-    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'API URL must be public HTTPS, without credentials or whitespace.' }
-    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
-} else {
+if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    $apiBase = ''
     Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
+    Write-Host 'Backend URL is not configured; creating the offline-first build.' -ForegroundColor Yellow
+} else {
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?
+
+Write-Step 'Building and testing Android APK + Windows EXE'
+Set-Location $RepoDirectory
+$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
+if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
+& $buildScript
+if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
+
+$dist = Join-Path $RepoDirectory 'dist'
+Write-Step 'Outputs'
+Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
+Write-Host ("Output folder: " + $dist) -ForegroundColor Green
+Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
+Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
+Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
+if ($script:TranscriptStarted) {
+    Stop-Transcript | Out-Null
+    $script:TranscriptStarted = $false
+}
+Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
+) -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
+    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
 }
 
 Write-Step 'Building and testing Android APK + Windows EXE'
