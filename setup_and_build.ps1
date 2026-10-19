@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # One-file setup: installs toolchains, SDKs, caches and source under C:\Dev.
 $ErrorActionPreference = 'Stop'
 $script:TranscriptStarted = $false
