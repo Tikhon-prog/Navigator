@@ -1,14 +1,18 @@
+# Сборка тестовой офлайн-версии без секретов
+
+Для локального тестового APK и Windows EXE из уже скачанного репозитория используй [`build_test.ps1`](../build_test.ps1). Он собирает оба отладочных клиента без API URL, SSO, Firebase secrets и серверного `.env`. Для Windows EXE нужен Visual Studio 2022 Build Tools с workload Desktop development with C++ и ATL.
+
 # Быстрая установка на чистый Windows 10/11 x64
 
-Открой **Windows PowerShell или Windows Terminal от имени администратора** и вставь всю строку ниже. Скрипт скачает зависимости и Flutter, добавит SDK в пользовательский PATH, откроет вход в GitHub в браузере, скачает репозиторий, запустит тесты и соберёт APK + EXE.
+Открой **Windows PowerShell или Windows Terminal от имени администратора** и вставь всю строку ниже. Скрипт подготовит зависимости и Flutter, добавит SDK в пользовательский PATH, скачает репозиторий, запустит тесты и соберёт APK + EXE. Для доступа к закрытому репозиторию может потребоваться вход через Git Credential Manager в браузере; отдельная команда `gh` не обязательна.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setup_and_build.ps1'; Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Tikhon-prog/Navigator/main/setup_and_build.ps1' -OutFile $p; & $p
 ```
 
-Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, GitHub CLI, Python 3.12, Microsoft OpenJDK 21, Android command-line SDK, Flutter 3.47.4, Visual Studio 2022 C++ Build Tools (включая ATL и Windows SDK) и Inno Setup 6. GitHub CLI попросит подтвердить вход через браузер/одноразовый код; Android-лицензии принимаются в консоли.
+Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Microsoft OpenJDK 21, Android command-line SDK, Flutter 3.47.4, Visual Studio 2022 C++ Build Tools (включая ATL и Windows SDK) и Inno Setup 6. Java 21 загружается из официального ZIP Microsoft с проверкой опубликованной SHA-256 контрольной суммы, если совместимая версия не установлена. Android-лицензии принимаются в консоли.
 
-Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Когда появится вопрос о School backend HTTPS URL, нажми Enter, если сервер ещё не развёрнут: клиент соберётся в офлайн-режиме.
+Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Если URL backend не задан, клиент соберётся в офлайн-режиме. Пароли, серверные токены и Firebase service-account ключи не нужны для клиентской сборки и не должны встраиваться в APK/EXE.
 
 Готовые файлы появятся в %USERPROFILE%\source\Pokolenie\dist\. Для обычной установки Windows запускай Pokolenie-Setup-*.exe. Переносная сборка требует весь каталог Pokolenie-Windows-Portable-*. Android-файл — Pokolenie-*.apk и соседний файл .sha256.
 
