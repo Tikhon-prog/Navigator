@@ -10,7 +10,7 @@
 Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setup_and_build.ps1'; Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Tikhon-prog/Navigator/main/setup_and_build.ps1' -OutFile $p; & $p
 ```
 
-Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Microsoft OpenJDK 21, Android command-line SDK, Flutter 3.47.4, Visual Studio 2022 C++ Build Tools (включая ATL и Windows SDK) и Inno Setup 6. Java 21 загружается из официального ZIP Microsoft с проверкой опубликованной SHA-256 контрольной суммы, если совместимая версия не установлена. Android-лицензии принимаются в консоли.
+Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Microsoft OpenJDK 21, Android command-line SDK, Flutter (скрипт использует `C:\Users\<пользователь>\flutter`, если этот SDK уже установлен; иначе скачивает стабильную 3.47.4), Visual Studio 2022 C++ Build Tools (включая ATL и Windows SDK) и Inno Setup 6. Java 21 загружается из официального ZIP Microsoft с проверкой опубликованной SHA-256 контрольной суммы, если совместимая версия не установлена. Android-лицензии принимаются в консоли.
 
 Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Если URL backend не задан, клиент соберётся в офлайн-режиме. Пароли, серверные токены и Firebase service-account ключи не нужны для клиентской сборки и не должны встраиваться в APK/EXE.
 
