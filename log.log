@@ -1,0 +1,40 @@
+**********************
+Начало записи сценария Windows PowerShell
+Время начала: 20261020182016
+Имя пользователя: DESKTOP-MQBG9J3\Admin
+Запуск от имени пользователя: DESKTOP-MQBG9J3\Admin
+Имя конфигурации: 
+Компьютер: DESKTOP-MQBG9J3 (Microsoft Windows NT 10.0.19045.0)
+Ведущее приложение: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File C:\Users\user\AppData\Local\Temp\Navigator-bootstrap\setup_and_build.ps1
+ИД процесса: 7584
+PSVersion: 5.1.19041.6456
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6456
+BuildVersion: 10.0.19041.6456
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Журнал установки: C:\Dev\Logs\setup-20261020-182016.log
+
+========================================================================
+Installing Git, Python 3.12, verified JDK 21 and Inno Setup
+========================================================================
+Обновление источника: winget...
+                                  0%
+Готово
+
+========================================================================
+Installing Git.Git
+========================================================================
+Сбой при открытии источников; выполните команду ''source reset'', если проблема повторится.
+При выполнении команды произошла непредвиденная ошибка:
+0x8a15000f : Отсутствуют данные, требуемые источником
+PS>TerminatingError(): "winget failed to install Git.Git (exit -1978335217)."
+
+SETUP FAILED: winget failed to install Git.Git (exit -1978335217).
+**********************
+Конец записи протокола Windows PowerShell
+Время окончания: 20261020182032
+**********************
