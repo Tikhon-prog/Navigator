@@ -251,7 +251,28 @@ function Invoke-Checked {
 
 Write-Step 'Installing Git, Python 3.12, verified JDK 21 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
-Install-WingetPackage -Id 'Git.Git'
+
+# Reuse an existing Git installation before asking winget to install it.
+# Elevated PowerShell may have a different PATH from the CMD window that launched it.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    $gitCandidates = @()
+    if ($pf64) { $gitCandidates += (Join-Path $pf64 'Git\\cmd\\git.exe') }
+    if ($pf86) { $gitCandidates += (Join-Path $pf86 'Git\\cmd\\git.exe') }
+    if ($env:LOCALAPPDATA) { $gitCandidates += (Join-Path $env:LOCALAPPDATA 'Programs\\Git\\cmd\\git.exe') }
+    foreach ($profileDir in @(Get-ChildItem -LiteralPath 'C:\\Users' -Directory -ErrorAction SilentlyContinue)) {
+        $gitCandidates += (Join-Path $profileDir.FullName 'AppData\\Local\\Programs\\Git\\cmd\\git.exe')
+    }
+    $installedGit = $gitCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+    if ($installedGit) {
+        $env:Path = (Split-Path -Parent $installedGit) + ';' + $env:Path
+        Write-Host ("Using existing Git at " + $installedGit) -ForegroundColor DarkGray
+    }
+}
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Host 'Git is already installed; skipping winget Git installation.' -ForegroundColor DarkGray
+} else {
+    Install-WingetPackage -Id 'Git.Git'
+}
 Install-WingetPackage -Id 'Python.Python.3.12'
 Install-Jdk21Portable
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
