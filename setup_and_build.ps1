@@ -156,7 +156,7 @@ function Install-Jdk21Portable {
     # This avoids a broken/mismatched winget MSI download without disabling integrity checks.
     $version = '21.0.12.1'
     $baseUrl = "https://aka.ms/download-jdk/microsoft-jdk-$version-windows-x64.zip"
-    $checksumUrl = "$baseUrl.sha256sum.txt"
+    $checksumUrl = "${baseUrl}.sha256sum.txt"
     $downloadDir = Join-Path $BuildTemp 'OpenJDK21'
     $extractDir = Join-Path $downloadDir 'extract'
     $zipPath = Join-Path $downloadDir "microsoft-jdk-$version-windows-x64.zip"
@@ -216,7 +216,6 @@ function Invoke-Checked {
 Write-Step 'Installing Git, GitHub CLI, Python 3.12, JDK 21 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
 Install-WingetPackage -Id 'Git.Git'
-Install-WingetPackage -Id 'GitHub.cli'
 Install-WingetPackage -Id 'Python.Python.3.12'
 Install-Jdk21Portable
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
@@ -271,23 +270,29 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw 'Python was
 $pythonVersion = (& python -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" | Out-String).Trim()
 if ($pythonVersion -notmatch '^3\.12\.') { throw ("Expected Python 3.12, selected python reports " + $pythonVersion) }
 
-# GitHub sign-in uses the official CLI browser/device flow, not a pasted password/token.
+# GitHub CLI is optional. Prefer normal Git + Git Credential Manager, which can open a browser.
 $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
 $gh = $null
 if ($ghCmd) { $gh = $ghCmd.Source }
-if (-not $gh) {
+if (-not $gh -and $pf64) {
     $ghCandidate = Join-Path $pf64 'GitHub CLI\gh.exe'
     if (Test-Path -LiteralPath $ghCandidate) { $gh = $ghCandidate }
 }
-if (-not $gh) { throw 'GitHub CLI was not found after installation.' }
-& $gh auth status --hostname github.com *> $null
-if ($LASTEXITCODE -ne 0) {
-    Write-Step 'Log into GitHub in the browser'
-    Write-Host 'Follow the one-time device-code instructions displayed in this terminal.'
-    & $gh auth login --hostname github.com --git-protocol https --web
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub login did not complete. Rerun after authorization.' }
+if ($gh) {
+    $ghLoggedIn = $false
+    try {
+        & $gh auth status --hostname github.com *> $null
+        $ghLoggedIn = ($LASTEXITCODE -eq 0)
+    } catch { $ghLoggedIn = $false }
+    if ($ghLoggedIn) {
+        try { Invoke-Checked -File $gh -Arguments @('auth', 'setup-git', '--hostname', 'github.com') }
+        catch { Write-Warning 'Could not configure Git through gh; Git Credential Manager can still be used.' }
+    } else {
+        Write-Host 'gh is not authenticated. The script will use Git Credential Manager during clone instead.' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host 'gh is not installed; that is OK. Git + Git Credential Manager will be used for repository access.' -ForegroundColor DarkGray
 }
-Invoke-Checked -File $gh -Arguments @('auth', 'setup-git', '--hostname', 'github.com')
 
 # Find JDK 21 and add JAVA_HOME persistently.
 $javaHome = Find-Jdk21Home
@@ -414,7 +419,8 @@ if (Test-Path -LiteralPath $RepoDirectory) {
     Invoke-Checked -File (Get-Command git).Source -Arguments @('-C', $RepoDirectory, 'pull', '--ff-only', 'origin', 'main')
 } else {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $RepoDirectory) | Out-Null
-    Invoke-Checked -File $gh -Arguments @('repo', 'clone', $RepoName, $RepoDirectory)
+    $cloneUrl = "https://github.com/$RepoName.git"
+    Invoke-Checked -File (Get-Command git).Source -Arguments @('clone', $cloneUrl, $RepoDirectory)
 }
 
 # No manual configuration is required. Without a configured HTTPS endpoint, build offline-first.
