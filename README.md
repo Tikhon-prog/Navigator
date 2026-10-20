@@ -10,16 +10,16 @@
 
 Для автоматической настройки чистой Windows 10/11 x64 прочитай [инструкцию сборки](docs/BUILD_INSTRUCTIONS.md). Скрипт автоматизации остаётся в корне: [setup_and_build.ps1](setup_and_build.ps1).
 
-Для ручной проверки и сборки из корня проекта:
+Для тестовой сборки **сразу APK и Windows EXE без сервера, API-ключей, Firebase и других секретов** используй [`build_test.ps1`](build_test.ps1) из корня репозитория:
 
 ```powershell
-flutter pub get
-flutter analyze --no-fatal-infos --no-fatal-warnings
-flutter test
-flutter build apk --debug
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\build_test.ps1
 ```
 
-Для Android нужна среда Flutter stable 3.47.4, Android SDK и JDK 21. Для Windows desktop нужны Visual Studio 2022 Build Tools с workload **Desktop development with C++** и ATL. Сборка не означает, что школьный сервер, SSO или push уже настроены.
+Скрипт устанавливает зависимости проекта, запускает Flutter-тесты и анализ, собирает отладочный APK и Windows EXE в автономной папке с нужными DLL. Результаты будут в `dist\test\android\` и `dist\test\windows\`; Windows-папка также упаковывается в ZIP. Это тестовые сборки, а не подписанный релиз. Для APK нужны JDK 21 и Android SDK. Для Windows EXE дополнительно нужны Visual Studio 2022 Build Tools с workload **Desktop development with C++** и ATL.
+
+Сборка по умолчанию не передаёт адрес API: карта, локальные данные расписания и заметки рассчитаны на работу офлайн. Настоящие школьные аккаунты/SSO, серверные объявления и push требуют отдельно развёрнутой и настроенной инфраструктуры. **Не встраивай пароли, токены, Firebase service-account ключи или серверные секреты в Dart-код/APK/EXE** — файлы клиента можно извлечь.
 
 ## Основные возможности
 
