@@ -37,13 +37,28 @@ if ($forcedPolicy -and $forcedPolicy.ExecutionPolicy -in @('Restricted','AllSign
     exit 1
 }
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.' }
-$FlutterVersion = '3.47.4'
+$PinnedFlutterVersion = '3.47.4'
+$FlutterVersion = $PinnedFlutterVersion
+$UseExistingFlutter = $false
 $RepoName = 'Tikhon-prog/Navigator'
 $DevRoot = 'C:\Dev'
 $RepoDirectory = Join-Path $DevRoot 'Pokolenie'
 $ToolRoot = Join-Path $DevRoot 'Programs\PokolenieToolchain'
-$FlutterParent = Join-Path $ToolRoot ("Flutter-" + $FlutterVersion)
+$FlutterParent = Join-Path $ToolRoot ("Flutter-" + $PinnedFlutterVersion)
 $FlutterSdk = Join-Path $FlutterParent 'flutter'
+# Reuse the user's existing Flutter SDK when present instead of downloading a duplicate.
+$userFlutterSdk = if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'flutter' } else { $null }
+$userFlutterExe = if ($userFlutterSdk) { Join-Path $userFlutterSdk 'bin\flutter.bat' } else { $null }
+if ($userFlutterExe -and (Test-Path -LiteralPath $userFlutterExe)) {
+    $userFlutterVersionText = (& $userFlutterExe --version 2>&1 | Out-String)
+    if ($userFlutterVersionText -match 'Flutter\s+(\d+\.\d+\.\d+)') {
+        $FlutterVersion = $Matches[1]
+        $FlutterSdk = $userFlutterSdk
+        $FlutterParent = $null
+        $UseExistingFlutter = $true
+        Write-Host ("Reusing existing Flutter " + $FlutterVersion + " at " + $FlutterSdk) -ForegroundColor DarkGray
+    }
+}
 $AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
 $GradleHome = Join-Path $DevRoot 'Gradle'
 $PubCache = Join-Path $DevRoot 'PubCache'
@@ -381,6 +396,9 @@ $hasFlutter = $false
 if (Test-Path -LiteralPath $flutterExe) {
     $oldVersion = (& $flutterExe --version 2>&1 | Out-String)
     if ($oldVersion -match [regex]::Escape($FlutterVersion)) { $hasFlutter = $true }
+}
+if ($UseExistingFlutter -and -not $hasFlutter) {
+    throw 'The existing Flutter SDK version could not be validated; refusing to replace or delete your user Flutter folder.'
 }
 if (-not $hasFlutter) {
     $manifest = Invoke-RestMethod -Uri 'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json' -TimeoutSec 120
