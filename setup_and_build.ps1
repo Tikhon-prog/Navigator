@@ -468,15 +468,124 @@ if ($LASTEXITCODE -ne 0) { throw 'Flutter could not validate Android SDK license
 Invoke-Checked -File $flutterExe -Arguments @('precache', '--android', '--windows')
 
 # Clone/update repository without discarding local modifications.
+# If the script was launched from a freshly cloned private repository in the normal user's
+# session, stage that authenticated clone into C:\Dev instead of authenticating again as the
+# separate administrator account.
 Write-Step 'Downloading or updating repository'
+$bootstrapRoot = Split-Path -Parent $PSCommandPath
+$bootstrapOrigin = $null
+if (Test-Path -LiteralPath (Join-Path $bootstrapRoot '.git')) {
+    $bootstrapOrigin = (& git -C $bootstrapRoot remote get-url origin 2>$null | Select-Object -First 1)
+}
 if (Test-Path -LiteralPath $RepoDirectory) {
     if (-not (Test-Path -LiteralPath (Join-Path $RepoDirectory '.git'))) { throw ("Directory exists but is not a Git repository: " + $RepoDirectory + '. Move/rename it and rerun.') }
     $origin = (& git -C $RepoDirectory remote get-url origin 2>$null | Select-Object -First 1)
-    if ($origin -notmatch 'github\.com[:/]Tikhon-prog/Navigator(?:\.git)?$') { throw ("Existing repository has unexpected origin: " + $origin) }
+    if ($origin -notmatch 'github\.com[:/]Tikhon-prog/Navigator(?:\.git)?
+
+# No manual configuration is required. Without a configured HTTPS endpoint, build offline-first.
+$apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
+if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    $apiBase = ''
+    Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
+    Write-Host 'Backend URL is not configured; creating the offline-first build.' -ForegroundColor Yellow
+} else {
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
+    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
+}
+
+Write-Step 'Building and testing Android APK + Windows EXE'
+Set-Location $RepoDirectory
+$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
+if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
+& $buildScript
+if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
+
+$dist = Join-Path $RepoDirectory 'dist'
+Write-Step 'Outputs'
+Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
+Write-Host ("Output folder: " + $dist) -ForegroundColor Green
+Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
+Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
+Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
+if ($script:TranscriptStarted) { Stop-Transcript | Out-Null; $script:TranscriptStarted = $false }
+Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
+) { throw ("Existing repository has unexpected origin: " + $origin) }
     $changes = (& git -C $RepoDirectory status --porcelain --untracked-files=all | Out-String).Trim()
     if ($changes) { throw ("Local edits exist in " + $RepoDirectory + '. Commit/stash or move them first; the script will not delete edits.') }
     Invoke-Checked -File (Get-Command git).Source -Arguments @('-C', $RepoDirectory, 'switch', 'main')
     Invoke-Checked -File (Get-Command git).Source -Arguments @('-C', $RepoDirectory, 'pull', '--ff-only', 'origin', 'main')
+} elseif ($bootstrapOrigin -match 'github\.com[:/]Tikhon-prog/Navigator(?:\.git)?
+
+# No manual configuration is required. Without a configured HTTPS endpoint, build offline-first.
+$apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
+if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    $apiBase = ''
+    Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
+    Write-Host 'Backend URL is not configured; creating the offline-first build.' -ForegroundColor Yellow
+} else {
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
+    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
+}
+
+Write-Step 'Building and testing Android APK + Windows EXE'
+Set-Location $RepoDirectory
+$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
+if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
+& $buildScript
+if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
+
+$dist = Join-Path $RepoDirectory 'dist'
+Write-Step 'Outputs'
+Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
+Write-Host ("Output folder: " + $dist) -ForegroundColor Green
+Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
+Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
+Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
+if ($script:TranscriptStarted) { Stop-Transcript | Out-Null; $script:TranscriptStarted = $false }
+Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
+) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $RepoDirectory) | Out-Null
+    Write-Host 'Using the private repository clone downloaded before elevation; no second GitHub sign-in is needed.' -ForegroundColor DarkGray
+    & robocopy $bootstrapRoot $RepoDirectory /E /COPY:DAT /DCOPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS /NP
+    $copyCode = $LASTEXITCODE
+    if ($copyCode -ge 8) { throw ("Could not stage the repository into " + $RepoDirectory + " (robocopy exit " + $copyCode + ").") }
+    $stagedOrigin = (& git -C $RepoDirectory remote get-url origin 2>$null | Select-Object -First 1)
+    if ($stagedOrigin -notmatch 'github\.com[:/]Tikhon-prog/Navigator(?:\.git)?
+
+# No manual configuration is required. Without a configured HTTPS endpoint, build offline-first.
+$apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
+if ([string]::IsNullOrWhiteSpace($apiBase)) {
+    $apiBase = ''
+    Remove-Item Env:POKOLENIE_API_BASE_URL -ErrorAction SilentlyContinue
+    Write-Host 'Backend URL is not configured; creating the offline-first build.' -ForegroundColor Yellow
+} else {
+    if (($apiBase -notmatch '^https://[^/\s]+(?:/.*)?$') -or $apiBase.Contains('@')) { throw 'POKOLENIE_API_BASE_URL must be a public HTTPS URL, without credentials or whitespace.' }
+    $env:POKOLENIE_API_BASE_URL = $apiBase.Trim().TrimEnd('/')
+}
+
+Write-Step 'Building and testing Android APK + Windows EXE'
+Set-Location $RepoDirectory
+$buildScript = Join-Path $RepoDirectory 'build_all_release.ps1'
+if (-not (Test-Path -LiteralPath $buildScript)) { throw 'build_all_release.ps1 is missing.' }
+& $buildScript
+if ($LASTEXITCODE -ne 0) { throw 'build_all_release.ps1 reported an error.' }
+
+$dist = Join-Path $RepoDirectory 'dist'
+Write-Step 'Outputs'
+Get-ChildItem -LiteralPath $dist -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+Write-Host ("Repository: " + $RepoDirectory) -ForegroundColor Green
+Write-Host ("Output folder: " + $dist) -ForegroundColor Green
+Write-Host 'Use Pokolenie-Setup-*.exe to install Windows. Keep the whole Pokolenie-Windows-Portable-* folder together for portable launch.'
+Write-Host 'Without a permanent release signing key, the Android APK is a test build.'
+Write-Host 'This script does not deploy a public school server, register school SSO, import private school data or configure Firebase server credentials.'
+Write-Host ("Installation log: " + $logPath) -ForegroundColor DarkGray
+if ($script:TranscriptStarted) { Stop-Transcript | Out-Null; $script:TranscriptStarted = $false }
+Read-Host 'Готово. Нажми Enter, чтобы закрыть окно'
+) { throw 'The staged repository origin could not be verified.' }
 } else {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $RepoDirectory) | Out-Null
     $cloneUrl = "https://github.com/$RepoName.git"
