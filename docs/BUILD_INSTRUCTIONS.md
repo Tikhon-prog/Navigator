@@ -14,7 +14,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setu
 
 Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Если URL backend не задан, клиент соберётся в офлайн-режиме. Пароли, серверные токены и Firebase service-account ключи не нужны для клиентской сборки и не должны встраиваться в APK/EXE.
 
-Готовые файлы появятся в %USERPROFILE%\source\Pokolenie\dist\. Для обычной установки Windows запускай Pokolenie-Setup-*.exe. Переносная сборка требует весь каталог Pokolenie-Windows-Portable-*. Android-файл — Pokolenie-*.apk и соседний файл .sha256.
+Готовые файлы появятся в `C:\Dev\Pokolenie\dist\`. Для обычной установки Windows запускай Pokolenie-Setup-*.exe. Переносная сборка требует весь каталог Pokolenie-Windows-Portable-*. Android-файл — Pokolenie-*.apk и соседний файл .sha256.
 
 Если Visual Studio попросит перезагрузку, перезагрузи компьютер и повтори команду. Если winget отсутствует, установи или обнови App Installer из Microsoft Store и повтори команду. Повторный запуск проверяет уже установленные компоненты.
 
