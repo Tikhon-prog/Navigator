@@ -213,7 +213,7 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw ("Command failed (exit " + $LASTEXITCODE + "): " + $File) }
 }
 
-Write-Step 'Installing Git, GitHub CLI, Python 3.12, JDK 21 and Inno Setup'
+Write-Step 'Installing Git, Python 3.12, verified JDK 21 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
 Install-WingetPackage -Id 'Git.Git'
 Install-WingetPackage -Id 'Python.Python.3.12'
