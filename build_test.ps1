@@ -55,10 +55,10 @@ Write-Host ('Flutter: ' + $FlutterExe)
 Write-Host 'Backend URL: (empty; no server or secrets required)'
 Write-Host '===============================================' -ForegroundColor Cyan
 
-Invoke-FlutterChecked @('pub', 'get')
-Invoke-FlutterChecked @('test')
-Invoke-FlutterChecked @('analyze', '--no-fatal-infos', '--no-fatal-warnings')
-Invoke-FlutterChecked @('build', 'apk', '--debug', $ApiDefine)
+Invoke-FlutterChecked -FlutterArguments @('pub', 'get')
+Invoke-FlutterChecked -FlutterArguments @('test')
+Invoke-FlutterChecked -FlutterArguments @('analyze', '--no-fatal-infos', '--no-fatal-warnings')
+Invoke-FlutterChecked -FlutterArguments @('build', 'apk', '--debug', $ApiDefine)
 
 $Dist = Join-Path $Root 'dist\test'
 $AndroidOut = Join-Path $Dist 'android'
@@ -71,8 +71,8 @@ $ApkDestination = Join-Path $AndroidOut 'Pokolenie-debug.apk'
 Copy-Item -LiteralPath $Apk -Destination $ApkDestination -Force
 Write-Host ('Android APK ready: ' + $ApkDestination) -ForegroundColor Green
 
-Invoke-FlutterChecked @('config', '--enable-windows-desktop')
-Invoke-FlutterChecked @('build', 'windows', '--debug', $ApiDefine)
+Invoke-FlutterChecked -FlutterArguments @('config', '--enable-windows-desktop')
+Invoke-FlutterChecked -FlutterArguments @('build', 'windows', '--debug', $ApiDefine)
 
 $WindowsBuild = Join-Path $Root 'build\windows\x64\runner\Debug'
 $WindowsExe = Join-Path $WindowsBuild 'pokolenie.exe'
