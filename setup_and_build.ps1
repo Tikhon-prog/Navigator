@@ -116,9 +116,25 @@ function Set-UserVariable {
     [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
     Set-Item -Path ("Env:" + $Name) -Value $Value
 }
+function Repair-WingetSource {
+    Write-Warning 'winget source metadata is unavailable. Resetting and refreshing the official winget source.'
+    & winget source reset --force
+    if ($LASTEXITCODE -ne 0) {
+        throw ("winget source reset failed with exit code " + $LASTEXITCODE + ". Repair App Installer from Windows Settings or Microsoft Store.")
+    }
+    & winget source update --name winget
+    if ($LASTEXITCODE -ne 0) {
+        throw ("winget source update failed with exit code " + $LASTEXITCODE + ". Repair App Installer from Windows Settings or Microsoft Store.")
+    }
+}
+
 function Install-WingetPackage {
     param([string]$Id, [string]$Override)
-    $listed = (& winget list --id $Id --exact --source winget --accept-source-agreements 2>$null | Out-String)
+    $listed = (& winget list --id $Id --exact --source winget --accept-source-agreements 2>&1 | Out-String)
+    if ($listed -match '0x8a15000f|source.*(unavailable|failed)|Отсутствуют данные, требуемые источником') {
+        Repair-WingetSource
+        $listed = (& winget list --id $Id --exact --source winget --accept-source-agreements 2>&1 | Out-String)
+    }
     if ($listed -match [regex]::Escape($Id)) {
         Write-Host ("Already installed: " + $Id) -ForegroundColor DarkGray
         return
@@ -128,6 +144,11 @@ function Install-WingetPackage {
     if ($Override) { $wingetArgs += @('--override', $Override) } else { $wingetArgs += '--silent' }
     & winget @wingetArgs
     $code = $LASTEXITCODE
+    if ($code -eq -1978335217 -or $code -eq 0x8a15000f) {
+        Repair-WingetSource
+        & winget @wingetArgs
+        $code = $LASTEXITCODE
+    }
     Refresh-Path
     if ($code -ne 0) {
         $check = (& winget list --id $Id --exact --source winget --accept-source-agreements 2>$null | Out-String)
