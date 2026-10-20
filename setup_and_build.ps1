@@ -120,6 +120,91 @@ function Install-WingetPackage {
         Write-Warning ("winget returned " + $code + ", but the package is installed. Continuing.")
     }
 }
+function Find-Jdk21Home {
+    $candidateList = @()
+    if ($env:JAVA_HOME) { $candidateList += $env:JAVA_HOME }
+
+    $searchRoots = @()
+    if ($pf64) { $searchRoots += (Join-Path $pf64 'Microsoft') }
+    $searchRoots += $ToolRoot
+    if ($env:LOCALAPPDATA) { $searchRoots += (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft') }
+
+    foreach ($root in $searchRoots) {
+        if (Test-Path -LiteralPath $root) {
+            $candidateList += @(Get-ChildItem -LiteralPath $root -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        }
+    }
+
+    foreach ($candidate in ($candidateList | Where-Object { $_ } | Select-Object -Unique)) {
+        $javaExe = Join-Path $candidate 'bin\java.exe'
+        if (-not (Test-Path -LiteralPath $javaExe)) { continue }
+        $versionText = (& $javaExe -version 2>&1 | Out-String)
+        if ($versionText -match 'version "21(\.|")') { return $candidate }
+    }
+    return $null
+}
+
+function Install-Jdk21Portable {
+    $existing = Find-Jdk21Home
+    if ($existing) {
+        Write-Host ("Using existing Java 21: " + $existing) -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Step 'Downloading verified Microsoft OpenJDK 21 ZIP'
+    # Use Microsoft's official portable ZIP and its published SHA-256 sidecar.
+    # This avoids a broken/mismatched winget MSI download without disabling integrity checks.
+    $version = '21.0.12.1'
+    $baseUrl = "https://aka.ms/download-jdk/microsoft-jdk-$version-windows-x64.zip"
+    $checksumUrl = "$baseUrl.sha256sum.txt"
+    $downloadDir = Join-Path $BuildTemp 'OpenJDK21'
+    $extractDir = Join-Path $downloadDir 'extract'
+    $zipPath = Join-Path $downloadDir "microsoft-jdk-$version-windows-x64.zip"
+    $checksumPath = Join-Path $downloadDir "microsoft-jdk-$version-windows-x64.zip.sha256sum.txt"
+    $destination = Join-Path $ToolRoot "jdk-$version"
+
+    New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+    if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+    if (Test-Path -LiteralPath $checksumPath) { Remove-Item -LiteralPath $checksumPath -Force }
+    if (Test-Path -LiteralPath $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
+
+    Invoke-WebRequest -UseBasicParsing -Uri $checksumUrl -OutFile $checksumPath
+    $checksumText = Get-Content -LiteralPath $checksumPath -Raw
+    $checksumMatch = [regex]::Match($checksumText, '(?i)\b[0-9a-f]{64}\b')
+    if (-not $checksumMatch.Success) {
+        throw 'Microsoft JDK checksum file did not contain a SHA-256 value; refusing to install.'
+    }
+
+    Invoke-WebRequest -UseBasicParsing -Uri $baseUrl -OutFile $zipPath
+    $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+    $expectedSha = $checksumMatch.Value.ToLowerInvariant()
+    if ($actualSha -ne $expectedSha) {
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+        throw 'Microsoft JDK ZIP checksum mismatch; refusing to install. Check network filtering or retry the official download.'
+    }
+
+    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
+    $javaExe = Get-ChildItem -LiteralPath $extractDir -Filter 'java.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $javaExe) { throw 'java.exe was not found in the downloaded JDK archive.' }
+    $sourceHome = Split-Path -Parent (Split-Path -Parent $javaExe.FullName)
+
+    if (Test-Path -LiteralPath $destination) {
+        throw ("JDK destination exists but is not a recognized Java 21 install: " + $destination + '. Rename that folder and rerun.')
+    }
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    Copy-Item -Path (Join-Path $sourceHome '*') -Destination $destination -Recurse -Force
+
+    $installed = Find-Jdk21Home
+    if (-not $installed) {
+        throw 'The verified JDK ZIP was extracted, but Java 21 could not be validated.'
+    }
+
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $checksumPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host ("Installed verified Java 21 at: " + $installed) -ForegroundColor Green
+}
+
 function Invoke-Checked {
     param([string]$File, [string[]]$Arguments)
     Write-Host ''
@@ -133,7 +218,7 @@ try { & winget source update --name winget } catch { Write-Warning 'Could not up
 Install-WingetPackage -Id 'Git.Git'
 Install-WingetPackage -Id 'GitHub.cli'
 Install-WingetPackage -Id 'Python.Python.3.12'
-Install-WingetPackage -Id 'Microsoft.OpenJDK.21'
+Install-Jdk21Portable
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
 
 # Check Visual Studio components first and modify only if required items are missing.
@@ -205,18 +290,8 @@ if ($LASTEXITCODE -ne 0) {
 Invoke-Checked -File $gh -Arguments @('auth', 'setup-git', '--hostname', 'github.com')
 
 # Find JDK 21 and add JAVA_HOME persistently.
-$jdkCandidates = @()
-if ($pf64) {
-    $jdkRoot = Join-Path $pf64 'Microsoft'
-    if (Test-Path -LiteralPath $jdkRoot) {
-        $jdkCandidates = @(Get-ChildItem -LiteralPath $jdkRoot -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Sort-Object -Property Name -Descending)
-    }
-}
-$javaHome = $null
-foreach ($candidate in $jdkCandidates) {
-    if (Test-Path -LiteralPath (Join-Path $candidate.FullName 'bin\java.exe')) { $javaHome = $candidate.FullName; break }
-}
-if (-not $javaHome) { throw 'Microsoft OpenJDK 21 was not found. Repair the JDK installation and rerun.' }
+$javaHome = Find-Jdk21Home
+if (-not $javaHome) { throw 'Java 21 was not found after the verified ZIP installation.' }
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
 
