@@ -55,6 +55,20 @@ void main() {
       expect(result.nodes.every((node) => node.floor == 1), isTrue);
     });
 
+    test('215 to 216 stays on the second floor', () {
+      final result = RouteEngine.build(
+        '216',
+        startFloor: 2,
+        startLocationId: '215',
+      );
+
+      expect(result, isNotNull);
+      expect(result!.startFloor, 2);
+      expect(result.destination.floor, 2);
+      expect(result.changesFloor, isFalse);
+      expect(result.nodes.every((node) => node.floor == 2), isTrue);
+    });
+
     test('215 to 201 stays on the second floor', () {
       final result = RouteEngine.build(
         '201',
