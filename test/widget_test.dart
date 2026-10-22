@@ -10,4 +10,19 @@ void main() {
     await tester.pump();
     expect(find.byType(MaterialApp), findsOneWidget);
   });
+
+  testWidgets('Учёба объединяет расписание и дополнительные занятия', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const PokolenieApp());
+    await tester.pump();
+
+    final studyDestination = find.text('Учёба').first;
+    expect(studyDestination, findsOneWidget);
+    await tester.tap(studyDestination);
+    await tester.pump();
+
+    expect(find.text('Расписание'), findsWidgets);
+    expect(find.text('ДОПы'), findsWidgets);
+    expect(find.byType(TabBar), findsOneWidget);
+  });
 }
