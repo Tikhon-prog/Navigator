@@ -1183,7 +1183,7 @@ class _AppShellState extends State<AppShell>{
   final studyPageKey = GlobalKey<_StudyHubPageState>();
   void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
   void _openStudyTab(int tab) {
-    setState(() { index = 2; studyTab = tab.clamp(0, 1); });
+    setState(() { index = 2; studyTab = tab.clamp(0, 1).toInt(); });
     key.currentState?.closeDrawer();
     WidgetsBinding.instance.addPostFrameCallback((_) => studyPageKey.currentState?.selectTab(tab.clamp(0, 1)));
   }
@@ -1278,10 +1278,10 @@ class _StudyHubPageState extends State<StudyHubPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _controller = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1));
+    _controller = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1).toInt());
   }
 
-  void selectTab(int tab) => _controller.animateTo(tab.clamp(0, 1));
+  void selectTab(int tab) => _controller.animateTo(tab.clamp(0, 1).toInt());
 
   @override
   void dispose() {
