@@ -37,6 +37,26 @@ void main() {
       );
     });
 
+    test('rejects neural candidates that name a room outside the bundled catalog', () {
+      final intent = AiNavigationIntent.fromModelCandidate(
+        {'destinationId': '999', 'startLocationId': '215'},
+        knownRoomIds: catalog,
+      );
+
+      expect(intent, isNull);
+    });
+
+    test('accepts a neural candidate only when all referenced rooms exist', () {
+      final intent = AiNavigationIntent.fromModelCandidate(
+        {'destinationId': '201', 'startLocationId': '215'},
+        knownRoomIds: catalog,
+      );
+
+      expect(intent, isNotNull);
+      expect(intent!.startLocationId, '215');
+      expect(intent.destinationId, '201');
+    });
+
     test('does not invent a route for a room absent from the offline catalog', () {
       expect(
         AiNavigationIntent.parse(
