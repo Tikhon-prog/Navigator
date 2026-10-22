@@ -41,7 +41,7 @@ class AiNavigationIntent {
     if (!looksLikeRouteRequest(query)) return null;
 
     final known = knownRoomIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
-    final matched = RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)')
+    final matched = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)')
         .allMatches(normalized)
         .map((match) => match.group(1)!)
         .where(known.contains)
