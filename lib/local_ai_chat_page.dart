@@ -28,23 +28,23 @@ enum _LocalModelPreset { compact, russian }
 extension on _LocalModelPreset {
   String get fileName => this == _LocalModelPreset.compact
       ? 'smollm2-135m-instruct-q4_k_m.gguf'
-      : 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
+      : 'qwen2.5-0.5b-instruct-q3_k_m.gguf';
 
   String get url => this == _LocalModelPreset.compact
       ? 'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
-      : 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+      : 'https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/9a019c5233eea20db2c2cd48f9680fb0408e962d/Qwen2.5-0.5B-Instruct-Q3_K_M.gguf';
 
   String get label => this == _LocalModelPreset.compact
       ? 'SmolLM2 135M · около 105 МБ'
-      : 'Qwen2.5 0.5B · около 491 МБ';
+      : 'Qwen2.5 0.5B · около 355 МБ';
 
   String get description => this == _LocalModelPreset.compact
       ? 'Самый компактный вариант (~105 МБ). Он в основном ориентирован на английский; русский диалог будет заметно слабее.'
-      : 'Лучше подходит для коротких ответов на русском, но требует около 491 МБ места для файла модели и дополнительную оперативную память.';
+      : 'Основной компромисс (~355 МБ): лучше подходит для русского, чем микро-модель. Более сильное сжатие уменьшает качество относительно Q4_K_M.';
 }
 
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
-  _LocalModelPreset _selectedPreset = _LocalModelPreset.compact;
+  _LocalModelPreset _selectedPreset = _LocalModelPreset.russian;
   static const _systemPrompt = '''
 Ты локальный ИИ-помощник школы «Поколение». Отвечай по-русски, кратко и дружелюбно.
 Ты работаешь на устройстве без облака. Не выдумывай расписание, адреса кабинетов,
@@ -57,7 +57,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   final _scroll = ScrollController();
   final List<_ChatLine> _lines = [
     _ChatLine(false,
-        'Привет! Я локальный ИИ-помощник. Поиск кабинетов и построение маршрутов доступны без скачивания модели. Для свободного диалога можно установить компактную модель (~105 МБ); для более качественных ответов по-русски доступен Qwen (~491 МБ). После загрузки выбранная модель работает без интернета.')
+        'Привет! Я локальный ИИ-помощник. Поиск кабинетов и построение маршрутов доступны без скачивания модели. Для свободного диалога можно установить компактную модель (~105 МБ); для более качественных ответов по-русски доступен Qwen (~355 МБ). После загрузки выбранная модель работает без интернета.')
   ];
   final List<LLMMessage> _history = [
     LLMMessage(role: LLMRole.system, content: _systemPrompt),
@@ -109,7 +109,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     try {
       for (final preset in _LocalModelPreset.values) {
         final file = await _modelFile(preset);
-        final minimum = preset == _LocalModelPreset.compact ? 95 : 450;
+        final minimum = preset == _LocalModelPreset.compact ? 95 : 320;
         if (await file.exists() && await file.length() > minimum * 1024 * 1024) {
           if (mounted) setState(() {
             _selectedPreset = preset;
@@ -153,7 +153,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         await sink.flush();
         await sink.close();
         sink = null;
-        final minimumBytes = (_selectedPreset == _LocalModelPreset.compact ? 95 : 450) * 1024 * 1024;
+        final minimumBytes = (_selectedPreset == _LocalModelPreset.compact ? 95 : 320) * 1024 * 1024;
         if (await file.length() < minimumBytes) {
           throw const FormatException('Скачанный файл слишком мал и похож на страницу ошибки вместо GGUF-модели.');
         }
