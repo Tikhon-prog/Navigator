@@ -119,7 +119,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           sink.add(chunk);
           received += chunk.length;
           if (mounted && total > 0) {
-            setState(() => _downloadProgress = (received / total).clamp(0.0, 1.0));
+            setState(() => _downloadProgress = (received / total).clamp(0.0, 1.0).toDouble());
           }
         }
         await sink.flush();
