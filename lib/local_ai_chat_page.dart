@@ -220,8 +220,13 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         contextSize: 2048,
         nGpuLayers: 0,
       );
-      await chat.loadModel(_modelPath!);
-      _chatRepository = chat;
+      try {
+        await chat.loadModel(_modelPath!);
+        _chatRepository = chat;
+      } catch (_) {
+        chat.dispose();
+        rethrow;
+      }
     } finally {
       if (mounted) setState(() => _loadingModel = false);
     }
@@ -375,10 +380,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
       _history.add(LLMMessage(role: LLMRole.assistant, content: answerLine.text));
     } catch (error) {
-      setState(() {
-        _statusError = 'Локальная модель не запустилась: $error';
-        answerLine.text = 'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
-      });
+      if (mounted) {
+        setState(() {
+          _statusError = 'Локальная модель не запустилась: $error';
+          answerLine.text = 'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
