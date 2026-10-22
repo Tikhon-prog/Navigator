@@ -1185,7 +1185,7 @@ class _AppShellState extends State<AppShell>{
   void _openStudyTab(int tab) {
     setState(() { index = 2; studyTab = tab.clamp(0, 1).toInt(); });
     key.currentState?.closeDrawer();
-    WidgetsBinding.instance.addPostFrameCallback((_) => studyPageKey.currentState?.selectTab(tab.clamp(0, 1)));
+    WidgetsBinding.instance.addPostFrameCallback((_) => studyPageKey.currentState?.selectTab(tab.clamp(0, 1).toInt()));
   }
   String? _openRouteFromAi(String destinationId, String? startLocationId) {
     final room = SchoolData.tryRoom(destinationId);
