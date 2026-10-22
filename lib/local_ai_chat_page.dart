@@ -216,7 +216,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 ЗАПРОС: $query
 ''';
     final response = await _chatRepository!.chatResponse(
-      _modelPath!,
+      'model',
       messages: [
         LLMMessage(
           role: LLMRole.system,
@@ -328,7 +328,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       await _ensureLoaded();
       _history.add(LLMMessage(role: LLMRole.user, content: text));
       final repo = _chatRepository!;
-      await for (final chunk in repo.streamChat(_modelPath!, messages: _history)) {
+      await for (final chunk in repo.streamChat('model', messages: _history)) {
         final part = chunk.message?.content ?? '';
         if (part.isNotEmpty && mounted) {
           answerLine.text += part;
