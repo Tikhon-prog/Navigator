@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,7 +39,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         'Привет! Я локальный ИИ-помощник. Поиск кабинета по встроенной карте работает офлайн. Для свободного диалога сначала нужно скачать небольшую модель (~491 МБ); после этого интернет не потребуется.')
   ];
   final List<LLMMessage> _history = [
-    const LLMMessage(role: LLMRole.system, content: _systemPrompt),
+    LLMMessage(role: LLMRole.system, content: _systemPrompt),
   ];
 
   LlamaCppRepository? _modelRepository;
@@ -291,7 +290,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                 ..add(_ChatLine(false, 'Чат очищен. Я работаю локально на этом устройстве.'));
               _history
                 ..clear()
-                ..add(const LLMMessage(role: LLMRole.system, content: _systemPrompt));
+                ..add(LLMMessage(role: LLMRole.system, content: _systemPrompt));
             }),
             icon: const Icon(Icons.delete_outline_rounded),
           ),
