@@ -1218,7 +1218,7 @@ class _AppShellState extends State<AppShell>{
     final menu = () => key.currentState?.openDrawer();
     final pages = <Widget>[
       HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => _openStudyTab(0), onDop: () => _openStudyTab(1), onAnnouncements: _openAnnouncements),
-      MapPage(initialRoom: selectedRoom, onMenu: menu),
+      MapPage(initialRoom: selectedRoom, onMenu: menu, onAi: _openAiChat),
       StudyHubPage(key: studyPageKey, initialTab: studyTab, onMenu: menu, onNotes: _openNotes),
       SettingsPage(theme: widget.theme, userName: widget.userName, onThemeChanged: widget.onThemeChanged, onNameChanged: widget.onNameChanged, onMenu: menu),
     ];
@@ -1500,8 +1500,8 @@ class _StartDialogState extends State<_StartDialog> {
   }
 }
 class MapPage extends StatefulWidget {
-  final String? initialRoom; final VoidCallback onMenu;
-  const MapPage({super.key,this.initialRoom,required this.onMenu});
+  final String? initialRoom; final VoidCallback onMenu; final VoidCallback onAi;
+  const MapPage({super.key,this.initialRoom,required this.onMenu,required this.onAi});
   @override State<MapPage> createState()=>_MapPageState();
 }
 class _MapPageState extends State<MapPage>{
@@ -1572,6 +1572,7 @@ class _MapPageState extends State<MapPage>{
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Карта школы'),
         actions: [
+          IconButton(onPressed: widget.onAi, tooltip: 'ИИ-помощник по навигации', icon: const Icon(Icons.smart_toy_rounded)),
           IconButton(onPressed: _start, tooltip: 'Начало маршрута', icon: const Icon(Icons.my_location_rounded)),
           IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenMapPage(floor: floor, selectedRoom: selected, routeRoom: null, startFloor: startFloor, startLocationId: startId))), tooltip: 'Полноэкранная карта', icon: const Icon(Icons.fullscreen_rounded)),
           IconButton(onPressed: () => setState(() { query = ''; search.clear(); }), tooltip: 'Очистить поиск', icon: const Icon(Icons.clear_all_rounded)),
