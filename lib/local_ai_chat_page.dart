@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'ai_navigation_intent.dart';
+
 /// On-device assistant. The GGUF model is stored outside the APK and runs locally.
 class LocalAiChatPage extends StatefulWidget {
   final String? Function(String destinationId, String? startLocationId)? onRouteRequest;
@@ -218,19 +220,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     return null;
   }
 
-  List<String> _catalogRoomIds(String text) {
-    final query = text.toLowerCase();
-    final known = <String>{
-      ..._rooms.map((row) => '${row['id'] ?? row['number'] ?? ''}'.trim()),
-      ..._places.map((row) => '${row['id'] ?? row['number'] ?? ''}'.trim()),
-    };
-    return RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)')
-        .allMatches(query)
-        .map((match) => match.group(1)!)
-        .where(known.contains)
-        .toList();
-  }
-
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _busy) return;
@@ -243,19 +232,15 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _scrollToBottom();
 
     await _catalogLoadFuture;
-    final query = text.toLowerCase();
-    final wantsRoute = query.contains('маршрут') || query.contains('как пройти') ||
-        query.contains('как дойти') || query.contains('проведи') ||
-        query.contains('проложи') || query.contains('добраться') ||
-        query.contains('от кабинета') || query.contains('из кабинета');
-    final roomIds = _catalogRoomIds(text);
-    if (wantsRoute && roomIds.isNotEmpty && widget.onRouteRequest != null) {
-      final destinationId = roomIds.last;
-      final startLocationId = roomIds.length > 1 &&
-              (query.contains('от ') || query.contains('из '))
-          ? roomIds.first
-          : null;
-      final reply = widget.onRouteRequest!(destinationId, startLocationId);
+    final intent = AiNavigationIntent.parse(
+      text,
+      knownRoomIds: [
+        ..._rooms.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
+        ..._places.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
+      ],
+    );
+    if (intent != null && widget.onRouteRequest != null) {
+      final reply = widget.onRouteRequest!(intent.destinationId, intent.startLocationId);
       if (reply != null) {
         setState(() {
           _lines.add(_ChatLine(false, reply));
