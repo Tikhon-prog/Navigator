@@ -52,11 +52,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   String? _statusError;
   List<Map<String, dynamic>> _rooms = [];
   List<Map<String, dynamic>> _places = [];
+  late final Future<void> _catalogLoadFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadSchoolCatalog();
+    _catalogLoadFuture = _loadSchoolCatalog();
     _findExistingModel();
   }
 
@@ -206,6 +207,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     });
     _scrollToBottom();
 
+    await _catalogLoadFuture;
     final offlineAnswer = _offlineRoomAnswer(text);
     if (offlineAnswer != null) {
       setState(() {
