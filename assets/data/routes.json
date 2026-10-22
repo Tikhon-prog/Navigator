@@ -22,5 +22,11 @@
     "Any changes to floor plans, corridor segments, door anchors, or stair links should be checked with navigation route tests.",
     "Door and place anchors farther than 450 source-map pixels from every corridor segment are left disconnected instead of being routed through potentially obstructing walls.",
     "The second-floor campus branch has an explicit connector to the main turquoise corridor because its endpoints are 32 source-map pixels apart, beyond the 25 px node-snap tolerance."
-  ]
+  ],
+  "navigationAssistant": {
+    "intentResolver": "lib/ai_navigation_intent.dart",
+    "chat": "lib/local_ai_chat_page.dart",
+    "operation": "Offline natural-language requests can open a route from the bundled school map.",
+    "safety": "The language model must not invent corridor links, doors, stairs, floor changes, or route geometry. RouteEngine validates graph connectivity and remains the deterministic path solver."
+  }
 }
