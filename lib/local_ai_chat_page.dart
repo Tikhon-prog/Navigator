@@ -57,7 +57,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   final _scroll = ScrollController();
   final List<_ChatLine> _lines = [
     _ChatLine(false,
-        'Привет! Я локальный ИИ-помощник. Поиск кабинета по встроенной карте работает офлайн. Для свободного диалога сначала нужно скачать небольшую модель (~491 МБ); после этого интернет не потребуется.')
+        'Привет! Я локальный ИИ-помощник. Поиск кабинетов и построение маршрутов доступны без скачивания модели. Для свободного диалога можно установить компактную модель (~105 МБ); для более качественных ответов по-русски доступен Qwen (~491 МБ). После загрузки выбранная модель работает без интернета.')
   ];
   final List<LLMMessage> _history = [
     LLMMessage(role: LLMRole.system, content: _systemPrompt),
@@ -109,7 +109,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     try {
       for (final preset in _LocalModelPreset.values) {
         final file = await _modelFile(preset);
-        final minimum = preset == _LocalModelPreset.compact ? 70 : 350;
+        final minimum = preset == _LocalModelPreset.compact ? 95 : 450;
         if (await file.exists() && await file.length() > minimum * 1024 * 1024) {
           if (mounted) setState(() {
             _selectedPreset = preset;
@@ -153,7 +153,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         await sink.flush();
         await sink.close();
         sink = null;
-        final minimumBytes = (_selectedPreset == _LocalModelPreset.compact ? 70 : 350) * 1024 * 1024;
+        final minimumBytes = (_selectedPreset == _LocalModelPreset.compact ? 95 : 450) * 1024 * 1024;
         if (await file.length() < minimumBytes) {
           throw const FormatException('Скачанный файл слишком мал и похож на страницу ошибки вместо GGUF-модели.');
         }
