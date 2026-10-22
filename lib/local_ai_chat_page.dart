@@ -132,10 +132,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   Future<void> _selectModelPreset(_LocalModelPreset preset) async {
-    if (_busy || _downloading || _selectedPreset == preset) return;
+    if (_busy || _downloading || _loadingModel) return;
+    final file = await _modelFile(preset);
+    if (_selectedPreset == preset && _modelPath == file.path) return;
     _chatRepository?.dispose();
     _chatRepository = null;
-    final file = await _modelFile(preset);
     final minimum = preset == _LocalModelPreset.compact ? 95 : 320;
     final ready = await file.exists() && await file.length() > minimum * 1024 * 1024;
     if (!mounted) return;
@@ -145,6 +146,13 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       _statusError = null;
       _downloadProgress = null;
     });
+  }
+
+  String get _activeModelLabel {
+    if (_modelPath?.endsWith('qwen2.5-0.5b-instruct-q4_k_m.gguf') ?? false) {
+      return 'Qwen2.5 0.5B · Q4_K_M · прежняя загрузка (~491 МБ)';
+    }
+    return _selectedPreset.label;
   }
 
   Future<void> _downloadModel() async {
@@ -489,7 +497,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Модель сохранена на устройстве', style: TextStyle(fontWeight: FontWeight.w800)),
-                          Text('Интернет не нужен · ${_selectedPreset.label}', style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+                          Text('Интернет не нужен · ${_activeModelLabel}', style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
                         ],
                       ),
                     ),
