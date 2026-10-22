@@ -193,10 +193,55 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
   }
 
+  Future<AiNavigationIntent?> _resolveNavigationWithLocalModel(String query) async {
+    if (_modelPath == null) return null;
+    await _ensureLoaded();
+    final knownRows = <Map<String, dynamic>>[
+      ..._rooms,
+      ..._places,
+    ].map((row) => <String, dynamic>{
+      'id': '\${row['id'] ?? row['number'] ?? ''}'.trim(),
+      'name': '\${row['name'] ?? ''}'.trim(),
+      if (row['floor'] != null) 'floor': row['floor'],
+    }).where((row) => (row['id'] as String).isNotEmpty).toList();
+    final prompt = '''
+Выбери пункт назначения из каталога школьной карты для запроса пользователя.
+Каталог ниже — единственный источник допустимых ID. Не выдумывай ID.
+Если указан только пункт назначения, startLocationId должен быть null.
+Ответь только JSON:
+{"destinationId":"ID из каталога","startLocationId":null}
+или {"destinationId":"ID назначения","startLocationId":"ID начала"}.
+Если не уверен, ответь {"destinationId":null,"startLocationId":null}.
+КАТАЛОГ: \${jsonEncode(knownRows)}
+ЗАПРОС: $query
+''';
+    final response = await _chatRepository!.chatResponse(
+      _modelPath!,
+      messages: [
+        LLMMessage(
+          role: LLMRole.system,
+          content: 'Ты классификатор навигационных запросов. Выдавай только JSON; не выдумывай пункты карты.',
+        ),
+        LLMMessage(role: LLMRole.user, content: prompt),
+      ],
+    );
+    final match = RegExp(r'\{[\s\S]*\}').firstMatch(response.content);
+    if (match == null) return null;
+    try {
+      return AiNavigationIntent.fromModelCandidate(
+        jsonDecode(match.group(0)!),
+        knownRoomIds: knownRows.map((row) => row['id'] as String),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   String? _offlineRoomAnswer(String text) {
     final query = text.toLowerCase();
     final match = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)').firstMatch(query);
-    if (match != null) {
+    final asksAboutRoom = <String>['кабинет', 'комнат', 'этаж', 'где', 'найди', 'номер', 'маршрут', 'как пройти', 'как дойти'].any(query.contains);
+    if (asksAboutRoom && match != null) {
       final wanted = match.group(1)!.trim();
       final all = [..._rooms, ..._places];
       final hits = all.where((row) =>
@@ -232,13 +277,20 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _scrollToBottom();
 
     await _catalogLoadFuture;
-    final intent = AiNavigationIntent.parse(
-      text,
-      knownRoomIds: [
-        ..._rooms.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
-        ..._places.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
-      ],
-    );
+    final knownRoomIds = [
+      ..._rooms.map((row) => '\${row['id'] ?? row['number'] ?? ''}'),
+      ..._places.map((row) => '\${row['id'] ?? row['number'] ?? ''}'),
+    ];
+    var intent = AiNavigationIntent.parse(text, knownRoomIds: knownRoomIds);
+    if (intent == null &&
+        AiNavigationIntent.looksLikeRouteRequest(text) &&
+        _modelPath != null) {
+      try {
+        intent = await _resolveNavigationWithLocalModel(text);
+      } catch (_) {
+        // Optional neural intent resolution may fail; graph navigation still works.
+      }
+    }
     if (intent != null && widget.onRouteRequest != null) {
       final reply = widget.onRouteRequest!(intent.destinationId, intent.startLocationId);
       if (reply != null) {
