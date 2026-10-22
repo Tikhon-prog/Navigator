@@ -107,7 +107,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   Future<void> _findExistingModel() async {
     try {
-      for (final preset in _LocalModelPreset.values) {
+      final preferredPresets = [
+        _selectedPreset,
+        ..._LocalModelPreset.values.where((preset) => preset != _selectedPreset),
+      ];
+      for (final preset in preferredPresets) {
         final file = await _modelFile(preset);
         final minimum = preset == _LocalModelPreset.compact ? 95 : 320;
         if (await file.exists() && await file.length() > minimum * 1024 * 1024) {
@@ -125,6 +129,22 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         if (mounted) setState(() => _modelPath = legacy.path);
       }
     } catch (_) {}
+  }
+
+  Future<void> _selectModelPreset(_LocalModelPreset preset) async {
+    if (_busy || _downloading || _selectedPreset == preset) return;
+    _chatRepository?.dispose();
+    _chatRepository = null;
+    final file = await _modelFile(preset);
+    final minimum = preset == _LocalModelPreset.compact ? 95 : 320;
+    final ready = await file.exists() && await file.length() > minimum * 1024 * 1024;
+    if (!mounted) return;
+    setState(() {
+      _selectedPreset = preset;
+      _modelPath = ready ? file.path : null;
+      _statusError = null;
+      _downloadProgress = null;
+    });
   }
 
   Future<void> _downloadModel() async {
@@ -423,12 +443,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                         value: preset,
                         child: Text(preset.label, overflow: TextOverflow.ellipsis),
                       )).toList(),
-                      onChanged: _downloading ? null : (preset) {
-                        if (preset != null) setState(() {
-                          _selectedPreset = preset;
-                          _statusError = null;
-                          _downloadProgress = null;
-                        });
+                      onChanged: _downloading || _busy ? null : (preset) {
+                        if (preset != null) _selectModelPreset(preset);
                       },
                     ),
                     const SizedBox(height: 8),
@@ -468,9 +484,27 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                   children: [
                     const Icon(Icons.offline_bolt_rounded),
                     const SizedBox(width: 8),
-                    const Expanded(child: Text('Модель сохранена на устройстве · интернет не нужен')),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Модель сохранена на устройстве', style: TextStyle(fontWeight: FontWeight.w800)),
+                          Text('Интернет не нужен · ${_selectedPreset.label}', style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
                     if (_loadingModel)
                       const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    PopupMenuButton<_LocalModelPreset>(
+                      tooltip: 'Сменить модель',
+                      enabled: !_busy && !_downloading && !_loadingModel,
+                      onSelected: _selectModelPreset,
+                      itemBuilder: (_) => _LocalModelPreset.values.map((preset) => PopupMenuItem(
+                        value: preset,
+                        child: Text(preset.label),
+                      )).toList(),
+                      icon: const Icon(Icons.swap_horiz_rounded),
+                    ),
                   ],
                 ),
               ),
