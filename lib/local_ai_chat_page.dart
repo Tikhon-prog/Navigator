@@ -118,6 +118,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           return;
         }
       }
+      // Migration: recognize the Q4_K_M model downloaded by the previous
+      // prototype so an upgrade does not ask the user to download it again.
+      final legacy = File('${(await getApplicationSupportDirectory()).path}/local_ai_models/qwen2.5-0.5b-instruct-q4_k_m.gguf');
+      if (await legacy.exists() && await legacy.length() > 450 * 1024 * 1024) {
+        if (mounted) setState(() => _modelPath = legacy.path);
+      }
     } catch (_) {}
   }
 
