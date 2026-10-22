@@ -206,8 +206,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       ..._rooms,
       ..._places,
     ].map((row) => <String, dynamic>{
-      'id': '\${row['id'] ?? row['number'] ?? ''}'.trim(),
-      'name': '\${row['name'] ?? ''}'.trim(),
+      'id': '${row['id'] ?? row['number'] ?? ''}'.trim(),
+      'name': '${row['name'] ?? ''}'.trim(),
       if (row['floor'] != null) 'floor': row['floor'],
     }).where((row) => (row['id'] as String).isNotEmpty).toList();
     final prompt = '''
@@ -218,7 +218,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 {"destinationId":"ID из каталога","startLocationId":null}
 или {"destinationId":"ID назначения","startLocationId":"ID начала"}.
 Если не уверен, ответь {"destinationId":null,"startLocationId":null}.
-КАТАЛОГ: \${jsonEncode(knownRows)}
+КАТАЛОГ: ${jsonEncode(knownRows)}
 ЗАПРОС: $query
 ''';
     final response = await _chatRepository!.chatResponse(
@@ -284,8 +284,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
     await _catalogLoadFuture;
     final knownRoomIds = [
-      ..._rooms.map((row) => '\${row['id'] ?? row['number'] ?? ''}'),
-      ..._places.map((row) => '\${row['id'] ?? row['number'] ?? ''}'),
+      ..._rooms.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
+      ..._places.map((row) => '${row['id'] ?? row['number'] ?? ''}'),
     ];
     var intent = AiNavigationIntent.parse(text, knownRoomIds: knownRoomIds);
     if (intent == null &&
