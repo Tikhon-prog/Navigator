@@ -8,7 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 /// On-device assistant. The GGUF model is stored outside the APK and runs locally.
 class LocalAiChatPage extends StatefulWidget {
-  const LocalAiChatPage({super.key});
+  final String? Function(String destinationId, String? startLocationId)? onRouteRequest;
+  const LocalAiChatPage({super.key, this.onRouteRequest});
 
   @override
   State<LocalAiChatPage> createState() => _LocalAiChatPageState();
@@ -20,10 +21,28 @@ class _ChatLine {
   _ChatLine(this.fromUser, this.text);
 }
 
+enum _LocalModelPreset { compact, russian }
+
+extension on _LocalModelPreset {
+  String get fileName => this == _LocalModelPreset.compact
+      ? 'smollm2-135m-instruct-q4_k_m.gguf'
+      : 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
+
+  String get url => this == _LocalModelPreset.compact
+      ? 'https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+      : 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+
+  String get label => this == _LocalModelPreset.compact
+      ? 'SmolLM2 135M · около 105 МБ'
+      : 'Qwen2.5 0.5B · около 491 МБ';
+
+  String get description => this == _LocalModelPreset.compact
+      ? 'Самый компактный вариант (~105 МБ). Он в основном ориентирован на английский; русский диалог будет заметно слабее.'
+      : 'Лучше подходит для коротких ответов на русском, но требует около 491 МБ места для файла модели и дополнительную оперативную память.';
+}
+
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
-  static const _modelFileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
-  static const _modelUrl =
-      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+  _LocalModelPreset _selectedPreset = _LocalModelPreset.compact;
   static const _systemPrompt = '''
 Ты локальный ИИ-помощник школы «Поколение». Отвечай по-русски, кратко и дружелюбно.
 Ты работаешь на устройстве без облака. Не выдумывай расписание, адреса кабинетов,
@@ -42,7 +61,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     LLMMessage(role: LLMRole.system, content: _systemPrompt),
   ];
 
-  LlamaCppRepository? _modelRepository;
   LlamaCppChatRepository? _chatRepository;
   String? _modelPath;
   bool _busy = false;
@@ -78,18 +96,25 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     } catch (_) {}
   }
 
-  Future<File> _modelFile() async {
+  Future<File> _modelFile([_LocalModelPreset? preset]) async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory('${support.path}/local_ai_models');
     await directory.create(recursive: true);
-    return File('${directory.path}/$_modelFileName');
+    return File('${directory.path}/${(preset ?? _selectedPreset).fileName}');
   }
 
   Future<void> _findExistingModel() async {
     try {
-      final file = await _modelFile();
-      if (await file.exists() && await file.length() > 100 * 1024 * 1024) {
-        if (mounted) setState(() => _modelPath = file.path);
+      for (final preset in _LocalModelPreset.values) {
+        final file = await _modelFile(preset);
+        final minimum = preset == _LocalModelPreset.compact ? 70 : 350;
+        if (await file.exists() && await file.length() > minimum * 1024 * 1024) {
+          if (mounted) setState(() {
+            _selectedPreset = preset;
+            _modelPath = file.path;
+          });
+          return;
+        }
       }
     } catch (_) {}
   }
@@ -107,7 +132,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       file = await _modelFile();
       final client = HttpClient();
       try {
-        final request = await client.getUrl(Uri.parse(_modelUrl));
+        final request = await client.getUrl(Uri.parse(_selectedPreset.url));
         request.followRedirects = true;
         final response = await request.close();
         if (response.statusCode != HttpStatus.ok) {
@@ -126,8 +151,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         await sink.flush();
         await sink.close();
         sink = null;
-        if (await file.length() < 100 * 1024 * 1024) {
-          throw const FormatException('Скачанный файл слишком мал и похож на ошибку сервера.');
+        final minimumBytes = (_selectedPreset == _LocalModelPreset.compact ? 70 : 350) * 1024 * 1024;
+        if (await file.length() < minimumBytes) {
+          throw const FormatException('Скачанный файл слишком мал и похож на страницу ошибки вместо GGUF-модели.');
         }
         if (mounted) {
           setState(() {
@@ -154,15 +180,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
     if (mounted) setState(() => _loadingModel = true);
     try {
-      final repository = LlamaCppRepository();
-      final model = await repository.loadModel(_modelPath!);
-      final chat = LlamaCppChatRepository.withModel(
-        model,
-        repository.bindings,
+      final chat = LlamaCppChatRepository(
         contextSize: 2048,
         nGpuLayers: 0,
       );
-      _modelRepository = repository;
+      await chat.loadModel(_modelPath!);
       _chatRepository = chat;
     } finally {
       if (mounted) setState(() => _loadingModel = false);
@@ -196,6 +218,19 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     return null;
   }
 
+  List<String> _catalogRoomIds(String text) {
+    final query = text.toLowerCase();
+    final known = <String>{
+      ..._rooms.map((row) => '${row['id'] ?? row['number'] ?? ''}'.trim()),
+      ..._places.map((row) => '${row['id'] ?? row['number'] ?? ''}'.trim()),
+    };
+    return RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)')
+        .allMatches(query)
+        .map((match) => match.group(1)!)
+        .where(known.contains)
+        .toList();
+  }
+
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _busy) return;
@@ -208,6 +243,28 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _scrollToBottom();
 
     await _catalogLoadFuture;
+    final query = text.toLowerCase();
+    final wantsRoute = query.contains('маршрут') || query.contains('как пройти') ||
+        query.contains('как дойти') || query.contains('проведи') ||
+        query.contains('проложи') || query.contains('добраться') ||
+        query.contains('от кабинета') || query.contains('из кабинета');
+    final roomIds = _catalogRoomIds(text);
+    if (wantsRoute && roomIds.isNotEmpty && widget.onRouteRequest != null) {
+      final destinationId = roomIds.last;
+      final startLocationId = roomIds.length > 1 &&
+              (query.contains('от ') || query.contains('из '))
+          ? roomIds.first
+          : null;
+      final reply = widget.onRouteRequest!(destinationId, startLocationId);
+      if (reply != null) {
+        setState(() {
+          _lines.add(_ChatLine(false, reply));
+          _busy = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+    }
     final offlineAnswer = _offlineRoomAnswer(text);
     if (offlineAnswer != null) {
       setState(() {
@@ -273,7 +330,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _input.dispose();
     _scroll.dispose();
     _chatRepository?.dispose();
-    _modelRepository?.dispose();
     super.dispose();
   }
 
@@ -313,10 +369,29 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Модель Qwen2.5 0.5B · Q4_K_M',
+                    const Text('Выбери размер локальной модели',
                         style: TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<_LocalModelPreset>(
+                      value: _selectedPreset,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Модель'),
+                      items: _LocalModelPreset.values.map((preset) => DropdownMenuItem(
+                        value: preset,
+                        child: Text(preset.label, overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                      onChanged: _downloading ? null : (preset) {
+                        if (preset != null) setState(() {
+                          _selectedPreset = preset;
+                          _statusError = null;
+                          _downloadProgress = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_selectedPreset.description),
                     const SizedBox(height: 5),
-                    const Text('Около 491 МБ. Модель не входит в APK, чтобы не раздувать установщик. После однократной загрузки чат работает без интернета. На слабых устройствах ответы могут генерироваться медленно.'),
+                    const Text('Модель не входит в APK. После однократной загрузки чат работает без интернета. Без скачанной модели поиск и навигация по встроенным данным остаются доступны офлайн.'),
                     const SizedBox(height: 10),
                     if (_downloading) ...[
                       LinearProgressIndicator(value: _downloadProgress),
