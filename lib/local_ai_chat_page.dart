@@ -359,7 +359,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         LLMMessage(role: LLMRole.user, content: prompt),
       ],
     );
-    final match = RegExp(r'\{[\s\S]*\}').firstMatch(response.content);
+    final responseText = response.content ?? '';
+    final match = RegExp(r'\{[\s\S]*\}').firstMatch(responseText);
     if (match == null) return null;
     try {
       return AiNavigationIntent.fromModelCandidate(
