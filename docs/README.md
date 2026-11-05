@@ -7,6 +7,8 @@
 | Документ | Содержание |
 |---|---|
 | [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md) | Полное техническое руководство по проекту |
+| [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) | Программы и SDK для нового Windows, Android и Windows-клиента |
+| [LOCAL_AI_AND_PREFERENCES.md](LOCAL_AI_AND_PREFERENCES.md) | Загрузка локальной модели, команды расписания и навигационные предпочтения |
 | [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md) | Настройка Windows и сборка APK/Windows |
 | [SERVER_INTEGRATION.md](SERVER_INTEGRATION.md) | Развёртывание сервера, OIDC, переменные окружения и API |
 | [SERVER_FEATURES.md](SERVER_FEATURES.md) | Подробные заметки о серверных функциях |

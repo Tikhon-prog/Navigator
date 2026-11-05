@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'local_ai_chat_page.dart';
+import 'navigation_preferences.dart';
+import 'room_categories.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'bell_countdown.dart';
 import 'notes_page.dart';
@@ -146,7 +148,10 @@ class RouteResult {
   final int startFloor;
   final String? startLocationId;
 
-  const RouteResult(this.nodes, this.destination, this.distance, this.startFloor, this.startLocationId);
+  final Set<String> appliedAvoidLocationIds;
+
+  const RouteResult(this.nodes, this.destination, this.distance, this.startFloor,
+      this.startLocationId, {this.appliedAvoidLocationIds = const <String>{}});
 
   bool get changesFloor => nodes.map((n) => n.floor).toSet().length > 1;
 }
@@ -177,6 +182,8 @@ class ScheduleEntry {
 
 class SchoolScheduleCatalog {
   static Map<String, dynamic>? _data;
+  static final ValueNotifier<int> personalRevision = ValueNotifier<int>(0);
+  static void notifyPersonalChanges() => personalRevision.value++;
   static Future<void> load() async {
     if (_data != null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -628,6 +635,7 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
   static bool isPlace(RoomInfo r) => r.id.startsWith('place_');
   static String title(RoomInfo r) => isPlace(r) ? r.name : 'Кабинет ${r.id}';
   static String typeLabel(RoomInfo r) => isPlace(r) ? 'Место' : 'Кабинет';
+  static String category(RoomInfo r) => RoomCategories.classify(r.id, r.name);
   static Offset point(RoomInfo r) => DoorPoints.of(r.id, r.point);
 }
 
@@ -711,7 +719,26 @@ class RouteEngine {
 
   static Offset _nearestPointOnSegment(Offset p, CorridorSegment s) => _project(p, s.a, s.b);
 
-  static RouteResult? build(String destinationId, {int startFloor = 1, String? startLocationId}) {
+  static double _avoidPenalty(int floor, Offset a, Offset b, Map<String, Offset> avoidPoints) {
+    const radiusPx = 260.0;
+    const maximumPenalty = 15000.0;
+    var penalty = 0.0;
+    for (final entry in avoidPoints.entries) {
+      final room = SchoolData.tryRoom(entry.key);
+      if (room == null || room.floor != floor) continue;
+      final distance = _pxDistance(entry.value, _project(entry.value, a, b));
+      if (distance < radiusPx) {
+        penalty += maximumPenalty * ((radiusPx - distance) / radiusPx);
+      }
+    }
+    return penalty;
+  }
+
+  static RouteResult? build(String destinationId, {
+    int startFloor = 1,
+    String? startLocationId,
+    Set<String> avoidLocationIds = const <String>{},
+  }) {
     // startFloor is kept for callers that also select which floor to browse;
     // the real origin is the main entrance unless an explicit location is saved.
     assert(startFloor >= 1 && startFloor <= 3);
@@ -720,6 +747,12 @@ class RouteEngine {
     final startRoom = startLocationId == null ? null : SchoolData.tryRoom(startLocationId);
     if (startLocationId != null && startRoom == null) return null;
     final effectiveStartFloor = startRoom?.floor ?? 1;
+    final avoidPoints = <String, Offset>{};
+    for (final id in avoidLocationIds) {
+      if (id == destination.id || id == startRoom?.id) continue;
+      final room = SchoolData.tryRoom(id);
+      if (room != null) avoidPoints[id] = DoorPoints.of(room.id, room.point);
+    }
 
     // A same-location request must succeed even when that point has no corridor
     // connector, and should not build the full graph or show walking directions.
@@ -841,7 +874,8 @@ class RouteEngine {
       for (var k = 1; k < ids.length; k++) {
         final a = nodes[ids[k - 1]]!;
         final b = nodes[ids[k]]!;
-        connect(a.id, b.id, _pxDistance(a.point, b.point));
+        connect(a.id, b.id,
+          _pxDistance(a.point, b.point) + _avoidPenalty(s.floor, a.point, b.point, avoidPoints));
       }
     }
 
@@ -942,8 +976,23 @@ class RouteEngine {
     }
     path.add(RouteNode('destination_door_${destination.id}', destination.floor, DoorPoints.of(destination.id, destination.point), SchoolData.title(destination)));
 
+    final appliedAvoidIds = <String>{};
+    for (final entry in avoidPoints.entries) {
+      var passesNearAvoidedRoom = false;
+      for (var i = 0; i + 1 < path.length; i++) {
+        final a = path[i];
+        final b = path[i + 1];
+        if (a.floor != b.floor) continue;
+        if (_pxDistance(entry.value, _project(entry.value, a.point, b.point)) <= 220) {
+          passesNearAvoidedRoom = true;
+          break;
+        }
+      }
+      if (!passesNearAvoidedRoom) appliedAvoidIds.add(entry.key);
+    }
     final displayPath = _simplifyPath(path);
-    return RouteResult(displayPath, destination, distance[target]!, effectiveStartFloor, startLocationId);
+    return RouteResult(displayPath, destination, distance[target]!, effectiveStartFloor,
+      startLocationId, appliedAvoidLocationIds: appliedAvoidIds);
   }
 
   static List<RouteNode> _simplifyPath(List<RouteNode> input) {
@@ -1187,16 +1236,60 @@ class _AppShellState extends State<AppShell>{
     key.currentState?.closeDrawer();
     WidgetsBinding.instance.addPostFrameCallback((_) => studyPageKey.currentState?.selectTab(tab.clamp(0, 1).toInt()));
   }
-  String? _openRouteFromAi(String destinationId, String? startLocationId) {
+  String? _openRouteFromAi(String destinationId, String? startLocationId, Set<String> avoidLocationIds) {
     final room = SchoolData.tryRoom(destinationId);
     final start = startLocationId == null ? null : SchoolData.tryRoom(startLocationId);
     if (room == null || (startLocationId != null && start == null)) return null;
-    final route = RouteEngine.build(room.id, startLocationId: start?.id, startFloor: start?.floor ?? 1);
+    final route = RouteEngine.build(room.id, startLocationId: start?.id,
+      startFloor: start?.floor ?? 1, avoidLocationIds: avoidLocationIds);
     if (route == null) return null;
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RoutePage(room: room, route: route)));
-    return start == null
-        ? 'Открыл проверенный маршрут от главного входа до кабинета ${room.id}. Сама линия пути рассчитана по встроенной карте.'
-        : 'Открыл проверенный маршрут от кабинета ${start.id} до ${room.id}. Сама линия пути рассчитана по встроенной карте.';
+    final originText = start == null ? 'от главного входа' : 'от кабинета ${start.id}';
+    if (avoidLocationIds.isEmpty) {
+      return 'Открыл проверенный маршрут $originText до ${room.id}. Путь рассчитан по реальному графу коридоров.';
+    }
+    final requested = avoidLocationIds.where((id) => id != room.id && id != start?.id).toSet();
+    if (requested.isNotEmpty && route.appliedAvoidLocationIds.containsAll(requested)) {
+      return 'Открыл альтернативный маршрут $originText до ${room.id}. Предпочтения обхода учтены.';
+    }
+    if (route.appliedAvoidLocationIds.isNotEmpty) {
+      return 'Открыл маршрут $originText до ${room.id}. Часть предпочтений удалось учесть, но остальные зоны не удалось обойти без разрыва графа.';
+    }
+    return 'Открыл маршрут $originText до ${room.id}. Полностью обойти указанные зоны без разрыва реального графа коридоров не получилось.';
+  }
+
+  Future<String?> _loadAiMathClassName() async {
+    final p = await SharedPreferences.getInstance();
+    final value = (p.getString('student_class_name') ?? '').trim();
+    return value.isEmpty ? null : value;
+  }
+
+  Future<Map<int, int>?> _loadAiMathSlotsByDay() async {
+    await SchoolScheduleCatalog.load();
+    final className = await _loadAiMathClassName();
+    if (className == null) return null;
+    return {
+      for (var day = 1; day <= 6; day++)
+        day: SchoolScheduleCatalog.mathLessonCount(className, day),
+    };
+  }
+
+  Future<void> _applyAiMathSchedule(String className, Map<int, List<String>> assignments) async {
+    final p = await SharedPreferences.getInstance();
+    if ((p.getString('student_class_name') ?? '').trim() != className) {
+      throw StateError('Выбранный класс изменился. Открой чат заново и повтори команду.');
+    }
+    for (final entry in assignments.entries) {
+      final count = SchoolScheduleCatalog.mathLessonCount(className, entry.key);
+      if (entry.value.length != count || entry.value.any((subject) => subject.trim().isEmpty)) {
+        throw StateError('Количество предметов не совпадает с математическими уроками этого дня.');
+      }
+      for (var slot = 0; slot < count; slot++) {
+        await p.setString(_studentScopedPreferenceKey(p,
+          'math_subject_${className}_${entry.key}_$slot'), entry.value[slot]);
+      }
+    }
+    SchoolScheduleCatalog.notifyPersonalChanges();
   }
   Future<void> _openAnnouncements() async {
     key.currentState?.closeDrawer();
@@ -1211,7 +1304,12 @@ class _AppShellState extends State<AppShell>{
   Future<void> _openAiChat() async {
     key.currentState?.closeDrawer();
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LocalAiChatPage(onRouteRequest: _openRouteFromAi)));
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LocalAiChatPage(
+      onRouteRequest: _openRouteFromAi,
+      loadMathClassName: _loadAiMathClassName,
+      loadMathSlotsByDay: _loadAiMathSlotsByDay,
+      onApplyMathSchedule: _applyAiMathSchedule,
+    )));
   }
   @override
   Widget build(BuildContext context) {
@@ -1505,13 +1603,56 @@ class MapPage extends StatefulWidget {
   @override State<MapPage> createState()=>_MapPageState();
 }
 class _MapPageState extends State<MapPage>{
-  int floor=1; String query=''; String? selected; int startFloor=1; String? startId; final search=TextEditingController();
-  @override void initState(){super.initState();selected=widget.initialRoom;if(selected!=null)floor=SchoolData.room(selected!).floor;_load();}
-  Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
+  int floor=1;
+  String query='';
+  String? selected;
+  String selectedCategory=RoomCategories.all;
+  int startFloor=1;
+  String? startId;
+  Set<String> avoidedLocations=<String>{};
+  final search=TextEditingController();
+  @override void initState(){
+    super.initState();
+    selected=widget.initialRoom;
+    if(selected!=null)floor=SchoolData.room(selected!).floor;
+    _load();
+  }
+  Future<void> _load()async{
+    final p=await SharedPreferences.getInstance();
+    startFloor=p.getInt('map_start_floor')??1;
+    startId=p.getString('map_start_location');
+    avoidedLocations=await NavigationPreferences.loadAvoidedLocations();
+    if(mounted)setState((){});
+  }
   @override void dispose(){search.dispose();super.dispose();}
-  List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) => query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) || SchoolData.title(r).toLowerCase().contains(query.toLowerCase())).toList();
+  List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) =>
+    (selectedCategory==RoomCategories.all || SchoolData.category(r)==selectedCategory) &&
+    (query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) ||
+      SchoolData.title(r).toLowerCase().contains(query.toLowerCase()))
+  ).toList();
   Future<void> _start()async{final r=await showDialog<_StartChoice>(context:context,builder:(_)=>_StartDialog(floor:startFloor,id:startId));if(r==null)return;final p=await SharedPreferences.getInstance();await p.setInt('map_start_floor',r.floor);if(r.id==null)await p.remove('map_start_location');else await p.setString('map_start_location',r.id!);if(mounted)setState((){startFloor=r.floor;startId=r.id;});}
-  void _open(RoomInfo r){setState(()=>selected=r.id);final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId);if(route==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Маршрут для этой точки недоступен.')));return;}Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));}
+  Future<void> _open(RoomInfo r) async {
+    final latestAvoided = await NavigationPreferences.loadAvoidedLocations();
+    if (!mounted) return;
+    setState(() {
+      selected = r.id;
+      avoidedLocations = latestAvoided;
+    });
+    final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId,
+      avoidLocationIds:latestAvoided);
+    if(route==null){
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content:Text('Маршрут для этой точки недоступен.')),
+      );
+      return;
+    }
+    await NavigationPreferences.saveLastRoute(
+      destinationId: r.id,
+      startLocationId: startId,
+    );
+    await Navigator.push(context,
+      MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));
+  }
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1537,7 +1678,24 @@ class _MapPageState extends State<MapPage>{
               Expanded(child: Text('Этаж $floor', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))),
               Text('${rooms.length} мест', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
             ]),
-          ),
+          ),           Padding(
+             padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+             child: DropdownButtonFormField<String>(
+               value: selectedCategory,
+               isExpanded: true,
+               decoration: const InputDecoration(
+                 labelText: 'Тип помещения',
+                 prefixIcon: Icon(Icons.category_outlined),
+                 isDense: true,
+               ),
+               items: RoomCategories.labels.map((value) =>
+                 DropdownMenuItem(value:value, child:Text(value))).toList(),
+               onChanged: (value) => setState(() {
+                 selectedCategory=value??RoomCategories.all;
+               }),
+             ),
+           ),
+
           if (rooms.isEmpty)
             Padding(
               padding: const EdgeInsets.all(20),
@@ -1683,8 +1841,20 @@ class _SchedulePageState extends State<SchedulePage> {
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
-  @override void initState() { super.initState(); _load(); _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() => _now = DateTime.now()); }); }
-  @override void dispose() { _clockTimer?.cancel(); super.dispose(); }
+  @override void initState() {
+    super.initState();
+    _load();
+    SchoolScheduleCatalog.personalRevision.addListener(_onPersonalScheduleChanged);
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+  void _onPersonalScheduleChanged() => _load();
+  @override void dispose() {
+    _clockTimer?.cancel();
+    SchoolScheduleCatalog.personalRevision.removeListener(_onPersonalScheduleChanged);
+    super.dispose();
+  }
   String? _breakCountdown(List<ScheduleEntry> dayEntries) => SchoolBellCountdown.describe(
     selectedDay: day,
     now: _now,
@@ -1719,11 +1889,12 @@ class _SchedulePageState extends State<SchedulePage> {
     final p = await SharedPreferences.getInstance(); await p.setString('student_class_name', selected); await p.setString('student_class_id', selected);
     if (!mounted) return; await showStudentGroupSelection(context, selected); await _load();
   }
-  void _route(ScheduleEntry e) {
+  Future<void> _route(ScheduleEntry e) async {
     if (e.room.isEmpty) return;
     final destination = SchoolData.tryRoom(e.room);
     if (destination == null) return;
-    final sameDay = entries.where((x) => x.day == e.day).toList()..sort((a, b) => a.time.compareTo(b.time));
+    final sameDay = entries.where((x) => x.day == e.day).toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
     final currentIndex = sameDay.indexWhere((x) => x.id == e.id);
     RoomInfo? previousRoom;
     if (currentIndex > 0) {
@@ -1734,11 +1905,18 @@ class _SchedulePageState extends State<SchedulePage> {
         if (previousRoom != null) break;
       }
     }
+    final avoided = await NavigationPreferences.loadAvoidedLocations();
     final route = RouteEngine.build(destination.id,
       startFloor: previousRoom?.floor ?? 1,
       startLocationId: previousRoom?.id,
-    );
-    if (route != null) Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: destination, route: route)));
+      avoidLocationIds: avoided);
+    if (route != null && mounted) {
+      await NavigationPreferences.saveLastRoute(
+        destinationId: destination.id,
+        startLocationId: previousRoom?.id,
+      );
+      Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: destination, route: route)));
+    }
   }
   @override
   Widget build(BuildContext context) {

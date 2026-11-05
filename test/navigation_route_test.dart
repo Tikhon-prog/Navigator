@@ -151,6 +151,20 @@ void main() {
       expect(result.nodes.where((node) => node.id == 'anchor_104'), isEmpty);
     });
 
+    test('saved avoid preferences do not disconnect the route graph', () {
+      final result = RouteEngine.build(
+        '317',
+        startFloor: 3,
+        startLocationId: '311',
+        avoidLocationIds: {'318'},
+      );
+
+      expect(result, isNotNull);
+      expect(result!.destination.id, '317');
+      expect(result.nodes.first.floor, 3);
+      expect(result.nodes.last.floor, 3);
+    });
+
     test('same room produces a zero-distance route', () {
       final result = RouteEngine.build('311', startFloor: 3, startLocationId: '311');
 
