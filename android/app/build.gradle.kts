@@ -68,7 +68,10 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    // Compile with the installed JDK while keeping Android-compatible Java 21 bytecode.
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
 }
 
 flutter {
