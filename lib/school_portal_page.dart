@@ -376,7 +376,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     Card(child: ListTile(
                       title: Text(group['name']?.toString() ?? 'Группа', style: const TextStyle(fontWeight: FontWeight.w800)),
                       subtitle: Text('Участников: ${group['member_count'] ?? 0}'),
-                      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+                      trailing: Wrap(children: [
                         IconButton(tooltip: 'Добавить участника', onPressed: () async {
                           await _addNotificationGroupMember(group);
                           await _loadGroups();
@@ -906,7 +906,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           TextField(controller: login, decoration: const InputDecoration(labelText: 'Логин школьной системы')),
           TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Временный локальный пароль', helperText: 'Минимум 14 символов')),
           DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Тип аккаунта'),
-            items: const [
+            items: [
               DropdownMenuItem(value: 'student', child: Text('Ученик')),
               DropdownMenuItem(value: 'teacher', child: Text('Учитель / сотрудник')),
               DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
@@ -1362,7 +1362,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       leading: CircleAvatar(child: Text((student['display_name']?.toString().isNotEmpty ?? false) ? student['display_name'].toString()[0].toUpperCase() : 'У')),
       title: Text(student['display_name']?.toString() ?? 'Ученик', style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('Класс: ${student['class_id'] ?? 'не указан'}'),
-      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+      trailing: Wrap(children: [
         if (permissions.contains('*') || permissions.contains('assignments.manage'))
           IconButton(tooltip: 'Назначить наставника или учителя', onPressed: busy ? null : () => _assignStudent(student), icon: const Icon(Icons.person_add_alt_1_rounded)),
         const Icon(Icons.chevron_right_rounded),
@@ -1415,7 +1415,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       leading: CircleAvatar(child: Icon(account['role'] == 'student' ? Icons.person_rounded : Icons.badge_rounded)),
       title: Text(account['display_name']?.toString() ?? account['username']?.toString() ?? 'Аккаунт', style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('${account['role']} • ${account['position'] ?? 'без должности'}${account['class_id'] == null ? '' : ' • ${account['class_id']}'}'),
-      trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+      trailing: Wrap(children: [
         if (isAdmin)
           IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
         if ((permissions.contains('*') || permissions.contains('assignments.manage')) && account['role'] == 'teacher')
