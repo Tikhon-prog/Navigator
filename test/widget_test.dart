@@ -12,11 +12,13 @@ void main() {
   });
 
   testWidgets('Учёба объединяет расписание и дополнительные занятия', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PokolenieApp());
     await tester.pump();
 
-    final studyDestination = find.byIcon(Icons.school_outlined);
+    final studyDestination = find.text('Учёба').first;
     expect(studyDestination, findsOneWidget);
     await tester.tap(studyDestination);
     await tester.pump();

@@ -455,7 +455,8 @@ class _AnnouncementCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(width: 5, color: accent),
         Expanded(child: Padding(
           padding: const EdgeInsets.all(16),
@@ -479,7 +480,8 @@ class _AnnouncementCard extends StatelessWidget {
             ],
           ]),
         )),
-      ]),
+        ]),
+      ),
     );
   }
 }
