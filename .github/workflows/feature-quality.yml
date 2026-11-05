@@ -16,8 +16,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Flutter tests, analysis and backend tests (no builds)
+  flutter-quality:
+    name: Flutter tests and static analysis (no builds)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+  backend-quality:
+    name: Backend tests and secret scan
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -40,20 +64,5 @@ jobs:
       - name: Backend regression tests
         run: python -m unittest discover -s backend/tests -v
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.4'
-          channel: stable
-          cache: true
-
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
-      - name: Flutter tests
-        run: flutter test
-
-      - name: Flutter analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      # Deliberately no flutter build apk/windows steps in this workflow.
+      # Both jobs are independent. Backend failures must not skip Flutter checks.
+      # No flutter build apk/windows steps exist in this workflow.
