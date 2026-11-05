@@ -12,15 +12,20 @@ void main() {
   });
 
   testWidgets('Учёба объединяет расписание и дополнительные занятия', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1000, 800));
+    await tester.binding.setSurfaceSize(const Size(800, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PokolenieApp());
     await tester.pump();
 
-    final studyDestination = find.text('Учёба').first;
-    expect(studyDestination, findsOneWidget);
-    await tester.tap(studyDestination);
+    // The bottom navigation keeps inactive labels hidden. Tap the third of
+    // four equal destinations through the actual NavigationBar bounds.
+    final navigationBar = find.byType(NavigationBar);
+    expect(navigationBar, findsOneWidget);
+    final bounds = tester.getRect(navigationBar);
+    await tester.tapAt(
+      Offset(bounds.left + bounds.width * 0.625, bounds.center.dy),
+    );
     await tester.pump();
 
     expect(find.text('Расписание'), findsWidgets);
