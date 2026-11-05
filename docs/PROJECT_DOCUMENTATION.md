@@ -93,7 +93,11 @@
 | `lib/desktop_notification_polling_io.dart`, `lib/desktop_notification_polling_stub.dart` | Desktop-поллинг и платформенная заглушка |
 | `lib/notes_page.dart` | Личные заметки |
 | `lib/admin_panel.dart` | Административный интерфейс |
-| `assets/maps/` | Растровые карты этажей и исходные материалы карт |
+| `assets/maps/floor1.webp`, `floor2.webp`, `floor3.webp` | Карты этажей, включаемые в клиентский пакет |
+| `assets/maps/*_source.png`, `school_maps_source.pdf` | Исходники для редактирования карт; остаются в репозитории, не включаются в приложение |
+| `assets/data/rooms.json`, `places.json` | Локальные каталоги помещений, которые загружает ИИ-чат |
+| `assets/data/school_schedule_2026-10-05.json` | Встроенный снимок расписания, загружаемый клиентом |
+| `assets/data/routes.json`, `door_points.json`, `schedule.json`, XLSX | Архивные/редакторские данные; не включаются в runtime assets |
 | `assets/data/rooms.json` | Локальный каталог помещений |
 | `assets/data/places.json` | Дополнительные именованные места |
 | `assets/data/routes.json` | Данные, относящиеся к маршрутным связям |
