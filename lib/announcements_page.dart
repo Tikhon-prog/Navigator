@@ -458,31 +458,31 @@ class _AnnouncementCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Container(width: 5, color: accent),
-        Expanded(child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: Text(item.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, height: 1.25))),
-              if (warning) ...[
-                const SizedBox(width: 8),
-                Icon(urgent ? Icons.warning_amber_rounded : Icons.priority_high_rounded, color: accent, size: 20),
-              ],
-            ]),
-            const SizedBox(height: 8),
-            Text(item.body, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.5)),
-            if (dateLabel.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Row(children: [
-                Icon(Icons.schedule_rounded, size: 15, color: scheme.onSurfaceVariant),
-                const SizedBox(width: 5),
-                Text(dateLabel, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-              ]),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: accent, width: 5)),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Text(item.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, height: 1.25))),
+            if (warning) ...[
+              const SizedBox(width: 8),
+              Icon(urgent ? Icons.warning_amber_rounded : Icons.priority_high_rounded, color: accent, size: 20),
             ],
           ]),
-        )),
-      ]),
+          const SizedBox(height: 8),
+          Text(item.body, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.5)),
+          if (dateLabel.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Icon(Icons.schedule_rounded, size: 15, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Text(dateLabel, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            ]),
+          ],
+        ]),
+      ),
     );
   }
 }
