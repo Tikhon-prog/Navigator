@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:navigator/main.dart';
 
 void main() {
@@ -6,6 +7,7 @@ void main() {
 
   group('SchoolScheduleCatalog', () {
     setUpAll(() async {
+      SharedPreferences.setMockInitialValues({});
       await SchoolScheduleCatalog.load();
     });
 
