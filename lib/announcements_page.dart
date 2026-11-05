@@ -154,13 +154,8 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       } catch (_) {
         _items = [];
       }
-      // Show cached announcements immediately while the online refresh continues.
-      if (_items.isNotEmpty && mounted) {
-        setState(() {
-          _loading = false;
-          _status = 'Сохранённая копия • проверяю обновления…';
-        });
-      }
+      // Cached content is rendered below after deciding whether an online
+      // refresh is possible. This avoids two consecutive tree updates offline.
     }
 
     if (!enabled || base.isEmpty) {
@@ -173,6 +168,14 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
             : 'Показана сохранённая копия. Для обновления настрой сервер в «Кабинете школы».';
       });
       return;
+    }
+
+    // Render cached announcements while a real online refresh is in progress.
+    if (_items.isNotEmpty && mounted) {
+      setState(() {
+        _loading = false;
+        _status = 'Сохранённая копия • проверяю обновления…';
+      });
     }
 
     if (!isSecureApiBaseUrl(base)) {
