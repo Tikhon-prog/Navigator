@@ -62,9 +62,9 @@ class AiMathScheduleDraft {
               .asMap()
               .entries
               .map((slot) =>
-                  '\${slot.key + 1}-й: \${slot.value ?? 'не выбрано'}')
+                  '${slot.key + 1}-й: ${slot.value ?? 'не выбрано'}')
               .join(', ');
-          return 'Во \${dayNames[entry.key] ?? 'день \${entry.key}'}: $subjects';
+          return 'Во ${dayNames[entry.key] ?? 'день ${entry.key}'}: $subjects';
         })
         .join('\n');
   }
@@ -180,16 +180,16 @@ class AiMathScheduleParser {
       final count = mathSlotsByDay[day] ?? 0;
 
       if (count == 0) {
-        errors.add('В \${_dayLabel(day)} по загруженному расписанию нет уроков математики.');
+        errors.add('В ${_dayLabel(day)} по загруженному расписанию нет уроков математики.');
         continue;
       }
       if (subjects.isEmpty) {
-        errors.add('Не понял, какой математический предмет поставить на \${_dayLabel(day)}.');
+        errors.add('Не понял, какой математический предмет поставить на ${_dayLabel(day)}.');
         continue;
       }
       if (subjects.length > count) {
         errors.add(
-          'На \${_dayLabel(day)} найдено \${subjects.length} предмета, но математических уроков только $count.',
+          'На ${_dayLabel(day)} найдено ${subjects.length} предмета, но математических уроков только $count.',
         );
         continue;
       }

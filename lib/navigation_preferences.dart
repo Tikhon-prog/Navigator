@@ -9,6 +9,9 @@ class NavigationPreferences {
   static const _avoidKey = 'navigation_avoid_locations_v1';
   static const _feedbackKey = 'navigation_route_feedback_v1';
 
+  static Future<SharedPreferences> _prefs() =>
+      SharedPreferences.getInstance();
+
   static String _userId(SharedPreferences prefs) {
     final raw = prefs.getString('school_user_v1');
     if (raw == null) return '';
