@@ -1279,14 +1279,29 @@ class _AppShellState extends State<AppShell>{
     if ((p.getString('student_class_name') ?? '').trim() != className) {
       throw StateError('Выбранный класс изменился. Открой чат заново и повтори команду.');
     }
+    const allowedSubjects = <String>{
+      'Алгебра',
+      'Геометрия',
+      'Вероятность и статистика',
+    };
+    // Validate the entire draft before writing any preference, so a stale or
+    // malformed slot cannot leave only part of a multi-day change applied.
     for (final entry in assignments.entries) {
       final count = SchoolScheduleCatalog.mathLessonCount(className, entry.key);
-      if (entry.value.length != count || entry.value.any((subject) => subject.trim().isEmpty)) {
-        throw StateError('Количество предметов не совпадает с математическими уроками этого дня.');
+      if (entry.value.length != count ||
+          entry.value.any((subject) => !allowedSubjects.contains(subject))) {
+        throw StateError('Количество или названия предметов не совпадают с математическими уроками этого дня.');
       }
-      for (var slot = 0; slot < count; slot++) {
-        await p.setString(_studentScopedPreferenceKey(p,
-          'math_subject_${className}_${entry.key}_$slot'), entry.value[slot]);
+    }
+    for (final entry in assignments.entries) {
+      for (var slot = 0; slot < entry.value.length; slot++) {
+        await p.setString(
+          _studentScopedPreferenceKey(
+            p,
+            'math_subject_${className}_${entry.key}_$slot',
+          ),
+          entry.value[slot],
+        );
       }
     }
     SchoolScheduleCatalog.notifyPersonalChanges();
