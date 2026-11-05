@@ -64,7 +64,7 @@ class _PersonalNotesPageState extends State<PersonalNotesPage> {
       } catch (_) {}
     }
     final safeId = accountId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    _storageKey = '$_baseStorageKey_${safeId.isEmpty ? 'local' : safeId}';
+    _storageKey = '${_baseStorageKey}_${safeId.isEmpty ? 'local' : safeId}';
     final stored = prefs.getString(_storageKey);
     if (stored != null && stored.isNotEmpty) {
       try {
