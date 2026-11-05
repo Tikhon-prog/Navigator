@@ -16,7 +16,7 @@ void main() {
     await tester.pumpWidget(const PokolenieApp());
     await tester.pump();
 
-    final studyDestination = find.text('Учёба').first;
+    final studyDestination = find.byIcon(Icons.school_outlined);
     expect(studyDestination, findsOneWidget);
     await tester.tap(studyDestination);
     await tester.pump();

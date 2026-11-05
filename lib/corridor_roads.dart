@@ -63,6 +63,10 @@ class CorridorRoads {
     // 3 floor
     CorridorSegment(3, Offset(585 / 7016, 921 / 4960), Offset(585 / 7016, 2429 / 4960), 'Длинный зелёный коридор'),
     CorridorSegment(3, Offset(325 / 7016, 2429 / 4960), Offset(1069 / 7016, 2429 / 4960), 'Короткий зелёный коридор'),
+    // The green corridor endpoint (1069,2429) and cyan connector start
+    // (1081,2391) are 40 px apart, just beyond the 32 px snap tolerance.
+    // This short hidden connector keeps the third-floor left wing connected.
+    CorridorSegment(3, Offset(1069 / 7016, 2429 / 4960), Offset(1081 / 7016, 2391 / 4960), 'Соединение зелёного и голубого коридоров', hidden: true),
     CorridorSegment(3, Offset(2877 / 7016, 909 / 4960), Offset(2877 / 7016, 2417 / 4960), 'Длинный фиолетовый коридор'),
     CorridorSegment(3, Offset(2965 / 7016, 2417 / 4960), Offset(2229 / 7016, 2417 / 4960), 'Короткий фиолетовый коридор'),
     // Removed a second near-parallel copy of the short purple corridor; the preceding segment already covers it.

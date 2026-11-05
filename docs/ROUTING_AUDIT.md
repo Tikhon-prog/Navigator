@@ -2,7 +2,7 @@
 
 This is a source review of `lib/corridor_roads.dart`, not a verified measurement against the school's authoritative floor plans. Do not use the findings below as an evacuation-route certification.
 
-## Third floor: cabinets 315–318 / 317
+## Third floor: green-to-cyan left-wing connection and cabinets 315–318
 
 The local cluster still includes these hidden segments:
 - (1881,3292) → (1913,3448), labelled near room 318;

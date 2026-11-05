@@ -93,71 +93,13 @@ class _PersonalNotesPageState extends State<PersonalNotesPage> {
   }
 
   Future<void> _editNote({_PersonalNote? note}) async {
-    final titleController = TextEditingController(text: note?.title ?? '');
-    final bodyController = TextEditingController(text: note?.body ?? '');
     final result = await showDialog<({String title, String body})>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        scrollable: true,
-        title: Text(note == null ? 'Новая заметка' : 'Редактировать заметку'),
-        content: SizedBox(
-          width: 440,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                key: const Key('note-title-input'),
-                controller: titleController,
-                maxLength: 80,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Заголовок',
-                  hintText: 'Например, подготовка к контрольной',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key('note-body-input'),
-                controller: bodyController,
-                minLines: 4,
-                maxLines: 10,
-                maxLength: 4000,
-                keyboardType: TextInputType.multiline,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Текст заметки',
-                  alignLabelWithHint: true,
-                  hintText: 'Что нужно запомнить?',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final title = titleController.text.trim();
-              final body = bodyController.text.trim();
-              if (title.isEmpty && body.isEmpty) return;
-              final effectiveTitle = title.isEmpty
-                  ? (body.length > 40 ? '${body.substring(0, 40)}…' : body)
-                  : title;
-              Navigator.pop(
-                dialogContext,
-                (title: effectiveTitle, body: body),
-              );
-            },
-            child: const Text('Сохранить'),
-          ),
-        ],
+      builder: (_) => _NoteEditorDialog(
+        initialTitle: note?.title ?? '',
+        initialBody: note?.body ?? '',
       ),
     );
-    titleController.dispose();
-    bodyController.dispose();
     if (result == null || !mounted) return;
 
     final now = DateTime.now();
@@ -334,4 +276,95 @@ class _PersonalNotesPageState extends State<PersonalNotesPage> {
                 ),
     );
   }
+}
+
+class _NoteEditorDialog extends StatefulWidget {
+  final String initialTitle;
+  final String initialBody;
+
+  const _NoteEditorDialog({
+    required this.initialTitle,
+    required this.initialBody,
+  });
+
+  @override
+  State<_NoteEditorDialog> createState() => _NoteEditorDialogState();
+}
+
+class _NoteEditorDialogState extends State<_NoteEditorDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _bodyController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _bodyController = TextEditingController(text: widget.initialBody);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final title = _titleController.text.trim();
+    final body = _bodyController.text.trim();
+    if (title.isEmpty && body.isEmpty) return;
+    final effectiveTitle = title.isEmpty
+        ? (body.length > 40 ? '${body.substring(0, 40)}…' : body)
+        : title;
+    Navigator.pop(context, (title: effectiveTitle, body: body));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        scrollable: true,
+        title: Text(widget.initialTitle.isEmpty ? 'Новая заметка' : 'Редактировать заметку'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                key: const Key('note-title-input'),
+                controller: _titleController,
+                maxLength: 80,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Заголовок',
+                  hintText: 'Например, подготовка к контрольной',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key('note-body-input'),
+                controller: _bodyController,
+                minLines: 4,
+                maxLines: 10,
+                maxLength: 4000,
+                keyboardType: TextInputType.multiline,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Текст заметки',
+                  alignLabelWithHint: true,
+                  hintText: 'Что нужно запомнить?',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: _save,
+            child: const Text('Сохранить'),
+          ),
+        ],
+      );
 }
