@@ -68,6 +68,9 @@ class CorridorRoads {
     // Removed a second near-parallel copy of the short purple corridor; the preceding segment already covers it.
     CorridorSegment(3, Offset(2833 / 7016, 1367 / 4960), Offset(2929 / 7016, 1367 / 4960), 'фиолетовый', hidden: true),
     CorridorSegment(3, Offset(1081 / 7016, 2391 / 4960), Offset(1253 / 7016, 2391 / 4960), 'маленький голубой проход', hidden: true),
+    // The green left corridor ends 40 source-map pixels from this blue passage.
+    // Keep the connector explicit and hidden instead of increasing global snap tolerance.
+    CorridorSegment(3, Offset(1069 / 7016, 2429 / 4960), Offset(1081 / 7016, 2391 / 4960), 'Соединение зелёного и синего коридоров', hidden: true),
     CorridorSegment(3, Offset(1257 / 7016, 2380 / 4960), Offset(1257 / 7016, 2704 / 4960), 'перпендикулярный проход', hidden: true),
     CorridorSegment(3, Offset(1257 / 7016, 2704 / 4960), Offset(2161 / 7016, 2713 / 4960), 'Длинное синее крыло'),
     CorridorSegment(3, Offset(2229 / 7016, 2392 / 4960), Offset(2093 / 7016, 2430 / 4960), 'отрезок из фиолетового', hidden: true),
