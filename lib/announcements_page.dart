@@ -108,7 +108,13 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     final base = (prefs.getString('school_api_base_url_v1') ?? prefs.getString('navigator_api_url') ?? '').trim();
     // A successful school sign-in is enough to enable authenticated feeds even
     // when the older offline-data toggle is unset on this installation.
-    final schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
+    var schoolToken = '';
+    try {
+      schoolToken = (await SchoolAccountService().validAccessToken() ?? '').trim();
+    } catch (_) {
+      // Secure storage may be unavailable during offline startup or widget tests.
+      // Cached and public announcements should remain available without a token.
+    }
     final enabled = (prefs.getBool('navigator_api_enabled') ?? false) || schoolToken.isNotEmpty;
     final storedClassId = (prefs.getString('student_class_id') ?? '').trim();
     final storedClassName = (prefs.getString('student_class_name') ?? '').trim();
