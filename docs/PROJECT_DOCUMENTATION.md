@@ -343,7 +343,7 @@ NAVIGATOR_DATA_JSON_PATH=/absolute/path/to/school-data.json
 ```dotenv
 NAVIGATOR_DATA_SOURCE=http
 NAVIGATOR_DATA_API_URL=https://school.example.org/api
-NAVIGATOR_DATA_API_TOKEN=REPLACE_WITH_SERVER_SIDE_SECRET
+NAVIGATOR_DATA_API_TOKEN=CHANGE_ME
 ```
 
 Сервер делает GET-запрос к `{NAVIGATOR_DATA_API_URL}/{CollectionName}`. Ответ принимается либо как массив объектов, либо как объект с ключом `data`, содержащим массив. Таймаут запроса в адаптере ограничен. Для удалённого источника нужен HTTPS; обычный HTTP разрешён только для loopback-разработки (`localhost`, `127.0.0.1`, `::1`).
