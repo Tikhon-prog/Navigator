@@ -781,7 +781,7 @@ Invoke-Checked -File $flutterExe -Arguments @('--version')
 Invoke-Checked -File $flutterExe -Arguments @('config', '--enable-windows-desktop')
 & $flutterExe doctor --android-licenses
 if ($LASTEXITCODE -ne 0) { throw 'Flutter could not validate Android SDK licenses.' }
-Invoke-Checked -File $flutterExe -Arguments @('precache', '--android', '--windows')
+Write-Host 'Skipping Flutter precache: the build will use existing artifacts and fetch only a missing target artifact if required.' -ForegroundColor DarkGray
 
 # Clone/update repository without discarding local modifications.
 # If the script was launched from a freshly cloned private repository in the normal user's
