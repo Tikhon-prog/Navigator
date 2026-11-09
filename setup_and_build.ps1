@@ -470,7 +470,7 @@ if (-not $vsPath) {
         if (-not (Test-Path -LiteralPath $vsBase)) { continue }
         foreach ($versionDir in (Get-ChildItem -LiteralPath $vsBase -Directory -ErrorAction SilentlyContinue)) {
             foreach ($edition in @('Community','Professional','Enterprise','BuildTools')) {
-                $candidate = Join-Path (Join-Path $versionDir.FullName $edition) ''
+                $candidate = Join-Path $versionDir.FullName $edition
                 $devenv = Join-Path $candidate 'Common7\IDE\devenv.exe'
                 $msbuild = Join-Path $candidate 'MSBuild\Current\Bin\MSBuild.exe'
                 if ((Test-Path -LiteralPath $devenv) -or (Test-Path -LiteralPath $msbuild)) {
