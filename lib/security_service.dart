@@ -24,7 +24,7 @@ class PasswordHasher {
     for (var i = 1; i < iterations; i++) {
       digest = crypto.sha256.convert([...salt, ...digest]).bytes;
     }
-    return 'v2\$${iterations}\$${base64UrlEncode(salt)}\$${base64UrlEncode(digest)}';
+    return 'v2\$iterations\${base64UrlEncode(salt)}\${base64UrlEncode(digest)}';
   }
 
   static bool verify(String password, String stored) {
