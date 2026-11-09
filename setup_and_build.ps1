@@ -69,7 +69,7 @@ $pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
 $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
 $vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
-$requiredVsComponents = @('Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows10SDK.19041')
+$requiredVsComponents = @('Microsoft.VisualStudio.Workload.NativeDesktop','Microsoft.VisualStudio.Workload.VCTools','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows10SDK.19041')
 $vsQueryArgs = @('-latest','-products','*','-version','[17.0,19.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
 $vsToolchainPath = $null
 if (Test-Path -LiteralPath $vswhere) { $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1) }
@@ -208,7 +208,7 @@ function Install-Jdk27Portable {
     $checksumText = Get-Content -LiteralPath $checksumPath -Raw
     $checksumMatch = [regex]::Match($checksumText, '(?i)\b[0-9a-f]{64}\b')
     if (-not $checksumMatch.Success) {
-        throw 'Microsoft JDK checksum file did not contain a SHA-256 value; refusing to install.'
+        throw 'Oracle JDK checksum file did not contain a SHA-256 value; refusing to install.'
     }
 
     Invoke-WebRequest -UseBasicParsing -Uri $baseUrl -OutFile $zipPath
@@ -216,7 +216,7 @@ function Install-Jdk27Portable {
     $expectedSha = $checksumMatch.Value.ToLowerInvariant()
     if ($actualSha -ne $expectedSha) {
         Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-        throw 'Microsoft JDK ZIP checksum mismatch; refusing to install. Check network filtering or retry the official download.'
+        throw 'Oracle JDK ZIP checksum mismatch; refusing to install. Check network filtering or retry the official download.'
     }
 
     Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
@@ -283,7 +283,7 @@ $vsPath = $null
 if (Test-Path -LiteralPath $vswhere) { $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1) }
 if (-not $vsPath) {
     Write-Step 'Installing Visual Studio 2026 Build Tools'
-    $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
+    $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
     Install-WingetPackage -Id 'Microsoft.VisualStudio.BuildTools' -Override $vsOverride
     Refresh-Path
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio Installer did not create vswhere.exe. Check the setup log and repair Build Tools.' }
@@ -296,7 +296,7 @@ if ($vsToolchainPath) {
     Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
 } else {
     Write-Step 'Adding missing Visual Studio C++ / ATL / Windows SDK components'
-    $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.VCTools','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows10SDK.19041','--quiet','--norestart')
+    $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.NativeDesktop','--add','Microsoft.VisualStudio.Workload.VCTools','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows10SDK.19041','--quiet','--norestart')
     & $vsInstaller @vsArgs
     $vsCode = $LASTEXITCODE
     if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
