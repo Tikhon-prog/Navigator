@@ -1221,6 +1221,12 @@ class _AppShellState extends State<AppShell>{
       'Пятница',
       'Суббота',
     ];
+    String dayName(int weekday) =>
+        weekday == DateTime.sunday ? 'Воскресенье' : dayNames[weekday];
+    String dateLabel(DateTime date) =>
+        '${dayName(date.weekday)} ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.';
+    final timeLabel = '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     final query = question.toLowerCase();
     final selectedDates = <DateTime>{};
 
@@ -1248,11 +1254,13 @@ class _AppShellState extends State<AppShell>{
       'четверг': 4,
       'пятниц': 5,
       'суббот': 6,
+      'воскрес': 7,
     };
     for (final entry in weekdayKeywords.entries) {
       if (!query.contains(entry.key)) continue;
       var daysAhead = (entry.value - now.weekday) % 7;
       if (daysAhead < 0) daysAhead += 7;
+      if (query.contains('следующ') && daysAhead == 0) daysAhead = 7;
       selectedDates.add(DateTime(
         now.year,
         now.month,
@@ -1264,7 +1272,8 @@ class _AppShellState extends State<AppShell>{
         query.contains('все уроки') ||
         query.contains('всё расписание');
     if (selectedDates.isEmpty || wantsWeek) {
-      for (var offset = 0; offset < 7; offset++) {
+      final firstDayOffset = wantsWeek && query.contains('следующ') ? 7 : 0;
+      for (var offset = firstDayOffset; offset < firstDayOffset + 7; offset++) {
         final date = DateTime(now.year, now.month, now.day + offset);
         if (date.weekday >= 1 && date.weekday <= 6) {
           selectedDates.add(date);
@@ -1284,10 +1293,10 @@ class _AppShellState extends State<AppShell>{
                 '')
             .trim();
     final contextLines = <String>[
-      'Текущее время по Москве: ${now.toIso8601String()}.',
-      'Сегодня: ${dayNames[now.weekday]} ${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}.',
-      'Завтра: ${dayNames[tomorrow.weekday]} ${tomorrow.day.toString().padLeft(2, '0')}.${tomorrow.month.toString().padLeft(2, '0')}.${tomorrow.year}.',
-      'Запрошенные даты: ${orderedDates.map((date) => '${dayNames[date.weekday]} ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}').join(', ')}.',
+      'Текущее время по Москве: $timeLabel.',
+      'Сегодня: ${dateLabel(now)}',
+      'Завтра: ${dateLabel(tomorrow)}',
+      'Запрошенные даты: ${orderedDates.map(dateLabel).join(', ')}.',
     ];
 
     if (className.isNotEmpty) {
@@ -1330,7 +1339,7 @@ class _AppShellState extends State<AppShell>{
       for (final date in orderedDates) {
         final dayLessons = lessons.where((lesson) =>
             lesson.day == date.weekday);
-        contextLines.add('${dayNames[date.weekday]} ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}:');
+        contextLines.add('${dateLabel(date)}:');
         for (final lesson in dayLessons) {
           final details = <String>[
             lesson.time,
