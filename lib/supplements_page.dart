@@ -252,11 +252,11 @@ class _SupplementsPageState extends State<SupplementsPage> {
       for (final d in result.application.disciplines) {
         for (final slot in d.schedule) {
           imported.add(Supplement(
-            id: 'intranet_' + d.programId.toString() + '_' + d.subgroupId.toString() + '_' + Uri.encodeComponent(d.name) + '_' + slot.day.toString() + '_' + slot.start.toString() + '_' + slot.end.toString(),
+            id: 'intranet_${d.programId}_${d.subgroupId}_${Uri.encodeComponent(d.name)}_${slot.day}_${slot.start}_${slot.end}',
             title: d.name,
             weekday: slot.day,
-            start: 'урок ' + slot.start.toString(),
-            end: 'урок ' + slot.end.toString(),
+            start: 'урок ${slot.start}',
+            end: 'урок ${slot.end}',
             teacher: d.teacher,
             room: slot.room,
             place: '',
@@ -275,9 +275,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
       final prefs = await SharedPreferences.getInstance();
       lastSync = DateTime.now().toLocal().toString().substring(0, 16);
       await prefs.setString('dop_last_sync', lastSync);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Загружено записей ДОПов: ' + imported.length.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Загружено записей ДОПов: ${imported.length}')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка intranet: ' + e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка intranet: $e')));
     } finally {
       if (mounted) setState(() => syncing = false);
     }
@@ -432,7 +432,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
                             : ListView.separated(
                                 padding: const EdgeInsets.only(bottom: 20),
                                 itemCount: current.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                separatorBuilder: (_, _) => const SizedBox(height: 10),
                                 itemBuilder: (context, index) => _card(current[index]),
                               ),
                       ),
