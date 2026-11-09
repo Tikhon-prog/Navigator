@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -16,7 +13,6 @@ class LocalNotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
-  final Map<int, Timer> _windowsTimers = <int, Timer>{};
 
   static const String channelId = 'navigator_lessons';
   static const String channelName = 'Уроки';
@@ -94,13 +90,7 @@ class LocalNotificationService {
     _initialized = true;
   }
 
-  Future<void> cancelAll() async {
-    for (final timer in _windowsTimers.values) {
-      timer.cancel();
-    }
-    _windowsTimers.clear();
-    await plugin.cancelAll();
-  }
+  Future<void> cancelAll() => plugin.cancelAll();
 
   Future<void> cancelDopReminders() async {
     if (!_initialized) return;
@@ -139,13 +129,6 @@ class LocalNotificationService {
   }
 
   Future<void> _cancelNotificationRange(int from, int to) async {
-    for (final id in _windowsTimers.keys
-        .where((id) => id >= from && id <= to)
-        .toList()) {
-      _windowsTimers.remove(id)?.cancel();
-    }
-    if (defaultTargetPlatform == TargetPlatform.windows) return;
-
     final pending = await plugin.pendingNotificationRequests();
     for (final notification in pending) {
       if (notification.id >= from && notification.id <= to) {
@@ -164,20 +147,9 @@ class LocalNotificationService {
     final now = tz.TZDateTime.now(tz.local);
     if (!scheduled.isAfter(now)) return;
 
-    if (defaultTargetPlatform == TargetPlatform.windows) {
-      _windowsTimers.remove(id)?.cancel();
-      final delay = scheduled.difference(now);
-      _windowsTimers[id] = Timer(delay, () async {
-        _windowsTimers.remove(id);
-        try {
-          await plugin.show(id, title, body, details);
-        } catch (_) {
-          // The user may have disabled Windows notifications after scheduling.
-        }
-      });
-      return;
-    }
-
+    // Delegate to the operating system scheduler on every native platform.
+    // In particular, Windows uses ScheduledToastNotification instead of a Dart
+    // Timer, so reminders survive closing the app and restarting Windows.
     await plugin.zonedSchedule(
       id,
       title,
