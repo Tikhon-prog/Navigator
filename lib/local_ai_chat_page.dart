@@ -11,6 +11,7 @@ typedef _LocalAiActionHandler = Future<String> Function(
   String action,
   Map<String, dynamic> arguments,
 );
+typedef _LocalAiRouteHandler = Future<void> Function(String destinationId);
 
 class _LocalAiTool extends LLMTool {
   _LocalAiTool({
@@ -43,12 +44,14 @@ class LocalAiChatPage extends StatefulWidget {
   final Future<String> Function(String question)? schoolContextLoader;
   final _LocalAiActionHandler? actionHandler;
   final ValueChanged<String>? onOpenMapLocation;
+  final _LocalAiRouteHandler? onOpenSchoolRoute;
 
   const LocalAiChatPage({
     super.key,
     this.schoolContextLoader,
     this.actionHandler,
     this.onOpenMapLocation,
+    this.onOpenSchoolRoute,
   });
 
   @override
@@ -81,6 +84,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
+Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Изменяй расписание, ДОПы и настройки только через инструменты приложения.
 ''';
 
   final _input = TextEditingController();
@@ -102,6 +106,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   bool _checkingModel = false;
   double? _downloadProgress;
   String? _pendingOpenMapLocationId;
+  String? _pendingOpenSchoolRouteId;
+  String _selectedCategory = 'Навигация';
   String? _statusError;
   List<Map<String, dynamic>> _rooms = [];
   List<Map<String, dynamic>> _places = [];
@@ -445,6 +451,604 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       _pendingOpenMapLocationId = openMatch.group(1);
       return 'Точка найдена. После ответа открою её на карте школы.';
     }
+    final routeMatch = RegExp(
+      r'^__OPEN_ROUTE__:([^\n]+)\n?([\s\S]*)
+  }
+
+  List<LLMTool> _buildTools() => [
+        _LocalAiTool(
+          name: 'get_school_context',
+          description:
+              'Получить расписание ученика, группы, ДОПы и локальные сведения школы. Используй перед ответами на вопросы о занятиях.',
+          parameters: [
+            LLMToolParam(
+              name: 'question',
+              type: 'string',
+              description: 'Период или тема: неделя, сегодня, завтра, вторник',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'search_school_map',
+          description:
+              'Найти кабинет или объект на встроенной карте школы по номеру или названию.',
+          parameters: [
+            LLMToolParam(
+              name: 'query',
+              type: 'string',
+              description: 'Номер кабинета или название места',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'plan_school_route',
+          description:
+              'Построить настоящий маршрут по графу коридоров школы и показать его на карте. Обязательно используй при просьбе пройти/дойти/построить путь.',
+          parameters: [
+            LLMToolParam(
+              name: 'destination',
+              type: 'string',
+              description: 'Номер кабинета или название места назначения',
+              isRequired: true,
+            ),
+            LLMToolParam(
+              name: 'origin',
+              type: 'string',
+              description: 'Откуда начать: номер кабинета или место. Пустая строка использует сохранённую точку старта',
+              isRequired: false,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'open_school_location',
+          description:
+              'Открыть найденный кабинет или объект в разделе карты приложения.',
+          parameters: [
+            LLMToolParam(
+              name: 'location_id',
+              type: 'string',
+              description: 'Точный ID точки, полученный из поиска по карте',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_math_lesson_name',
+          description:
+              'Переименовать конкретный математический урок выбранного класса: геометрия, алгебра или вероятность и статистика.',
+          parameters: [
+            LLMToolParam(name: 'day', type: 'string', description: 'День недели', isRequired: true),
+            LLMToolParam(name: 'lesson_number', type: 'integer', description: 'Порядковый номер урока математики в этот день, начиная с 1', isRequired: true),
+            LLMToolParam(name: 'subject', type: 'string', description: 'Алгебра, Геометрия, Вероятность и статистика или пустая строка для сброса', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_subject_group',
+          description:
+              'Выбрать учебную группу по конкретному предмету для расписания ученика.',
+          parameters: [
+            LLMToolParam(name: 'subject', type: 'string', description: 'Название предмета', isRequired: true),
+            LLMToolParam(name: 'group', type: 'integer', description: 'Номер доступной группы', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_route_start',
+          description:
+              'Установить начальную точку построения маршрутов: главный вход или проверенное место на одном из этажей.',
+          parameters: [
+            LLMToolParam(name: 'floor', type: 'integer', description: 'Этаж 1, 2 или 3', isRequired: true),
+            LLMToolParam(name: 'location_id', type: 'string', description: 'ID точки старта; пустая строка означает главный вход', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'save_personal_note',
+          description: 'Сохранить личную заметку на этом устройстве.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Заголовок заметки', isRequired: true),
+            LLMToolParam(name: 'body', type: 'string', description: 'Содержимое заметки', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'add_supplement',
+          description:
+              'Добавить локальный кружок или дополнительное занятие в список ДОПов. Не выдумывай время и кабинет.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Название занятия', isRequired: true),
+            LLMToolParam(name: 'day', type: 'string', description: 'День недели', isRequired: true),
+            LLMToolParam(name: 'start', type: 'string', description: 'Время начала HH:mm или пусто, если неизвестно', isRequired: true),
+            LLMToolParam(name: 'end', type: 'string', description: 'Время окончания HH:mm или пусто, если неизвестно', isRequired: true),
+            LLMToolParam(name: 'room', type: 'string', description: 'Кабинет или пусто', isRequired: true),
+            LLMToolParam(name: 'teacher', type: 'string', description: 'Преподаватель или пусто', isRequired: true),
+            LLMToolParam(name: 'description', type: 'string', description: 'Описание или пусто', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'delete_supplement',
+          description: 'Удалить локальный ДОП по его точному названию.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Точное название занятия', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+      ];
+
+  void _trimConversationHistory() {
+    // Preserve complete user/assistant pairs and always keep the system prompt.
+    const maximumConversationMessages = 6;
+    final conversationLength = _history.length - 1;
+    final overflow = conversationLength - maximumConversationMessages;
+    if (overflow <= 0) return;
+
+    final messagesToRemove = ((overflow + 1) ~/ 2) * 2;
+    _history.removeRange(1, 1 + messagesToRemove);
+  }
+
+  String? _offlineRoomAnswer(String text) {
+    final query = text.toLowerCase();
+    final match = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)').firstMatch(query);
+    if (match != null) {
+      final wanted = match.group(1)!.trim();
+      final all = [..._rooms, ..._places];
+      final hits = all.where((row) =>
+          '${row['id'] ?? row['number'] ?? ''}'.trim().toLowerCase() == wanted ||
+          '${row['name'] ?? ''}'.trim().toLowerCase() == wanted).toList();
+      if (hits.isNotEmpty) {
+        final item = hits.first;
+        final name = '${item['name'] ?? 'Кабинет $wanted'}';
+        final floor = item['floor'];
+        final floorText = floor == null ? '' : ' Этаж: $floor.';
+        return 'По встроенным данным карты найдено: $name (№$wanted).$floorText\n\nЯ не буду придумывать путь по этажу. Открой раздел «Карта школы», выбери этот кабинет и проверь построенный маршрут.';
+      }
+      return 'В офлайн-каталоге не найден кабинет №$wanted. Возможно, карта устарела или номер записан иначе. Проверь номер на схеме; я не буду угадывать этаж.';
+    }
+    const placeKeywords = <String, List<String>>{
+      'библиотек': ['place_library'],
+      'столов': ['place_canteen'],
+      'пищеблок': ['place_food'],
+      'бассейн': ['place_pool'],
+      'тренажер': ['place_gym'],
+      'тренажёр': ['place_gym'],
+      'спортзал': ['place_sport', 'place_gym'],
+      'спортивн': ['place_sport'],
+      'хореограф': ['place_choreo'],
+      'акт': ['place_auditorium'],
+      'террас': ['place_terrace'],
+      'дрон': ['place_drone'],
+      'инженер': ['place_engineering'],
+      'бактери': ['place_bio_lab'],
+      'гример': ['place_dressing'],
+      'гримёр': ['place_dressing'],
+      'сцен': ['place_stage'],
+    };
+
+    for (final entry in placeKeywords.entries) {
+      if (!query.contains(entry.key)) continue;
+      final matches = _places
+          .where((place) => entry.value.contains(place['id']))
+          .toList();
+      if (matches.length == 1) {
+        final place = matches.single;
+        final floor = place['floor'];
+        return 'По встроенной карте найдено: ${place['name']}.'
+            '${floor == null ? '' : ' Этаж: $floor.'} '
+            'Чтобы построить проверенный маршрут, открой «Карта школы» и выбери эту точку.';
+      }
+      if (matches.length > 1) {
+        final names = matches.map((place) => place['name']).join(' или ');
+        return 'На карте есть несколько подходящих мест: $names. Уточни, куда именно нужно попасть.';
+      }
+    }
+
+    if (query.contains('маршрут') || query.contains('как пройти') || query.contains('как дойти')) {
+      return 'Маршруты строятся по встроенной схеме коридоров и переходов между этажами. Чтобы не подсказать неверный путь, открой «Карта школы» и выбери точку назначения. Свободный чат не заменяет проверенный алгоритм маршрутизации.';
+    }
+    if (query.contains('интернет') || query.contains('офлайн') || query.contains('без сети')) {
+      return 'Карта, поиск кабинетов и локальные функции работают без интернета. После загрузки модели свободный ИИ-чат тоже работает на устройстве и не отправляет сообщения в облако.';
+    }
+    return null;
+  }
+
+  static const Map<String, List<String>> _categoryPrompts = {
+    'Навигация': [
+      'Построй маршрут до кабинета 317',
+      'Найди библиотеку и открой её на карте',
+      'Построй маршрут от кабинета 215 до кабинета 319',
+    ],
+    'Расписание': [
+      'Покажи моё расписание на завтра',
+      'Сколько уроков математики в среду?',
+      'Переименуй второй урок математики во вторник в геометрию',
+    ],
+    'ДОПы': [
+      'Покажи мои дополнительные занятия на неделю',
+      'Добавь программирование по средам в мои ДОПы',
+      'Какие у меня ближайшие дополнительные занятия?',
+    ],
+    'Заметки': [
+      'Сохрани заметку: подготовиться к контрольной по алгебре',
+      'Как посмотреть мои заметки?',
+    ],
+    'Настройки': [
+      'Установи главный вход начальной точкой маршрута',
+      'Объясни, как настроить учебные группы',
+    ],
+    'Помощь': [
+      'Что ты умеешь делать?',
+      'Какие данные ты используешь и что работает без интернета?',
+    ],
+  };
+
+  void _sendPrompt(String prompt) {
+    if (_busy || _downloading || _loadingModel) return;
+    _input.text = prompt;
+    _send();
+  }
+
+  Future<void> _send() async {
+    final text = _input.text.trim();
+    if (text.isEmpty || _busy) return;
+    _input.clear();
+    setState(() {
+      _busy = true;
+      _statusError = null;
+      _lines.add(_ChatLine(true, text));
+    });
+    _scrollToBottom();
+
+    await _catalogLoadFuture;
+    if (!mounted) return;
+
+    final lowerQuery = text.toLowerCase();
+    final asksForRoute = lowerQuery.contains('маршрут') ||
+        lowerQuery.contains('пролож') ||
+        lowerQuery.contains('как пройти') ||
+        lowerQuery.contains('как дойти') ||
+        lowerQuery.contains('как попасть') ||
+        lowerQuery.contains('доведи');
+    final offlineAnswer = asksForRoute ? null : _offlineRoomAnswer(text);
+    if (offlineAnswer != null) {
+      setState(() {
+        _lines.add(_ChatLine(false, offlineAnswer));
+        _busy = false;
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    if (_modelPath == null) {
+      setState(() {
+        _lines.add(_ChatLine(false,
+            'Свободный диалог пока недоступен: локальная модель ещё не скачана. Нажми «Скачать модель» ниже. Поиск кабинетов и подсказки по навигации доступны уже сейчас без модели и интернета.'));
+        _busy = false;
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    final answerLine = _ChatLine(false, '');
+    setState(() => _lines.add(answerLine));
+    try {
+      await _ensureLoaded();
+
+      var schoolContext = '';
+      try {
+        schoolContext = await widget.schoolContextLoader?.call(text) ?? '';
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _statusError = 'Не удалось прочитать локальное расписание: $error';
+          });
+        }
+      }
+      if (!mounted) return;
+
+      _history.add(LLMMessage(role: LLMRole.user, content: text));
+      _trimConversationHistory();
+
+      final systemContent = schoolContext.isEmpty
+          ? _systemPrompt
+          : '$_systemPrompt\n\n'
+              'АКТУАЛЬНЫЕ ЛОКАЛЬНЫЕ ДАННЫЕ «ПОКОЛЕНИЯ» (используй как источник фактов):\n'
+              '$schoolContext\n'
+              'Отвечай только на основе этих данных. Не делай выводов о занятиях, '
+              'которых здесь нет. Если расписание не содержит нужной информации, '
+              'прямо скажи, что она не указана.';
+
+      final messages = <LLMMessage>[
+        LLMMessage(role: LLMRole.system, content: systemContent),
+        ..._history.skip(1),
+      ];
+      final repo = _chatRepository!;
+      String? rawAssistantTurn;
+      await for (final chunk in repo.streamChat(
+        _modelPath!,
+        messages: messages,
+        tools: _buildTools(),
+        options: const LLMChatOptions(toolAttempts: 4),
+      )) {
+        final message = chunk.message;
+        if (message?.rawContent.isNotEmpty == true) {
+          rawAssistantTurn = message!.rawContent;
+        }
+        final part = message?.content ?? '';
+        if (part.isNotEmpty && mounted) {
+          answerLine.text += part;
+          setState(() {});
+          _scrollToBottom();
+        }
+      }
+      if (answerLine.text.trim().isEmpty) {
+        answerLine.text = 'Модель не вернула ответ. Попробуй сформулировать вопрос короче.';
+      }
+      _history.add(LLMMessage(
+        role: LLMRole.assistant,
+        content: rawAssistantTurn ?? answerLine.text,
+      ));
+      _trimConversationHistory();
+      final openRouteId = _pendingOpenSchoolRouteId;
+      _pendingOpenSchoolRouteId = null;
+      if (openRouteId != null && mounted) {
+        final routeHandler = widget.onOpenSchoolRoute;
+        if (routeHandler != null) {
+          await routeHandler(openRouteId);
+          return;
+        }
+      }
+      final openLocationId = _pendingOpenMapLocationId;
+      _pendingOpenMapLocationId = null;
+      if (openLocationId != null && mounted) {
+        widget.onOpenMapLocation?.call(openLocationId);
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      answerLine.text =
+          'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
+      _history.add(LLMMessage(
+        role: LLMRole.assistant,
+        content: answerLine.text,
+      ));
+      _trimConversationHistory();
+      if (mounted) {
+        setState(() {
+          _statusError = 'Локальная модель не запустилась: $error';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+        _scrollToBottom();
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    _scroll.dispose();
+    // The shared native model is intentionally kept alive while the app process
+    // is running, so switching screens does not unload/reload 491 MB every time.
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Локальный ИИ-помощник'),
+        actions: [
+          IconButton(
+            tooltip: 'Очистить чат',
+            onPressed: _busy ? null : () => setState(() {
+              _lines
+                ..clear()
+                ..add(_ChatLine(false, 'Чат очищен. Я работаю локально на этом устройстве.'));
+              _history
+                ..clear()
+                ..add(LLMMessage(role: LLMRole.system, content: _systemPrompt));
+            }),
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (_modelPath == null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colors.secondaryContainer,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Модель Qwen2.5 0.5B · Q4_K_M',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 5),
+                    const Text('Около 491 МБ. Модель не входит в APK, чтобы не раздувать установщик. После однократной загрузки чат работает без интернета. На слабых устройствах ответы могут генерироваться медленно.'),
+                    const SizedBox(height: 10),
+                    if (_checkingModel && !_downloading) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 5),
+                      const Text('Проверяем, есть ли модель на устройстве…'),
+                    ] else if (_downloading) ...[
+                      LinearProgressIndicator(value: _downloadProgress),
+                      const SizedBox(height: 5),
+                      Text(_downloadProgress == null
+                          ? 'Загрузка модели…'
+                          : 'Загружено ${(_downloadProgress! * 100).round()}%'),
+                    ] else
+                      FilledButton.icon(
+                        onPressed: _downloadModel,
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text('Скачать модель'),
+                      ),
+                    if (_statusError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_statusError!, style: TextStyle(color: colors.error)),
+                    ],
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.offline_bolt_rounded),
+                    const SizedBox(width: 8),
+                    const Expanded(child: Text('Модель сохранена на устройстве · интернет не нужен')),
+                    if (_loadingModel)
+                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  ],
+                ),
+              ),
+            if (_statusError != null && _modelPath != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Text(_statusError!, style: TextStyle(color: colors.error)),
+              ),
+            SizedBox(
+              height: 44,
+              child: Scrollbar(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (final category in _categoryPrompts.keys)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 7),
+                        child: ChoiceChip(
+                          label: Text(category),
+                          selected: _selectedCategory == category,
+                          onSelected: _busy || _downloading
+                              ? null
+                              : (_) => setState(() => _selectedCategory = category),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 42,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                itemCount: _categoryPrompts[_selectedCategory]!.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 7),
+                itemBuilder: (context, index) => ActionChip(
+                  label: Text(
+                    _categoryPrompts[_selectedCategory]![index],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: _busy || _downloading
+                      ? null
+                      : () => _sendPrompt(_categoryPrompts[_selectedCategory]![index]),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Scrollbar(
+                controller: _scroll,
+                thumbVisibility: true,
+                interactive: true,
+                child: ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.all(14),
+                  itemCount: _lines.length,
+                  itemBuilder: (context, index) {
+                    final line = _lines[index];
+                    return Align(
+                      alignment: line.fromUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .86),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        decoration: BoxDecoration(
+                          color: line.fromUser ? colors.primaryContainer : colors.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: SelectableText(line.text.isEmpty && _busy ? 'Думаю…' : line.text),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      decoration: const InputDecoration(
+                        hintText: 'Спроси что-нибудь…',
+                        prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _busy ? null : _send,
+                    tooltip: 'Отправить',
+                    icon: const Icon(Icons.send_rounded),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+,
+    ).firstMatch(result.trim());
+    if (routeMatch != null) {
+      _pendingOpenSchoolRouteId = routeMatch.group(1)?.trim();
+      final details = routeMatch.group(2)?.trim() ?? '';
+      return details.isEmpty
+          ? 'Маршрут найден по школьной карте. Сейчас открою его.'
+          : details;
+    }
     return result;
   }
 
@@ -473,6 +1077,26 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
               type: 'string',
               description: 'Номер кабинета или название места',
               isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'plan_school_route',
+          description:
+              'Построить настоящий маршрут по графу коридоров школы и показать его на карте. Обязательно используй при просьбе пройти/дойти/построить путь.',
+          parameters: [
+            LLMToolParam(
+              name: 'destination',
+              type: 'string',
+              description: 'Номер кабинета или название места назначения',
+              isRequired: true,
+            ),
+            LLMToolParam(
+              name: 'origin',
+              type: 'string',
+              description: 'Откуда начать: номер кабинета или место. Пустая строка использует сохранённую точку старта',
+              isRequired: false,
             ),
           ],
           handler: _runAction,
