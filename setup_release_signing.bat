@@ -15,7 +15,7 @@ if not exist "%KEYTOOL%" set "KEYTOOL=keytool"
 
 where keytool >nul 2>&1
 if errorlevel 1 if not exist "%KEYTOOL%" (
-    echo ERROR: keytool was not found. Make sure Java 21 is installed and JAVA_HOME is set.
+    echo ERROR: keytool was not found. Make sure JDK 27 is installed and JAVA_HOME is set.
     exit /b 1
 )
 
