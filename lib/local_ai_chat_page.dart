@@ -388,9 +388,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
       final systemContent = schoolContext.isEmpty
           ? _systemPrompt
-          : '$_systemPrompt\\n\\n'
+          : '$_systemPrompt\n\n'
               'АКТУАЛЬНЫЕ ЛОКАЛЬНЫЕ ДАННЫЕ «ПОКОЛЕНИЯ» (используй как источник фактов):\\n'
-              '$schoolContext\\n'
+              '$schoolContext\n'
               'Отвечай только на основе этих данных. Не делай выводов о занятиях, '
               'которых здесь нет. Если расписание не содержит нужной информации, '
               'прямо скажи, что она не указана.';
