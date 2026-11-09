@@ -56,11 +56,33 @@ if ([string]::IsNullOrWhiteSpace($apiBase)) {
 $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
 $isccCandidates = @()
-if ($pf86) { $isccCandidates += (Join-Path $pf86 'Inno Setup 6\ISCC.exe') }
-if ($pf64) { $isccCandidates += (Join-Path $pf64 'Inno Setup 6\ISCC.exe') }
-$iscc = $isccCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$commandIscc = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
+if ($commandIscc -and $commandIscc.Source) { $isccCandidates += $commandIscc.Source }
+if ($pf64) {
+    $isccCandidates += (Join-Path $pf64 'Inno Setup 7\ISCC.exe')
+    $isccCandidates += (Join-Path $pf64 'Inno Setup 6\ISCC.exe')
+}
+if ($pf86) {
+    $isccCandidates += (Join-Path $pf86 'Inno Setup 7\ISCC.exe')
+    $isccCandidates += (Join-Path $pf86 'Inno Setup 6\ISCC.exe')
+}
+$registryRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)
+foreach ($registryRoot in $registryRoots) {
+    foreach ($entry in (Get-ItemProperty -Path $registryRoot -ErrorAction SilentlyContinue)) {
+        if ($entry.DisplayName -match '^Inno Setup' -and $entry.InstallLocation) {
+            $isccCandidates += (Join-Path $entry.InstallLocation 'ISCC.exe')
+        }
+    }
+}
+$iscc = $isccCandidates |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+    Select-Object -First 1
 if (-not $iscc) {
-    throw 'Inno Setup 6 was not found. Install it, then run build_all_release.ps1 again. The setup script does not install software or change billing settings.'
+    throw 'Inno Setup 7 or 6 compiler (ISCC.exe) was not found. Run setup_and_build.ps1 to install it.'
 }
 
 Write-Host ("Version: {0}" -f $AppVersion)
