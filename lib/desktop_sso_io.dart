@@ -205,7 +205,7 @@ Uri _secureEndpoint(dynamic raw, String label) {
       uri.host.isEmpty ||
       uri.userInfo.isNotEmpty ||
       uri.hasFragment) {
-    throw FormatException('OIDC ${label} должен использовать HTTPS.');
+    throw FormatException('OIDC $label должен использовать HTTPS.');
   }
   return uri;
 }
