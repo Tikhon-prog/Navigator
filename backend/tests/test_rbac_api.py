@@ -161,7 +161,7 @@ class SchoolPositionTests(unittest.TestCase):
     def test_teacher_account_cannot_receive_mentor_only_position(self):
         with self.assertRaises(HTTPException) as raised:
             rbac_api.assign_position(
-                rbac_api.PositionBody(username="teacher1", position="mentor_coordinator"),
+                rbac_api.PositionBody(username="teacher", position="mentor"),
                 {"id": "admin1", "role": "admin"},
             )
         self.assertEqual(raised.exception.status_code, 422)
