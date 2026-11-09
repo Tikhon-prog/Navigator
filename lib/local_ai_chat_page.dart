@@ -9,7 +9,12 @@ import 'package:path_provider/path_provider.dart';
 
 /// On-device assistant. The GGUF model is stored outside the APK and runs locally.
 class LocalAiChatPage extends StatefulWidget {
-  const LocalAiChatPage({super.key});
+  final Future<String> Function()? schoolContextLoader;
+
+  const LocalAiChatPage({
+    super.key,
+    this.schoolContextLoader,
+  });
 
   @override
   State<LocalAiChatPage> createState() => _LocalAiChatPageState();
@@ -104,14 +109,20 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         await handle.close();
       }
 
-      if (ascii.decode(header, allowInvalid: true) == 'GGUF' && mounted) {
-        setState(() => _modelPath = file.path);
-      } else if (mounted) {
-        setState(() {
-          _statusError =
-              'Найденный файл модели повреждён. Скачай модель заново.';
-        });
+      if (String.fromCharCodes(header) != 'GGUF') {
+        throw const FormatException('Файл не имеет формата GGUF.');
       }
+
+      // Verify a model left by an older or interrupted installation before
+      // passing it to the native runtime.
+      final digest = await crypto.sha256.bind(file.openRead()).first;
+      if (digest.toString() != _modelSha256) {
+        throw const FormatException(
+          'Контрольная сумма сохранённой модели не совпадает.',
+        );
+      }
+
+      if (mounted) setState(() => _modelPath = file.path);
     } catch (error) {
       if (mounted) {
         setState(() => _statusError = 'Не удалось проверить локальную модель: $error');
@@ -285,7 +296,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   void _trimConversationHistory() {
     // Preserve complete user/assistant pairs and always keep the system prompt.
-    const maximumConversationMessages = 10;
+    const maximumConversationMessages = 6;
     final conversationLength = _history.length - 1;
     final overflow = conversationLength - maximumConversationMessages;
     if (overflow <= 0) return;
@@ -359,10 +370,37 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     setState(() => _lines.add(answerLine));
     try {
       await _ensureLoaded();
+
+      var schoolContext = '';
+      try {
+        schoolContext = await widget.schoolContextLoader?.call() ?? '';
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _statusError = 'Не удалось прочитать локальное расписание: $error';
+          });
+        }
+      }
+      if (!mounted) return;
+
       _history.add(LLMMessage(role: LLMRole.user, content: text));
       _trimConversationHistory();
+
+      final systemContent = schoolContext.isEmpty
+          ? _systemPrompt
+          : '$_systemPrompt\\n\\n'
+              'АКТУАЛЬНЫЕ ЛОКАЛЬНЫЕ ДАННЫЕ «ПОКОЛЕНИЯ» (используй как источник фактов):\\n'
+              '$schoolContext\\n'
+              'Отвечай только на основе этих данных. Не делай выводов о занятиях, '
+              'которых здесь нет. Если расписание не содержит нужной информации, '
+              'прямо скажи, что она не указана.';
+
+      final messages = <LLMMessage>[
+        LLMMessage(role: LLMRole.system, content: systemContent),
+        ..._history.skip(1),
+      ];
       final repo = _chatRepository!;
-      await for (final chunk in repo.streamChat(_modelPath!, messages: _history)) {
+      await for (final chunk in repo.streamChat(_modelPath!, messages: messages)) {
         final part = chunk.message?.content ?? '';
         if (part.isNotEmpty && mounted) {
           answerLine.text += part;
