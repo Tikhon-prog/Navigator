@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navigator/main.dart';
-import 'package:navigator/corridor_roads.dart';
 
 void main() {
   group('RouteEngine school navigation', () {
