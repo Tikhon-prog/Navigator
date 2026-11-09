@@ -111,8 +111,11 @@ class AdminRepository {
   }
 
   Future<AdminAccount?> createFirstAdmin(String login, String password) async {
-    if (login.trim().length < 3 || password.length < 12 ||
-        await hasConfiguredAccounts()) return null;
+    if (login.trim().length < 3 ||
+        password.length < 12 ||
+        await hasConfiguredAccounts()) {
+      return null;
+    }
     final account = AdminAccount(
       id: 'root',
       login: login.trim(),
