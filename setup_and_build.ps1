@@ -171,6 +171,38 @@ function Install-WingetPackage {
         Write-Warning ("winget returned " + $code + ", but the package is installed. Continuing.")
     }
 }
+function Install-Python312Portable {
+    $pythonHome = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312' } else { Join-Path $ToolRoot 'Python312' }
+    $pythonExe = Join-Path $pythonHome 'python.exe'
+    if (Test-Path -LiteralPath $pythonExe) {
+        $v = (& $pythonExe -c "import sys; print('.'.join(map(str,sys.version_info[:2])))" 2>$null | Out-String).Trim()
+        if ($v -eq '3.12') {
+            Write-Host ("Using existing Python 3.12: " + $pythonHome) -ForegroundColor DarkGray
+            return
+        }
+    }
+
+    Write-Step 'Downloading official Python 3.12.10 installer (winget is not required)'
+    $installer = Join-Path $BuildTemp 'python-3.12.10-amd64.exe'
+    $url = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe'
+    Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+    $signature = Get-AuthenticodeSignature -FilePath $installer
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') {
+        Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+        throw 'Python installer signature is not valid or is not signed by the Python Software Foundation.'
+    }
+    New-Item -ItemType Directory -Force -Path $pythonHome | Out-Null
+    $args = @('/quiet','InstallAllUsers=0','PrependPath=0','Include_launcher=1','Include_test=0',('TargetDir="' + $pythonHome + '"'))
+    $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+    if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+        throw ("Python installer failed with exit code " + $proc.ExitCode)
+    }
+    if (-not (Test-Path -LiteralPath $pythonExe)) { throw 'Python installer finished but python.exe was not found.' }
+    $v = (& $pythonExe -c "import sys; print('.'.join(map(str,sys.version_info[:2])))" 2>$null | Out-String).Trim()
+    if ($v -ne '3.12') { throw ("Expected Python 3.12, installed version reports " + $v) }
+    Write-Host ("Installed verified Python 3.12 at: " + $pythonHome) -ForegroundColor Green
+}
+
 function Find-Jdk27Home {
     $candidateList = @()
     if ($env:JAVA_HOME) { $candidateList += $env:JAVA_HOME }
@@ -288,7 +320,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 } else {
     Install-WingetPackage -Id 'Git.Git'
 }
-Install-WingetPackage -Id 'Python.Python.3.12'
+Install-Python312Portable
 Install-Jdk27Portable
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
 
