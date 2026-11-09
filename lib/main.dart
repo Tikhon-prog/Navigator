@@ -1435,16 +1435,22 @@ class _AppShellState extends State<AppShell>{
     key.currentState?.closeDrawer();
   }
 
-  Future<void> _openAiSchoolRoute(String destinationId) async {
+  Future<void> _openAiSchoolRoute(String destinationId, String? originId) async {
     final destination = SchoolData.tryRoom(destinationId);
     if (destination == null || !mounted) return;
-    final prefs = await SharedPreferences.getInstance();
-    final startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3).toInt();
-    final startLocationId = prefs.getString('map_start_location');
+    final startRoom = originId == null || originId.isEmpty
+        ? null
+        : SchoolData.tryRoom(originId);
+    if (originId != null && originId.isNotEmpty && startRoom == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Точка старта маршрута больше не найдена.')),
+      );
+      return;
+    }
     final route = RouteEngine.build(
       destination.id,
-      startFloor: startFloor,
-      startLocationId: startLocationId,
+      startFloor: startRoom?.floor ?? 1,
+      startLocationId: startRoom?.id,
     );
     if (!mounted) return;
 
@@ -1644,7 +1650,7 @@ class _AppShellState extends State<AppShell>{
           ..writeAll(steps.asMap().entries.map(
             (entry) => '${entry.key + 1}. ${entry.value.text} (${entry.value.floor}-й этаж)\n',
           ));
-        return '__OPEN_ROUTE__:${destination.id}\n$summary';
+        return '__OPEN_ROUTE__:${destination.id}|${originId}\n$summary';
 
       case 'open_school_location':
         final locationId = arg('location_id');
