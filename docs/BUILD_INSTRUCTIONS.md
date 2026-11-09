@@ -1,6 +1,6 @@
 # Сборка тестовой офлайн-версии без секретов
 
-Для локального тестового APK и Windows EXE из уже скачанного репозитория используй [`build_test.ps1`](../build_test.ps1). Он собирает оба отладочных клиента без API URL, SSO, Firebase secrets и серверного `.env`. Для Windows EXE нужен Visual Studio 2022 Build Tools с workload Desktop development with C++ и ATL.
+Для локального тестового APK и Windows EXE из уже скачанного репозитория используй [`build_test.ps1`](../build_test.ps1). Он собирает оба отладочных клиента без API URL, SSO, Firebase secrets и серверного `.env`. Для Windows EXE нужны Visual Studio 2026 или Build Tools 2026 с workload Desktop development with C++ и ATL.
 
 # Быстрая установка на чистый Windows 10/11 x64
 
@@ -10,7 +10,7 @@
 Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setup_and_build.ps1'; Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Tikhon-prog/Navigator/main/setup_and_build.ps1' -OutFile $p; & $p
 ```
 
-Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Microsoft OpenJDK 21, Android command-line SDK, Flutter (скрипт использует `C:\Users\<пользователь>\flutter`, если этот SDK уже установлен; иначе скачивает стабильную 3.47.4), Visual Studio 2022 C++ Build Tools (включая ATL и Windows SDK) и Inno Setup 6. Java 21 загружается из официального ZIP Microsoft с проверкой опубликованной SHA-256 контрольной суммы, если совместимая версия не установлена. Android-лицензии принимаются в консоли.
+Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Oracle JDK 27, Android command-line SDK, Flutter 3.47.9 (если совместимый SDK не найден), Visual Studio 2026 Build Tools (workload Desktop development with C++, ATL и Windows SDK) и Inno Setup 6. JDK 27 загружается из официального Oracle ZIP; перед установкой скрипт сверяет SHA-256 контрольную сумму. Android-лицензии принимаются в консоли.
 
 Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Если URL backend не задан, клиент соберётся в офлайн-режиме. Пароли, серверные токены и Firebase service-account ключи не нужны для клиентской сборки и не должны встраиваться в APK/EXE.
 
@@ -119,7 +119,7 @@ http://127.0.0.1:43827/oauth/callback
 
 ### Одна команда для локальной сборки обоих форматов
 
-Если Actions пока заблокирован биллингом, можно собрать клиент локально. Нужны Flutter 3.47.4, Python 3.12+, Android SDK + JDK 21, Visual Studio 2022/Build Tools с workload **Desktop development with C++** (включая ATL) и Inno Setup 6. Выполни PowerShell из корня репозитория:
+Если Actions пока заблокирован биллингом, можно собрать клиент локально. Нужны Flutter 3.47.9, Python 3.12+, Android SDK + JDK 27, Visual Studio 2026/Build Tools с workload **Desktop development with C++** (включая ATL и Windows SDK) и Inno Setup 6. Gradle запускается на JDK 27, Android bytecode остаётся на target 21. Выполни PowerShell из корня репозитория:
 
 ```powershell
 # Необязательно: задать реальный публичный HTTPS адрес API для новой сборки.
@@ -134,9 +134,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 Установи:
 
-- Flutter stable **3.47.4** и Dart из того же SDK;
-- JDK 21 и Android SDK с принятыми лицензиями;
-- Visual Studio 2022 или Build Tools с workload **Desktop development with C++**, включая ATL для `flutter_secure_storage_windows`;
+- Flutter stable **3.47.9** и Dart из того же SDK;
+- JDK 27 и Android SDK с принятыми лицензиями; Gradle Wrapper использует Gradle 9.9.0;
+- Visual Studio 2026 или Build Tools 2026 с workload **Desktop development with C++**, включая ATL для `flutter_secure_storage_windows`;
 - Inno Setup 6 для сборки установщика.
 
 Открой PowerShell в корне репозитория:
