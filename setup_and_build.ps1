@@ -37,7 +37,7 @@ if ($forcedPolicy -and $forcedPolicy.ExecutionPolicy -in @('Restricted','AllSign
     exit 1
 }
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'Не найден winget. Нужен App Installer из Microsoft Store; после его установки запусти этот файл снова.' }
-$PinnedFlutterVersion = '3.47.4'
+$PinnedFlutterVersion = '3.47.9'
 $FlutterVersion = $PinnedFlutterVersion
 $UseExistingFlutter = $false
 $RepoName = 'Tikhon-prog/Navigator'
@@ -70,7 +70,7 @@ $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
 $vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
 $requiredVsComponents = @('Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows10SDK.19041')
-$vsQueryArgs = @('-latest','-products','*','-version','[17.0,18.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
+$vsQueryArgs = @('-latest','-products','*','-version','[17.0,19.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
 $vsToolchainPath = $null
 if (Test-Path -LiteralPath $vswhere) { $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1) }
 $cDrive = Get-PSDrive -Name C -ErrorAction Stop
@@ -156,18 +156,18 @@ function Install-WingetPackage {
         Write-Warning ("winget returned " + $code + ", but the package is installed. Continuing.")
     }
 }
-function Find-Jdk21Home {
+function Find-Jdk27Home {
     $candidateList = @()
     if ($env:JAVA_HOME) { $candidateList += $env:JAVA_HOME }
 
     $searchRoots = @()
-    if ($pf64) { $searchRoots += (Join-Path $pf64 'Microsoft') }
+    if ($pf64) { $searchRoots += (Join-Path $pf64 'Java') }
     $searchRoots += $ToolRoot
-    if ($env:LOCALAPPDATA) { $searchRoots += (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft') }
+    if ($env:LOCALAPPDATA) { $searchRoots += (Join-Path $env:LOCALAPPDATA 'Programs\Java') }
 
     foreach ($root in $searchRoots) {
         if (Test-Path -LiteralPath $root) {
-            $candidateList += @(Get-ChildItem -LiteralPath $root -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+            $candidateList += @(Get-ChildItem -LiteralPath $root -Directory -Filter 'jdk-27*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         }
     }
 
@@ -175,28 +175,28 @@ function Find-Jdk21Home {
         $javaExe = Join-Path $candidate 'bin\java.exe'
         if (-not (Test-Path -LiteralPath $javaExe)) { continue }
         $versionText = (& $javaExe -version 2>&1 | Out-String)
-        if ($versionText -match 'version "21(\.|")') { return $candidate }
+        if ($versionText -match 'version "27(\.|")') { return $candidate }
     }
     return $null
 }
 
-function Install-Jdk21Portable {
-    $existing = Find-Jdk21Home
+function Install-Jdk27Portable {
+    $existing = Find-Jdk27Home
     if ($existing) {
-        Write-Host ("Using existing Java 21: " + $existing) -ForegroundColor DarkGray
+        Write-Host ("Using existing Java 27: " + $existing) -ForegroundColor DarkGray
         return
     }
 
-    Write-Step 'Downloading verified Microsoft OpenJDK 21 ZIP'
-    # Use Microsoft's official portable ZIP and its published SHA-256 sidecar.
-    # This avoids a broken/mismatched winget MSI download without disabling integrity checks.
-    $version = '21.0.12.1'
-    $baseUrl = "https://aka.ms/download-jdk/microsoft-jdk-$version-windows-x64.zip"
-    $checksumUrl = "${baseUrl}.sha256sum.txt"
-    $downloadDir = Join-Path $BuildTemp 'OpenJDK21'
+    Write-Step 'Downloading verified Oracle JDK 27 ZIP'
+    # Use Oracle's official JDK 27 ZIP and checksum sidecar.
+    # Verify SHA-256 before extracting the archive.
+    $version = '27.0.1'
+    $baseUrl = 'https://download.oracle.com/java/27/latest/jdk-27_windows-x64_bin.zip'
+    $checksumUrl = "${baseUrl}.sha256"
+    $downloadDir = Join-Path $BuildTemp 'OpenJDK27'
     $extractDir = Join-Path $downloadDir 'extract'
-    $zipPath = Join-Path $downloadDir "microsoft-jdk-$version-windows-x64.zip"
-    $checksumPath = Join-Path $downloadDir "microsoft-jdk-$version-windows-x64.zip.sha256sum.txt"
+    $zipPath = Join-Path $downloadDir 'jdk-27_windows-x64_bin.zip'
+    $checksumPath = Join-Path $downloadDir 'jdk-27_windows-x64_bin.zip.sha256'
     $destination = Join-Path $ToolRoot "jdk-$version"
 
     New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
@@ -225,20 +225,20 @@ function Install-Jdk21Portable {
     $sourceHome = Split-Path -Parent (Split-Path -Parent $javaExe.FullName)
 
     if (Test-Path -LiteralPath $destination) {
-        throw ("JDK destination exists but is not a recognized Java 21 install: " + $destination + '. Rename that folder and rerun.')
+        throw ("JDK destination exists but is not a recognized Java 27 install: " + $destination + '. Rename that folder and rerun.')
     }
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     Copy-Item -Path (Join-Path $sourceHome '*') -Destination $destination -Recurse -Force
 
-    $installed = Find-Jdk21Home
+    $installed = Find-Jdk27Home
     if (-not $installed) {
-        throw 'The verified JDK ZIP was extracted, but Java 21 could not be validated.'
+        throw 'The verified JDK ZIP was extracted, but Java 27 could not be validated.'
     }
 
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $checksumPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host ("Installed verified Java 21 at: " + $installed) -ForegroundColor Green
+    Write-Host ("Installed verified Java 27 at: " + $installed) -ForegroundColor Green
 }
 
 function Invoke-Checked {
@@ -249,7 +249,7 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw ("Command failed (exit " + $LASTEXITCODE + "): " + $File) }
 }
 
-Write-Step 'Installing Git, Python 3.12, verified JDK 21 and Inno Setup'
+Write-Step 'Installing Git, Python 3.12, verified JDK 27 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
 
 # Reuse an existing Git installation before asking winget to install it.
@@ -274,23 +274,23 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Install-WingetPackage -Id 'Git.Git'
 }
 Install-WingetPackage -Id 'Python.Python.3.12'
-Install-Jdk21Portable
+Install-Jdk27Portable
 Install-WingetPackage -Id 'JRSoftware.InnoSetup'
 
 # Check Visual Studio components first and modify only if required items are missing.
 $vsInstaller = Join-Path $vsInstallerDir 'vs_installer.exe'
 $vsPath = $null
-if (Test-Path -LiteralPath $vswhere) { $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1) }
+if (Test-Path -LiteralPath $vswhere) { $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1) }
 if (-not $vsPath) {
-    Write-Step 'Installing Visual Studio 2022 Build Tools'
+    Write-Step 'Installing Visual Studio 2026 Build Tools'
     $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
-    Install-WingetPackage -Id 'Microsoft.VisualStudio.2022.BuildTools' -Override $vsOverride
+    Install-WingetPackage -Id 'Microsoft.VisualStudio.BuildTools' -Override $vsOverride
     Refresh-Path
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio Installer did not create vswhere.exe. Check the setup log and repair Build Tools.' }
-    $vsPath = (& $vswhere -latest -products '*' -version '[17.0,18.0)' -property installationPath 2>$null | Select-Object -First 1)
+    $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1)
 }
 if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
-if (-not (Test-Path -LiteralPath $vsInstaller)) { throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2022 Build Tools.' }
+if (-not (Test-Path -LiteralPath $vsInstaller)) { throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2026 Build Tools.' }
 $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
 if ($vsToolchainPath) {
     Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
@@ -352,7 +352,7 @@ if ($gh) {
 }
 
 # Find JDK 21 and add JAVA_HOME persistently.
-$javaHome = Find-Jdk21Home
+$javaHome = Find-Jdk27Home
 if (-not $javaHome) { throw 'Java 21 was not found after the verified ZIP installation.' }
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
