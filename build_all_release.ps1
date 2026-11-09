@@ -103,6 +103,10 @@ Write-Host ("Version: {0}" -f $AppVersion)
 Write-Host ("Python:  {0}" -f $pythonVersionText)
 Write-Host ("API URL: {0}" -f $(if ($apiBase) { $apiBase } else { '(offline)' }))
 
+Write-Host ''
+Write-Host 'Cleaning stale Flutter/CMake generated artifacts before the release build...' -ForegroundColor Yellow
+Invoke-CheckedCommand 'flutter' @('clean')
+
 Invoke-CheckedCommand 'python' @('-m', 'pip', 'install', '-r', 'backend/requirements.txt')
 Invoke-CheckedCommand 'python' @('backend/security_check.py')
 Invoke-CheckedCommand 'python' @('-m', 'unittest', 'discover', '-s', 'backend/tests', '-v')
