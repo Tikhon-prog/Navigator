@@ -46,22 +46,46 @@ $RepoDirectory = Join-Path $DevRoot 'Pokolenie'
 $ToolRoot = Join-Path $DevRoot 'Programs\PokolenieToolchain'
 $FlutterParent = Join-Path $ToolRoot ("Flutter-" + $PinnedFlutterVersion)
 $FlutterSdk = Join-Path $FlutterParent 'flutter'
-# Reuse the user's existing Flutter SDK when present instead of downloading a duplicate.
-$userFlutterSdk = if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'flutter' } else { $null }
-$userFlutterExe = if ($userFlutterSdk) { Join-Path $userFlutterSdk 'bin\flutter.bat' } else { $null }
-if ($userFlutterExe -and (Test-Path -LiteralPath $userFlutterExe)) {
-    $userFlutterVersionText = (& $userFlutterExe --version 2>&1 | Out-String)
-    if ($userFlutterVersionText -match 'Flutter\s+(\d+\.\d+\.\d+)') {
-        $detectedFlutterVersion = $Matches[1]
-        if ($detectedFlutterVersion -eq $PinnedFlutterVersion) {
-            $FlutterVersion = $detectedFlutterVersion
-            $FlutterSdk = $userFlutterSdk
-            $FlutterParent = $null
-            $UseExistingFlutter = $true
-            Write-Host ("Reusing existing Flutter " + $FlutterVersion + " at " + $FlutterSdk) -ForegroundColor DarkGray
+# Reuse any existing Flutter SDK before considering a download.
+# The setup may run elevated under a different Windows account, so search all
+# local user profiles (including C:\Users\pc\flutter\flutter) and the inherited PATH.
+$flutterCandidates = @()
+$pathFlutter = Get-Command 'flutter.bat' -ErrorAction SilentlyContinue
+if ($pathFlutter -and $pathFlutter.Source) {
+    $flutterCandidates += (Split-Path -Parent (Split-Path -Parent $pathFlutter.Source))
+}
+if ($env:USERPROFILE) {
+    $flutterCandidates += (Join-Path $env:USERPROFILE 'flutter')
+    $flutterCandidates += (Join-Path $env:USERPROFILE 'flutter\flutter')
+}
+foreach ($profileDir in @(Get-ChildItem -LiteralPath 'C:\Users' -Directory -ErrorAction SilentlyContinue)) {
+    $flutterCandidates += (Join-Path $profileDir.FullName 'flutter')
+    $flutterCandidates += (Join-Path $profileDir.FullName 'flutter\flutter')
+    $flutterCandidates += (Join-Path $profileDir.FullName 'src\flutter')
+}
+$flutterCandidates += 'C:\src\flutter'
+$flutterCandidates += (Join-Path $ToolRoot ("Flutter-" + $PinnedFlutterVersion + '\flutter'))
+$seenFlutter = @{}
+foreach ($candidateSdk in $flutterCandidates) {
+    if ([string]::IsNullOrWhiteSpace($candidateSdk)) { continue }
+    $candidateExe = Join-Path $candidateSdk 'bin\flutter.bat'
+    if (-not (Test-Path -LiteralPath $candidateExe -PathType Leaf)) { continue }
+    $normalizedSdk = [IO.Path]::GetFullPath($candidateSdk).TrimEnd('\')
+    if ($seenFlutter.ContainsKey($normalizedSdk.ToLowerInvariant())) { continue }
+    $seenFlutter[$normalizedSdk.ToLowerInvariant()] = $true
+
+    $candidateVersionText = (& $candidateExe --version 2>&1 | Out-String)
+    if ($candidateVersionText -match 'Flutter\s+(\d+\.\d+\.\d+)') {
+        $FlutterVersion = $Matches[1]
+        $FlutterSdk = $normalizedSdk
+        $FlutterParent = $null
+        $UseExistingFlutter = $true
+        if ($FlutterVersion -eq $PinnedFlutterVersion) {
+            Write-Host ("Reusing existing Flutter " + $FlutterVersion + " at " + $FlutterSdk) -ForegroundColor Green
         } else {
-            Write-Host ("Existing Flutter " + $detectedFlutterVersion + " is not the pinned " + $PinnedFlutterVersion + "; installing the pinned SDK instead.") -ForegroundColor Yellow
+            Write-Warning ("Found Flutter " + $FlutterVersion + " at " + $FlutterSdk + ". Reusing it instead of downloading another SDK (the pinned version is " + $PinnedFlutterVersion + ").")
         }
+        break
     }
 }
 # Reuse Android Studio's SDK when it already exists; otherwise use the script-managed location.
@@ -742,35 +766,16 @@ if ($missingSdkPackages.Count -gt 0) {
     Write-Host 'Android platform-tools, API 36, build-tools 36.0.0, NDK 28.2.13676358 and CMake 3.22.1 are already present.' -ForegroundColor DarkGray
 }
 
-# Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
-Write-Step ("Installing Flutter " + $FlutterVersion)
+# Use the discovered Flutter SDK. This bootstrap does not download or replace Flutter.
+Write-Step ("Using existing Flutter " + $FlutterVersion)
 $flutterExe = Join-Path $FlutterSdk 'bin\flutter.bat'
-$hasFlutter = $false
-if (Test-Path -LiteralPath $flutterExe) {
-    $oldVersion = (& $flutterExe --version 2>&1 | Out-String)
-    if ($oldVersion -match [regex]::Escape($FlutterVersion)) { $hasFlutter = $true }
+if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+    throw 'Flutter was not found in the detected SDK path. Install Flutter manually or correct the Flutter path; this script will not download a duplicate.'
 }
-if ($UseExistingFlutter -and -not $hasFlutter) {
-    throw 'The existing Flutter SDK version could not be validated; refusing to replace or delete your user Flutter folder.'
+$verifiedFlutterText = (& $flutterExe --version 2>&1 | Out-String)
+if ($verifiedFlutterText -notmatch ('Flutter\s+' + [regex]::Escape($FlutterVersion))) {
+    throw 'The existing Flutter executable could not be validated; refusing to download or replace it.'
 }
-if (-not $hasFlutter) {
-    $manifest = Invoke-RestMethod -Uri 'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json' -TimeoutSec 120
-    $release = $manifest.releases | Where-Object { $_.version -eq $FlutterVersion -and $_.channel -eq 'stable' } | Select-Object -First 1
-    if (-not $release -or -not $release.archive -or -not $release.sha256) { throw ("Flutter stable " + $FlutterVersion + ' was not found in the official manifest.') }
-    $baseUrl = $manifest.base_url
-    if (-not $baseUrl) { $baseUrl = 'https://storage.googleapis.com/flutter_infra_release/releases' }
-    $flutterUrl = $baseUrl.TrimEnd('/') + '/' + $release.archive.TrimStart('/')
-    $flutterZip = Join-Path $BuildTemp ("flutter_windows_" + $FlutterVersion + '-stable.zip')
-    if (Test-Path -LiteralPath $FlutterParent) { Remove-Item -LiteralPath $FlutterParent -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $FlutterParent | Out-Null
-    Write-Host ("Downloading " + $flutterUrl)
-    Invoke-WebRequest -UseBasicParsing -Uri $flutterUrl -OutFile $flutterZip
-    $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $flutterZip).Hash.ToLowerInvariant()
-    if ($actualSha -ne $release.sha256.ToLowerInvariant()) { throw 'Flutter SDK checksum mismatch against official manifest; refusing to install.' }
-    Expand-Archive -LiteralPath $flutterZip -DestinationPath $FlutterParent -Force
-    Remove-Item -LiteralPath $flutterZip -Force
-}
-if (-not (Test-Path -LiteralPath $flutterExe)) { throw 'flutter.bat was not found after SDK extraction.' }
 Add-UserPath -Paths @((Join-Path $FlutterSdk 'bin'))
 Invoke-Checked -File $flutterExe -Arguments @('--version')
 Invoke-Checked -File $flutterExe -Arguments @('config', '--enable-windows-desktop')
