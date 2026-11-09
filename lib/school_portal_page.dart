@@ -761,7 +761,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                 firstDate: DateTime(now.year, now.month, now.day),
                 lastDate: DateTime(now.year + 5),
               );
-              if (date == null || !dialogContext.mounted) return;
+              if (date == null || !mounted || !dialogContext.mounted) return;
               final selected = DateTime(date.year, date.month, date.day, 23, 59, 59);
               if (scheduledAt != null && !selected.isAfter(scheduledAt!)) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Срок действия должен быть позже времени отправки.')));
