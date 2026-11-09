@@ -7,13 +7,48 @@ import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
 import 'package:path_provider/path_provider.dart';
 
+typedef _LocalAiActionHandler = Future<String> Function(
+  String action,
+  Map<String, dynamic> arguments,
+);
+
+class _LocalAiTool extends LLMTool {
+  _LocalAiTool({
+    required this.name,
+    required this.description,
+    required this.parameters,
+    required this.handler,
+  });
+
+  @override
+  final String name;
+  @override
+  final String description;
+  @override
+  final List<LLMToolParam> parameters;
+
+  final _LocalAiActionHandler handler;
+
+  @override
+  Future<String> execute(
+    Map<String, dynamic> args, {
+    dynamic extra,
+  }) {
+    return handler(name, args);
+  }
+}
+
 /// On-device assistant. The GGUF model is stored outside the APK and runs locally.
 class LocalAiChatPage extends StatefulWidget {
   final Future<String> Function(String question)? schoolContextLoader;
+  final _LocalAiActionHandler? actionHandler;
+  final ValueChanged<String>? onOpenMapLocation;
 
   const LocalAiChatPage({
     super.key,
     this.schoolContextLoader,
+    this.actionHandler,
+    this.onOpenMapLocation,
   });
 
   @override
@@ -27,6 +62,13 @@ class _ChatLine {
 }
 
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
+  // Keep the native engine alive across chat-page closes and screen changes.
+  // llama.cpp itself performs inference in a worker isolate.
+  static LlamaCppRepository? _sharedModelRepository;
+  static LlamaCppChatRepository? _sharedChatRepository;
+  static String? _sharedModelPath;
+  static Future<void>? _sharedLoadFuture;
+
   static const _modelFileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
   // Pin the model revision so the checksum always matches the downloaded file.
   static const _modelUrl =
@@ -59,6 +101,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   bool _loadingModel = false;
   bool _checkingModel = false;
   double? _downloadProgress;
+  String? _pendingOpenMapLocationId;
   String? _statusError;
   List<Map<String, dynamic>> _rooms = [];
   List<Map<String, dynamic>> _places = [];
@@ -330,32 +373,188 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   Future<void> _ensureLoaded() async {
-    if (_chatRepository != null) return;
     final modelPath = _modelPath;
     if (modelPath == null) {
       throw StateError('Сначала скачай модель. Это делается один раз.');
     }
 
+    if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
+      _modelRepository = _sharedModelRepository;
+      _chatRepository = _sharedChatRepository;
+      return;
+    }
+
+    final activeLoad = _sharedLoadFuture;
+    if (activeLoad != null) {
+      await activeLoad;
+      if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
+        _modelRepository = _sharedModelRepository;
+        _chatRepository = _sharedChatRepository;
+        return;
+      }
+    }
+
+    final load = _loadSharedModel(modelPath);
+    _sharedLoadFuture = load;
     if (mounted) setState(() => _loadingModel = true);
+    try {
+      await load;
+      _modelRepository = _sharedModelRepository;
+      _chatRepository = _sharedChatRepository;
+    } finally {
+      if (identical(_sharedLoadFuture, load)) _sharedLoadFuture = null;
+      if (mounted) setState(() => _loadingModel = false);
+    }
+  }
+
+  static Future<void> _loadSharedModel(String modelPath) async {
+    final oldChat = _sharedChatRepository;
+    final oldRepository = _sharedModelRepository;
+    _sharedChatRepository = null;
+    _sharedModelRepository = null;
+    oldChat?.dispose();
+    oldRepository?.dispose();
+
     final repository = LlamaCppRepository();
     try {
       final model = await repository.loadModel(modelPath);
       final chat = LlamaCppChatRepository.withModel(
         model,
         repository.bindings,
-        contextSize: 2048,
+        contextSize: 4096,
         nGpuLayers: 0,
       );
-      _modelRepository = repository;
-      _chatRepository = chat;
+      _sharedModelRepository = repository;
+      _sharedChatRepository = chat;
+      _sharedModelPath = modelPath;
     } catch (_) {
-      // Do not leak the native model repository if loading or chat setup fails.
       repository.dispose();
+      _sharedModelPath = null;
       rethrow;
-    } finally {
-      if (mounted) setState(() => _loadingModel = false);
     }
   }
+
+  Future<String> _runAction(String name, Map<String, dynamic> args) async {
+    final handler = widget.actionHandler;
+    if (handler == null) {
+      return 'Действия приложения пока не подключены в этой сборке.';
+    }
+    final result = await handler(name, args);
+    final openMatch = RegExp(r'^__OPEN_MAP__:(.+)$').firstMatch(result.trim());
+    if (openMatch != null) {
+      _pendingOpenMapLocationId = openMatch.group(1);
+      return 'Точка найдена. После ответа открою её на карте школы.';
+    }
+    return result;
+  }
+
+  List<LLMTool> _buildTools() => [
+        _LocalAiTool(
+          name: 'get_school_context',
+          description:
+              'Получить расписание ученика, группы, ДОПы и локальные сведения школы. Используй перед ответами на вопросы о занятиях.',
+          parameters: [
+            LLMToolParam(
+              name: 'question',
+              type: 'string',
+              description: 'Период или тема: неделя, сегодня, завтра, вторник',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'search_school_map',
+          description:
+              'Найти кабинет или объект на встроенной карте школы по номеру или названию.',
+          parameters: [
+            LLMToolParam(
+              name: 'query',
+              type: 'string',
+              description: 'Номер кабинета или название места',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'open_school_location',
+          description:
+              'Открыть найденный кабинет или объект в разделе карты приложения.',
+          parameters: [
+            LLMToolParam(
+              name: 'location_id',
+              type: 'string',
+              description: 'Точный ID точки, полученный из поиска по карте',
+              isRequired: true,
+            ),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_math_lesson_name',
+          description:
+              'Переименовать конкретный математический урок выбранного класса: геометрия, алгебра или вероятность и статистика.',
+          parameters: [
+            LLMToolParam(name: 'day', type: 'string', description: 'День недели', isRequired: true),
+            LLMToolParam(name: 'lesson_number', type: 'integer', description: 'Порядковый номер урока математики в этот день, начиная с 1', isRequired: true),
+            LLMToolParam(name: 'subject', type: 'string', description: 'Алгебра, Геометрия, Вероятность и статистика или пустая строка для сброса', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_subject_group',
+          description:
+              'Выбрать учебную группу по конкретному предмету для расписания ученика.',
+          parameters: [
+            LLMToolParam(name: 'subject', type: 'string', description: 'Название предмета', isRequired: true),
+            LLMToolParam(name: 'group', type: 'integer', description: 'Номер доступной группы', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'set_route_start',
+          description:
+              'Установить начальную точку построения маршрутов: главный вход или проверенное место на одном из этажей.',
+          parameters: [
+            LLMToolParam(name: 'floor', type: 'integer', description: 'Этаж 1, 2 или 3', isRequired: true),
+            LLMToolParam(name: 'location_id', type: 'string', description: 'ID точки старта; пустая строка означает главный вход', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'save_personal_note',
+          description: 'Сохранить личную заметку на этом устройстве.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Заголовок заметки', isRequired: true),
+            LLMToolParam(name: 'body', type: 'string', description: 'Содержимое заметки', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'add_supplement',
+          description:
+              'Добавить локальный кружок или дополнительное занятие в список ДОПов. Не выдумывай время и кабинет.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Название занятия', isRequired: true),
+            LLMToolParam(name: 'day', type: 'string', description: 'День недели', isRequired: true),
+            LLMToolParam(name: 'start', type: 'string', description: 'Время начала HH:mm или пусто, если неизвестно', isRequired: true),
+            LLMToolParam(name: 'end', type: 'string', description: 'Время окончания HH:mm или пусто, если неизвестно', isRequired: true),
+            LLMToolParam(name: 'room', type: 'string', description: 'Кабинет или пусто', isRequired: true),
+            LLMToolParam(name: 'teacher', type: 'string', description: 'Преподаватель или пусто', isRequired: true),
+            LLMToolParam(name: 'description', type: 'string', description: 'Описание или пусто', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'delete_supplement',
+          description: 'Удалить локальный ДОП по его точному названию.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Точное название занятия', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+      ];
 
   void _trimConversationHistory() {
     // Preserve complete user/assistant pairs and always keep the system prompt.
@@ -501,8 +700,18 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         ..._history.skip(1),
       ];
       final repo = _chatRepository!;
-      await for (final chunk in repo.streamChat(_modelPath!, messages: messages)) {
-        final part = chunk.message?.content ?? '';
+      String? rawAssistantTurn;
+      await for (final chunk in repo.streamChat(
+        _modelPath!,
+        messages: messages,
+        tools: _buildTools(),
+        options: const LLMChatOptions(toolAttempts: 4),
+      )) {
+        final message = chunk.message;
+        if (message?.rawContent.isNotEmpty == true) {
+          rawAssistantTurn = message!.rawContent;
+        }
+        final part = message?.content ?? '';
         if (part.isNotEmpty && mounted) {
           answerLine.text += part;
           setState(() {});
@@ -512,8 +721,17 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       if (answerLine.text.trim().isEmpty) {
         answerLine.text = 'Модель не вернула ответ. Попробуй сформулировать вопрос короче.';
       }
-      _history.add(LLMMessage(role: LLMRole.assistant, content: answerLine.text));
+      _history.add(LLMMessage(
+        role: LLMRole.assistant,
+        content: rawAssistantTurn ?? answerLine.text,
+      ));
       _trimConversationHistory();
+      final openLocationId = _pendingOpenMapLocationId;
+      _pendingOpenMapLocationId = null;
+      if (openLocationId != null && mounted) {
+        widget.onOpenMapLocation?.call(openLocationId);
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       answerLine.text =
           'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
@@ -548,8 +766,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   void dispose() {
     _input.dispose();
     _scroll.dispose();
-    _chatRepository?.dispose();
-    _modelRepository?.dispose();
+    // The shared native model is intentionally kept alive while the app process
+    // is running, so switching screens does not unload/reload 491 MB every time.
     super.dispose();
   }
 
