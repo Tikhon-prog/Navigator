@@ -338,6 +338,7 @@ def list_group_members(group_id: str,
 
 @router.post("/admin/notification-groups", status_code=201)
 def create_group(body: GroupBody, actor: dict[str, Any] = Depends(require_group_manager)) -> dict[str, str]:
+    require_group_manager(actor)
     group_id = secrets.token_urlsafe(12)
     try:
         with core._db() as db:
