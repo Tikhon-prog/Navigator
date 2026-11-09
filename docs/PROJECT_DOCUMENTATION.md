@@ -132,16 +132,16 @@
 
 ### Android / Flutter
 
-- Flutter stable **3.47.4** — версия, указанная в README и сценарии сборки.
+- Flutter stable **3.47.9** — версия, закреплённая в README, CI и сценарии сборки.
 - Dart SDK, входящий в подходящую Flutter-сборку; в `pubspec.yaml` диапазон SDK: `>=3.10.0 <4.0.0`.
 - Android SDK и лицензии платформ.
-- JDK 21. В Gradle-конфигурации Java/Kotlin toolchain настроен на 21; не подменяй его случайно более новой системной JDK без проверки Gradle/AGP.
+- JDK 27 для запуска Gradle 9.9.0. Android Java/Kotlin bytecode намеренно собирается с target 21; это отдельная настройка совместимости, не версия установленной JDK.
 - Интернет и место под SDK/зависимости. Скрипт автоматической установки рекомендует около 25 ГБ свободного места.
 
 ### Windows desktop
 
 - Windows 10/11 x64.
-- Visual Studio 2022 или Build Tools с workload **Desktop development with C++**, Windows SDK и ATL.
+- Visual Studio 2026 или Build Tools 2026 с workload **Desktop development with C++**, Windows SDK и ATL.
 - Inno Setup 6 — если собирается установщик из `windows/installer.iss`.
 
 ### Backend
@@ -195,7 +195,7 @@ flutter build apk --release
 
 При сборке напрямую Flutter стандартный APK лежит в `build/app/outputs/flutter-apk/`. Скрипт `setup_and_build.ps1` собирает и копирует файлы в отдельный каталог распространения, описанный в [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
 
-В Android-конфигурации `applicationId` — `ru.pokolenie.navigator`, `minSdk` — 23, Java/Kotlin toolchain — 21. Точный `targetSdk` и compile SDK задаются Flutter. Не меняй package/application ID после выпуска без отдельного плана миграции.
+В Android-конфигурации `applicationId` — `ru.pokolenie.navigator`, `minSdk` — 23. Gradle запускается на JDK 27, но Java/Kotlin bytecode target намеренно остаётся 21; точный `targetSdk` и compile SDK задаются Flutter. Не меняй package/application ID после выпуска без отдельного плана миграции.
 
 ### 5.3 Собрать Windows desktop
 
@@ -616,7 +616,7 @@ Compose использует volume `navigator_data:/data`, но сам по с�
 
 ### Flutter/Gradle использует неправильный Java
 
-Проверь `java -version`, `JAVA_HOME`, используемый Flutter JDK (`flutter doctor -v`) и toolchain 21 в Gradle. В рамках текущей конфигурации предпочтителен JDK 21.
+Проверь `java -version`, `JAVA_HOME` и используемый Flutter JDK (`flutter doctor -v`): для текущей сборки нужен JDK 27 и Gradle 9.9.0. Java/Kotlin bytecode target приложения остаётся 21.
 
 ### Тесты проходят локально, а реальные данные/маршруты ошибочны
 
