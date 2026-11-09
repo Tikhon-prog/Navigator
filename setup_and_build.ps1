@@ -64,7 +64,17 @@ if ($userFlutterExe -and (Test-Path -LiteralPath $userFlutterExe)) {
         }
     }
 }
-$AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
+# Reuse Android Studio's SDK when it already exists; otherwise use the script-managed location.
+$AndroidSdk = $null
+$configuredAndroidSdk = $env:ANDROID_SDK_ROOT
+if ([string]::IsNullOrWhiteSpace($configuredAndroidSdk)) { $configuredAndroidSdk = $env:ANDROID_HOME }
+if (-not [string]::IsNullOrWhiteSpace($configuredAndroidSdk) -and (Test-Path -LiteralPath $configuredAndroidSdk)) {
+    $AndroidSdk = $configuredAndroidSdk
+} elseif ($env:LOCALAPPDATA -and (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Android\Sdk'))) {
+    $AndroidSdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+} else {
+    $AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
+}
 $GradleHome = Join-Path $DevRoot 'Gradle'
 $PubCache = Join-Path $DevRoot 'PubCache'
 $BuildTemp = Join-Path $DevRoot 'Temp'
