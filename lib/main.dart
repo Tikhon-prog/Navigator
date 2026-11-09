@@ -65,6 +65,13 @@ Future<void> main() async {
 
 enum AppThemeType { yellow, turquoise, darkBlue, violet, coral, green }
 
+/// In-process signal that local AI actions changed data shared by app sections.
+final ValueNotifier<int> schoolLocalDataRevision = ValueNotifier<int>(0);
+
+void notifySchoolLocalDataChanged() {
+  schoolLocalDataRevision.value++;
+}
+
 /// Desktop users can scroll with the wheel/trackpad and also drag scrollable
 /// lists with the mouse, matching the expected Windows interaction.
 class _PokolenieScrollBehavior extends MaterialScrollBehavior {
@@ -1691,6 +1698,7 @@ class _AppShellState extends State<AppShell>{
           _studentScopedPreferenceKey(prefs, 'math_subject_${className}_${day}_${lessonNumber - 1}'),
           normalized,
         );
+        notifySchoolLocalDataChanged();
         return normalized.isEmpty
             ? 'Настройка математического урока сброшена.'
             : 'Сохранено: ${{1:'понедельник',2:'вторник',3:'среда',4:'четверг',5:'пятница',6:'суббота'}[day]}, урок математики №$lessonNumber — $normalized.';
@@ -1722,6 +1730,7 @@ class _AppShellState extends State<AppShell>{
           _studentScopedPreferenceKey(prefs, 'student_group_${className}_$actualSubject'),
           group,
         );
+        notifySchoolLocalDataChanged();
         return 'Для предмета «$actualSubject» выбрана группа №$group.';
 
       case 'set_route_start':
@@ -1743,6 +1752,7 @@ class _AppShellState extends State<AppShell>{
         } else {
           await prefs.setString('map_start_location', locationId);
         }
+        notifySchoolLocalDataChanged();
         return locationId.isEmpty
             ? 'Начальная точка маршрутов изменена на главный вход, этаж $floor.'
             : 'Начальная точка маршрутов установлена: ${SchoolData.title(SchoolData.room(locationId))}, этаж $floor.';
@@ -1778,6 +1788,7 @@ class _AppShellState extends State<AppShell>{
           'updated_at': now.toIso8601String(),
         });
         await prefs.setString(storageKey, jsonEncode(notes));
+        notifySchoolLocalDataChanged();
         return 'Заметка «${title.isEmpty ? 'Заметка' : title}» сохранена на этом устройстве.';
 
       case 'add_supplement':
@@ -2152,7 +2163,16 @@ class MapPage extends StatefulWidget {
 }
 class _MapPageState extends State<MapPage>{
   int floor=1; String query=''; String? selected; int startFloor=1; String? startId; final search=TextEditingController();
-  @override void initState(){super.initState();selected=widget.initialRoom;if(selected!=null)floor=SchoolData.room(selected!).floor;_load();}
+  @override void initState(){
+    super.initState();
+    selected=widget.initialRoom;
+    if(selected!=null)floor=SchoolData.room(selected!).floor;
+    schoolLocalDataRevision.addListener(_reloadPreferencesAfterAi);
+    _load();
+  }
+  void _reloadPreferencesAfterAi() {
+    if (mounted) _load();
+  }
   @override
   void didUpdateWidget(covariant MapPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2165,7 +2185,11 @@ class _MapPageState extends State<MapPage>{
     }
   }
   Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
-  @override void dispose(){search.dispose();super.dispose();}
+  @override void dispose(){
+    schoolLocalDataRevision.removeListener(_reloadPreferencesAfterAi);
+    search.dispose();
+    super.dispose();
+  }
   List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) => query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) || SchoolData.title(r).toLowerCase().contains(query.toLowerCase())).toList();
   Future<void> _start() async {
     final choice = await showDialog<_StartChoice>(
@@ -2380,8 +2404,25 @@ class _SchedulePageState extends State<SchedulePage> {
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
-  @override void initState() { super.initState(); _load(); _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() => _now = DateTime.now()); }); }
-  @override void dispose() { _clockTimer?.cancel(); super.dispose(); }
+  @override void initState() {
+    super.initState();
+    schoolLocalDataRevision.addListener(_reloadScheduleAfterAi);
+    _load();
+    _clockTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) { if (mounted) setState(() => _now = DateTime.now()); },
+    );
+  }
+  void _reloadScheduleAfterAi() {
+    if (!mounted) return;
+    setState(() => loading = true);
+    _load();
+  }
+  @override void dispose() {
+    schoolLocalDataRevision.removeListener(_reloadScheduleAfterAi);
+    _clockTimer?.cancel();
+    super.dispose();
+  }
   String? _breakCountdown(List<ScheduleEntry> dayEntries) => SchoolBellCountdown.describe(
     selectedDay: day,
     now: _now,
