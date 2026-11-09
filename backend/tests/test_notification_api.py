@@ -257,7 +257,7 @@ class NotificationScopeTests(unittest.TestCase):
         )
         notifications.create_notification(body, admin)
         self.assertEqual(
-            [item["title"] for item in notifications.list_notifications({"id": "student1", "role": "student", "class_id": "8A"})],
+            [item["title"] for item in notifications.list_notifications({"id": "student1", "role": "student", "class_id": "8A"})["data"]],
             ["Group notice"],
         )
         self.assertEqual(
