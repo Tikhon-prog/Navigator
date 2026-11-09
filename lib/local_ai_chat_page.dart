@@ -11,7 +11,7 @@ typedef _LocalAiActionHandler = Future<String> Function(
   String action,
   Map<String, dynamic> arguments,
 );
-typedef _LocalAiRouteHandler = Future<void> Function(String destinationId);
+typedef _LocalAiRouteHandler = Future<void> Function(String destinationId, String? originId);
 
 class _LocalAiTool extends LLMTool {
   _LocalAiTool({
@@ -107,6 +107,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   double? _downloadProgress;
   String? _pendingOpenMapLocationId;
   String? _pendingOpenSchoolRouteId;
+  String? _pendingOpenSchoolRouteOriginId;
   String _selectedCategory = 'Навигация';
   String? _statusError;
   List<Map<String, dynamic>> _rooms = [];
@@ -454,11 +455,16 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     const routePrefix = '__OPEN_ROUTE__:';
     if (result.startsWith(routePrefix)) {
       final separator = result.indexOf('\n');
-      final routeId = result.substring(
+      final routeData = result.substring(
         routePrefix.length,
         separator < 0 ? result.length : separator,
       ).trim();
-      _pendingOpenSchoolRouteId = routeId;
+      final parts = routeData.split('|');
+      _pendingOpenSchoolRouteId = parts.first.trim();
+      _pendingOpenSchoolRouteOriginId =
+          parts.length > 1 && parts[1].trim().isNotEmpty
+              ? parts[1].trim()
+              : null;
       final details = separator < 0 ? '' : result.substring(separator + 1).trim();
       return details.isEmpty
           ? 'Маршрут найден по школьной карте. Сейчас открою его.'
@@ -808,11 +814,13 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       ));
       _trimConversationHistory();
       final openRouteId = _pendingOpenSchoolRouteId;
+      final openRouteOriginId = _pendingOpenSchoolRouteOriginId;
       _pendingOpenSchoolRouteId = null;
+      _pendingOpenSchoolRouteOriginId = null;
       if (openRouteId != null && mounted) {
         final routeHandler = widget.onOpenSchoolRoute;
         if (routeHandler != null) {
-          await routeHandler(openRouteId);
+          await routeHandler(openRouteId, openRouteOriginId);
           return;
         }
       }
