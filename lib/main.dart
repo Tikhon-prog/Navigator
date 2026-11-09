@@ -1216,7 +1216,7 @@ class _AppShellState extends State<AppShell>{
                 '')
             .trim();
     final contextLines = <String>[
-      'Текущая дата и время: ${DateTime.now().toLocal()}.',
+      'Текущая дата и время: ${DateTime.now().toUtc().add(const Duration(hours: 3))}.',
       'Часовой пояс расписания школы: Europe/Moscow.',
     ];
 
@@ -1263,7 +1263,7 @@ class _AppShellState extends State<AppShell>{
       contextLines.add('Локальное расписание ученика:');
       for (final lesson in lessons.take(48)) {
         final details = <String>[
-          dayNames[lesson.day],
+          if (lesson.day >= 1 && lesson.day <= 6) dayNames[lesson.day],
           lesson.time,
           lesson.subject,
           'группа ${lesson.group}',
@@ -1329,7 +1329,7 @@ class _AppShellState extends State<AppShell>{
       }
     }
 
-    return contextLines.join('\\n');
+    return contextLines.join('\n');
   }
 
   Future<void> _openAiChat() async {
