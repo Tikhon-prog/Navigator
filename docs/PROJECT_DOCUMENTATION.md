@@ -89,8 +89,9 @@
 | `lib/online_data_service.dart` | Загрузка данных из настроенного API |
 | `lib/dop_parser.dart`, `lib/supplements_page.dart` | Парсер и экран дополнительных занятий |
 | `lib/announcements_page.dart` | Лента объявлений |
-| `lib/local_notification_service.dart` | Локальные уведомления |
-| `lib/desktop_notification_polling_io.dart`, `lib/desktop_notification_polling_stub.dart` | Desktop-поллинг и платформенная заглушка |
+| `lib/local_notification_service.dart` | Системное расписание локальных напоминаний об уроках и ДОПах (Android/iOS/Windows); Windows использует Scheduled Toast, не таймер приложения |
+| `lib/desktop_notification_polling_io.dart` | Получение новых серверных оповещений Windows при запущенном приложении; требует настроенного школьного API |
+| `lib/desktop_notification_polling_stub.dart` | Пустой fallback только для платформ без Windows-поллера; не используется на Windows |
 | `lib/notes_page.dart` | Личные заметки |
 | `lib/admin_panel.dart` | Административный интерфейс |
 | `assets/maps/` | Растровые карты этажей и исходные материалы карт |
