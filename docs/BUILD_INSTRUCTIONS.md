@@ -20,6 +20,27 @@ Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setu
 
 > Скрипт настраивает среду и собирает клиенты. Он не разворачивает школьный сервер, не создаёт реальные аккаунты учеников/директора, не регистрирует школьный OIDC-клиент и не может угадать закрытое расписание или Firebase service-account credentials.
 
+
+## Android Studio 2026: компоненты SDK
+
+Открой **Tools → SDK Manager**.
+
+Вкладка **SDK Platforms**:
+- Android API 36.
+
+Вкладка **SDK Tools** (включи **Show Package Details**, если нужно выбрать точную версию):
+- Android SDK Build-Tools **36.0.0**;
+- Android SDK Platform-Tools;
+- Android SDK Command-line Tools **19.0** — локальный bootstrap проекта закрепляет эту версию для совместимого вызова лицензий;
+- NDK (Side by side) **28.2.13676358**;
+- CMake **3.22.1**.
+
+Android Emulator и LLDB для сборки не нужны, если приложение запускается на физическом телефоне. NDK и CMake нужны нативной зависимости `llm_llamacpp`. Если используешь `setup_and_build.ps1`, он проверит эти компоненты и установит отсутствующие; существующий Android SDK по `ANDROID_SDK_ROOT`, `ANDROID_HOME` или стандартному пути Android Studio будет переиспользован.
+
+В Android Studio открой **File → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** и выбери установленный **Oracle JDK 27**. Не выбирай встроенный JBR Android Studio, если там другая версия Java. Для терминала выставь `JAVA_HOME` на ту же папку JDK 27. Gradle 9.9.0 запускается на JDK 27; Java/Kotlin bytecode приложения остаётся на target 21.
+
+**Важно:** Android Studio 2026 — это IDE и менеджер Android SDK. Для Windows EXE отдельно нужен **Visual Studio 2026** или **Build Tools 2026** с workload **Desktop development with C++**, MSVC x64/x86, CMake tools, Windows SDK и ATL.
+
 ---
 ## 1. Что собирается
 
