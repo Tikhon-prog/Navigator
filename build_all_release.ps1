@@ -25,7 +25,7 @@ function Require-Command {
 }
 
 Write-Host '===============================================' -ForegroundColor Cyan
-Write-Host 'Поколение — полный локальный выпуск APK + EXE' -ForegroundColor Cyan
+Write-Host 'Pokolenie - full local release APK + EXE' -ForegroundColor Cyan
 Write-Host '===============================================' -ForegroundColor Cyan
 
 Require-Command 'flutter'
