@@ -1555,7 +1555,7 @@ class _AppShellState extends State<AppShell>{
         RoomInfo? resolveLocation(String value) {
           final query = value.toLowerCase().trim();
           if (query.isEmpty) return null;
-          final numeric = RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)')
+          final numeric = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)')
               .firstMatch(query)
               ?.group(1);
           if (numeric != null) {
@@ -1623,9 +1623,9 @@ class _AppShellState extends State<AppShell>{
           ..writeln('Куда: ${SchoolData.title(destination)}, этаж ${destination.floor}.')
           ..writeln('Шаги:')
           ..writeAll(steps.asMap().entries.map(
-            (entry) => '${entry.key + 1}. ${entry.value.text} (${entry.value.floor}-й этаж)\\n',
+            (entry) => '${entry.key + 1}. ${entry.value.text} (${entry.value.floor}-й этаж)\n',
           ));
-        return '__OPEN_ROUTE__:${destination.id}\\n$summary';
+        return '__OPEN_ROUTE__:${destination.id}\n$summary';
 
       case 'open_school_location':
         final locationId = arg('location_id');
