@@ -1439,7 +1439,7 @@ class _AppShellState extends State<AppShell>{
     final destination = SchoolData.tryRoom(destinationId);
     if (destination == null || !mounted) return;
     final prefs = await SharedPreferences.getInstance();
-    final startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3);
+    final startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3).toInt();
     final startLocationId = prefs.getString('map_start_location');
     final route = RouteEngine.build(
       destination.id,
@@ -1555,6 +1555,25 @@ class _AppShellState extends State<AppShell>{
         RoomInfo? resolveLocation(String value) {
           final query = value.toLowerCase().trim();
           if (query.isEmpty) return null;
+          const placeAliases = <String, String>{
+            'библиотек': 'place_library',
+            'столов': 'place_canteen',
+            'бассейн': 'place_pool',
+            'спортзал': 'place_sport',
+            'тренажер': 'place_gym',
+            'тренажёр': 'place_gym',
+            'хореограф': 'place_choreo',
+            'актов': 'place_auditorium',
+            'террас': 'place_terrace',
+            'дрон': 'place_drone',
+            'инженер': 'place_engineering',
+          };
+          for (final alias in placeAliases.entries) {
+            if (query.contains(alias.key)) {
+              final aliased = SchoolData.tryRoom(alias.value);
+              if (aliased != null) return aliased;
+            }
+          }
           final numeric = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)')
               .firstMatch(query)
               ?.group(1);
@@ -1590,7 +1609,7 @@ class _AppShellState extends State<AppShell>{
 
         final prefs = await SharedPreferences.getInstance();
         var originId = (prefs.getString('map_start_location') ?? '').trim();
-        var startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3);
+        var startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3).toInt();
         final originQuery = arg('origin');
         if (originQuery.isNotEmpty &&
             !originQuery.toLowerCase().contains('главн') &&
