@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 /// On-device assistant. The GGUF model is stored outside the APK and runs locally.
 class LocalAiChatPage extends StatefulWidget {
-  final Future<String> Function()? schoolContextLoader;
+  final Future<String> Function(String question)? schoolContextLoader;
 
   const LocalAiChatPage({
     super.key,
@@ -435,7 +435,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
       var schoolContext = '';
       try {
-        schoolContext = await widget.schoolContextLoader?.call() ?? '';
+        schoolContext = await widget.schoolContextLoader?.call(text) ?? '';
       } catch (error) {
         if (mounted) {
           setState(() {
