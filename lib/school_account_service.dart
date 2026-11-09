@@ -202,8 +202,8 @@ class SchoolAccountService {
           promptValues: const ['login'],
         ),
       );
-      providerToken = result?.accessToken;
-      providerIdToken = result?.idToken;
+      providerToken = result.accessToken;
+      providerIdToken = result.idToken;
     }
     if (providerToken == null || providerToken.isEmpty || providerIdToken == null || providerIdToken.isEmpty) {
       throw Exception('Школьный провайдер не вернул необходимые OIDC-токены.');
