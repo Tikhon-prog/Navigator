@@ -917,7 +917,11 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
 def sync_supplements(actor: dict[str, Any] = Depends(require_permission("dop.manage"))) -> dict[str, Any]:
     """Import student-linked DOP rows from the selected workbook/JSON/HTTPS adapter."""
     from .main import read_sheet
+    from .sso_api import init_sso_tables
 
+    # The sync query can match students by trusted SSO subject. Ensure the optional
+    # identity table exists even when this service function is called before app startup.
+    init_sso_tables()
     rows = read_sheet("Supplements")
     if not isinstance(rows, list):
         raise HTTPException(status_code=502, detail="Supplements source did not return a row list")
