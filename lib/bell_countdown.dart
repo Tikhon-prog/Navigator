@@ -59,9 +59,9 @@ class SchoolBellCountdown {
     final hours = totalSeconds ~/ 3600;
     final minutes = (totalSeconds % 3600) ~/ 60;
     final seconds = totalSeconds % 60;
-    if (hours > 0) return '${hours} ч ${minutes} мин';
-    if (minutes == 0) return '${seconds} сек';
-    return '${minutes} мин ${seconds.toString().padLeft(2, '0')} сек';
+    if (hours > 0) return '$hours ч $minutes мин';
+    if (minutes == 0) return '$seconds сек';
+    return '$minutes мин ${seconds.toString().padLeft(2, '0')} сек';
   }
 
   static String _clock(DateTime value) =>
