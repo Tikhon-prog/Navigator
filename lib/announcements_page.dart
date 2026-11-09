@@ -159,14 +159,17 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     }
 
     if (!enabled || base.isEmpty) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _serverConfigured = false;
         _loading = false;
         _refreshing = false;
         _status = _items.isEmpty
             ? 'Сервер ещё не настроен. Карта и расписание по-прежнему работают офлайн.'
             : 'Показана сохранённая копия. Для обновления настрой сервер в «Кабинете школы».';
-      });
+      
+        });
+      }
       return;
     }
 
@@ -179,13 +182,16 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     }
 
     if (!isSecureApiBaseUrl(base)) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _serverConfigured = false;
         _connectionFailed = true;
         _loading = false;
         _refreshing = false;
         _status = 'Адрес сервера должен использовать HTTPS без логина, пароля и параметров.';
-      });
+      
+        });
+      }
       return;
     }
 
@@ -272,16 +278,20 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         return bDate.compareTo(aDate);
       });
       await prefs.setString(cacheKey, jsonEncode(parsed.map((e) => e.toJson()).toList()));
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _items = parsed;
         _serverConfigured = true;
         _connectionFailed = false;
         _loading = false;
         _refreshing = false;
         _status = 'Обновлено с сервера • ${parsed.length}';
-      });
+      
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _serverConfigured = false;
         _connectionFailed = true;
         _loading = false;
@@ -289,7 +299,9 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         _status = _items.isEmpty
             ? 'Не удалось подключиться. Проверь адрес API и доступность школьной сети.'
             : 'Сервер недоступен. Показана последняя сохранённая копия.';
-      });
+      
+        });
+      }
     }
   }
 
