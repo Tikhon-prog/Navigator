@@ -609,8 +609,8 @@ def assign_position(body: PositionBody,
         leadership_positions = {"director", "deputy"}
         if body.position == "mentor" and user["role"] not in {"mentor", "admin"}:
             raise HTTPException(status_code=422, detail="Mentor position requires a mentor or administrator account")
-        if body.position == "mentor_coordinator" and user["role"] not in {"teacher", "mentor", "admin"}:
-            raise HTTPException(status_code=422, detail="Mentor coordinator position requires a staff account")
+        if body.position == "mentor_coordinator" and user["role"] not in {"mentor", "admin"}:
+            raise HTTPException(status_code=422, detail="Mentor coordinator position requires a mentor or administrator account")
         if body.position in teacher_positions and user["role"] not in {"teacher", "admin"}:
             raise HTTPException(status_code=422, detail="This position requires a teacher or administrator account")
         if body.position in leadership_positions and user["role"] not in {"teacher", "admin"}:
