@@ -4,6 +4,14 @@ Set-StrictMode -Version Latest
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
 
+# Prevent two local release builds from competing for the same Gradle locks.
+$BuildMutex = [System.Threading.Mutex]::new($false, 'Local\PokolenieReleaseBuild')
+if (-not $BuildMutex.WaitOne(0)) {
+    $BuildMutex.Dispose()
+    throw 'A «Поколение» release build is already running. Wait for it to finish before starting another.'
+}
+
+try {
 function Invoke-CheckedCommand {
     param(
         [Parameter(Mandatory = $true)][string]$CommandName,
@@ -109,7 +117,8 @@ Invoke-CheckedCommand 'flutter' @('test')
 Invoke-CheckedCommand 'flutter' @('analyze', '--no-fatal-infos', '--no-fatal-warnings')
 
 $dartDefine = "POKOLENIE_API_BASE_URL=$apiBase"
-Invoke-CheckedCommand 'flutter' @('build', 'apk', '--release', "--dart-define=$dartDefine")
+# llm_llamacpp ships Android arm64-v8a and x86_64 native binaries, not 32-bit ARM.
+Invoke-CheckedCommand 'flutter' @('build', 'apk', '--release', '--target-platform', 'android-arm64,android-x64', "--dart-define=$dartDefine")
 Invoke-CheckedCommand 'flutter' @('build', 'windows', '--release', "--dart-define=$dartDefine")
 
 $apk = Join-Path $Root 'build\app\outputs\flutter-apk\app-release.apk'
@@ -160,3 +169,7 @@ Write-Host ("APK SHA-256:      {0}" -f "$apkDestination.sha256")
 Write-Host ("Windows installer: {0}" -f $installer)
 Write-Host ("Portable Windows:  {0}" -f $portableDir)
 Write-Host 'Run the installer EXE for normal Windows installation. Do not separate pokolenie.exe from its DLLs and data folder.'
+} finally {
+    $BuildMutex.ReleaseMutex()
+    $BuildMutex.Dispose()
+}
