@@ -69,7 +69,7 @@ dependencies {
 }
 
 kotlin {
-    // Compile with the installed JDK while keeping Android-compatible Java 21 bytecode.
+    // Gradle runs on JDK 27; Android app bytecode deliberately remains at Java 21.
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
