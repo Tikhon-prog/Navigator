@@ -84,7 +84,7 @@ $pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
 $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
 $vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
 $vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
-$requiredVsComponents = @('Microsoft.VisualStudio.Workload.NativeDesktop','Microsoft.VisualStudio.Workload.VCTools','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows10SDK.19041')
+$requiredVsComponents = @('Microsoft.VisualStudio.Workload.NativeDesktop','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows11SDK.26100')
 $vsQueryArgs = @('-latest','-products','*','-version','[17.0,19.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
 $vsToolchainPath = $null
 if (Test-Path -LiteralPath $vswhere) { $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1) }
@@ -453,7 +453,7 @@ if ($vsToolchainPath) {
     Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
 } else {
     Write-Step 'Adding missing Visual Studio C++ / ATL / Windows SDK components'
-    $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.NativeDesktop','--add','Microsoft.VisualStudio.Workload.VCTools','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows10SDK.19041','--quiet','--norestart')
+    $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.NativeDesktop','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows11SDK.26100','--quiet','--norestart')
     & $vsInstaller @vsArgs
     $vsCode = $LASTEXITCODE
     if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
