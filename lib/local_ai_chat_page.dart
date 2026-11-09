@@ -284,11 +284,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   void _trimConversationHistory() {
-    // Keep the system instruction and the last five user/assistant turns.
-    const maximumMessages = 11;
-    if (_history.length > maximumMessages) {
-      _history.removeRange(1, _history.length - maximumMessages);
-    }
+    // Preserve complete user/assistant pairs and always keep the system prompt.
+    const maximumConversationMessages = 10;
+    final conversationLength = _history.length - 1;
+    final overflow = conversationLength - maximumConversationMessages;
+    if (overflow <= 0) return;
+
+    final messagesToRemove = ((overflow + 1) ~/ 2) * 2;
+    _history.removeRange(1, 1 + messagesToRemove);
   }
 
   String? _offlineRoomAnswer(String text) {
@@ -375,6 +378,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     } catch (error) {
       answerLine.text =
           'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
+      _history.add(LLMMessage(
+        role: LLMRole.assistant,
+        content: answerLine.text,
+      ));
+      _trimConversationHistory();
       if (mounted) {
         setState(() {
           _statusError = 'Локальная модель не запустилась: $error';
