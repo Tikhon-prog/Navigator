@@ -1409,7 +1409,7 @@ class _AppShellState extends State<AppShell>{
       }
     }
 
-    return contextLines.join('\\n');
+    return contextLines.join('\n');
   }
 
   Future<void> _openAiChat() async {
