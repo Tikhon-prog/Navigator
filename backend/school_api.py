@@ -43,7 +43,7 @@ def normalize_class_id(value: Any) -> str:
     lookalikes = str.maketrans({
         "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
         "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
-        "Х": "X", "У": "Y",
+        "Х": "X", "У": "Y", "Б": "B",
     })
     return "".join(str(value or "").strip().upper().translate(lookalikes).split())
 
@@ -202,7 +202,7 @@ def _allow_non_sso_password_login() -> bool:
 def _make_token(user: sqlite3.Row | dict[str, Any], auth_method: str = "password") -> str:
     now = int(time.time())
     header = _b64(b'{"alg":"HS256","typ":"JWT"}')
-    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "ver": int(user["token_version"] or 0), "auth_method": auth_method, "iat": now, "exp": now + TOKEN_TTL_SECONDS}, separators=(",", ":")).encode())
+    payload = _b64(json.dumps({"sub": user["id"], "role": user["role"], "ver": int(user["token_version"] or 0), "auth_method": auth_method, "iat": now, "exp": now + TOKEN_TTL_SECONDS, "jti": secrets.token_urlsafe(9)}, separators=(",", ":")).encode())
     message = f"{header}.{payload}"
     signature = _b64(hmac.new(_signing_key(), message.encode(), hashlib.sha256).digest())
     return f"{message}.{signature}"
@@ -342,6 +342,10 @@ def _issue_access_with_refresh(
 @router.post("/auth/logout")
 def logout_session(body: RefreshBody,
                    authorization: str | None = Header(default=None)) -> dict[str, str]:
+    # Direct unit calls do not receive FastAPI's Header-injected value; normalize
+    # the dependency sentinel to None while preserving normal HTTP requests.
+    if not isinstance(authorization, str):
+        authorization = None
     refresh_hash = hashlib.sha256(body.refresh_token.encode("utf-8")).hexdigest()
     access_token = ""
     access_claims = None
@@ -352,6 +356,7 @@ def logout_session(body: RefreshBody,
         except HTTPException:
             access_claims = None
     actor_id = None
+    unregistered_device_count = 0
     with _db() as db:
         row = db.execute("SELECT id,user_id FROM refresh_tokens WHERE token_hash=? AND revoked_at IS NULL", (refresh_hash,)).fetchone()
         if row:
@@ -363,8 +368,7 @@ def logout_session(body: RefreshBody,
                     "UPDATE devices SET active=0,updated_at=? WHERE user_id=? AND fcm_token=? AND active=1",
                     (_utc_now(), actor_id, body.device_token),
                 )
-                if device_update.rowcount:
-                    _audit(actor_id, "device.unregistered", None, {"count": device_update.rowcount, "source": "logout"})
+                unregistered_device_count = device_update.rowcount
         if access_claims and (actor_id is None or access_claims.get("sub") == actor_id):
             token_digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
             expiry = datetime.fromtimestamp(int(access_claims["exp"]), timezone.utc).isoformat(timespec="microseconds")
@@ -373,6 +377,11 @@ def logout_session(body: RefreshBody,
                 (token_digest, expiry, _utc_now())
             )
             actor_id = access_claims.get("sub")
+    # Audit only after the transaction commits; opening a second writer while the
+    # device-revocation transaction is active can lock the SQLite database.
+    if actor_id and unregistered_device_count:
+        _audit(actor_id, "device.unregistered", None,
+               {"count": unregistered_device_count, "source": "logout"})
     if actor_id:
         _audit(actor_id, "auth.logout")
     return {"status": "logged_out"}
