@@ -446,15 +446,26 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       return 'Действия приложения пока не подключены в этой сборке.';
     }
     final result = await handler(name, args);
-    final openMatch = RegExp(r'^__OPEN_MAP__:(.+)$').firstMatch(result.trim());
-    if (openMatch != null) {
-      _pendingOpenMapLocationId = openMatch.group(1);
+    final mapPrefix = '__OPEN_MAP__:';
+    if (result.startsWith(mapPrefix)) {
+      _pendingOpenMapLocationId = result.substring(mapPrefix.length).trim();
       return 'Точка найдена. После ответа открою её на карте школы.';
     }
-    final routeMatch = RegExp(
-      r'^__OPEN_ROUTE__:([^\n]+)\n?([\s\S]*)
+    const routePrefix = '__OPEN_ROUTE__:';
+    if (result.startsWith(routePrefix)) {
+      final separator = result.indexOf('\n');
+      final routeId = result.substring(
+        routePrefix.length,
+        separator < 0 ? result.length : separator,
+      ).trim();
+      _pendingOpenSchoolRouteId = routeId;
+      final details = separator < 0 ? '' : result.substring(separator + 1).trim();
+      return details.isEmpty
+          ? 'Маршрут найден по школьной карте. Сейчас открою его.'
+          : details;
+    }
+    return result;
   }
-
   List<LLMTool> _buildTools() => [
         _LocalAiTool(
           name: 'get_school_context',
