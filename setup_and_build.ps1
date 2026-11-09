@@ -82,8 +82,27 @@ $LogRoot = Join-Path $DevRoot 'Logs'
 $logPath = Join-Path $LogRoot ("setup-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 $pf64 = [Environment]::GetEnvironmentVariable('ProgramFiles')
 $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-$vsInstallerDir = Join-Path $pf86 'Microsoft Visual Studio\Installer'
-$vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
+# Visual Studio may place its installer under either Program Files root.
+$vsInstallerDir = $null
+$vswhere = $null
+$vsInstallerRoots = @()
+foreach ($root in @($pf86,$pf64,'C:\Program Files (x86)','C:\Program Files')) {
+    if (-not [string]::IsNullOrWhiteSpace($root)) {
+        $candidateDir = Join-Path $root 'Microsoft Visual Studio\Installer'
+        if (Test-Path -LiteralPath $candidateDir) { $vsInstallerRoots += $candidateDir }
+    }
+}
+foreach ($candidateDir in ($vsInstallerRoots | Select-Object -Unique)) {
+    if ((Test-Path -LiteralPath (Join-Path $candidateDir 'vswhere.exe')) -or (Test-Path -LiteralPath (Join-Path $candidateDir 'vs_installer.exe'))) {
+        $vsInstallerDir = $candidateDir
+        $vswhere = Join-Path $candidateDir 'vswhere.exe'
+        break
+    }
+}
+if (-not $vsInstallerDir) {
+    $vsInstallerDir = Join-Path 'C:\Program Files (x86)' 'Microsoft Visual Studio\Installer'
+    $vswhere = Join-Path $vsInstallerDir 'vswhere.exe'
+}
 $requiredVsComponents = @('Microsoft.VisualStudio.Workload.NativeDesktop','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','Microsoft.VisualStudio.Component.VC.ATL','Microsoft.VisualStudio.Component.Windows11SDK.26100')
 $vsQueryArgs = @('-latest','-products','*','-version','[17.0,19.0)','-requires') + $requiredVsComponents + @('-property','installationPath')
 $vsToolchainPath = $null
@@ -434,21 +453,90 @@ Install-Python312Portable
 Install-Jdk27Portable
 Install-InnoSetup
 
-# Check Visual Studio components first and modify only if required items are missing.
-$vsInstaller = Join-Path $vsInstallerDir 'vs_installer.exe'
+# Reuse the already installed Visual Studio instance (Community, Professional,
+# Enterprise or Build Tools). Do not use winget here: its source metadata can fail
+# independently of Visual Studio, even when the VS installer is already present.
+$vsInstaller = if ($vsInstallerDir) { Join-Path $vsInstallerDir 'vs_installer.exe' } else { $null }
 $vsPath = $null
-if (Test-Path -LiteralPath $vswhere) { $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1) }
-if (-not $vsPath) {
-    Write-Step 'Installing Visual Studio 2026 Build Tools'
-    $vsOverride = '--wait --quiet --norestart --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows10SDK.19041'
-    Install-WingetPackage -Id 'Microsoft.VisualStudio.BuildTools' -Override $vsOverride
-    Refresh-Path
-    if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio Installer did not create vswhere.exe. Check the setup log and repair Build Tools.' }
+if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
     $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1)
 }
-if (-not $vsPath) { throw 'Could not locate Visual Studio Build Tools after installation.' }
-if (-not (Test-Path -LiteralPath $vsInstaller)) { throw 'Visual Studio installer executable was not found. Open Visual Studio Installer and repair Visual Studio 2026 Build Tools.' }
-$vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+
+# Fallback if vswhere is missing or cannot enumerate the installed VS 2026 instance.
+if (-not $vsPath) {
+    foreach ($root in @($pf64,$pf86,'C:\Program Files','C:\Program Files (x86)')) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $vsBase = Join-Path $root 'Microsoft Visual Studio'
+        if (-not (Test-Path -LiteralPath $vsBase)) { continue }
+        foreach ($versionDir in (Get-ChildItem -LiteralPath $vsBase -Directory -ErrorAction SilentlyContinue)) {
+            foreach ($edition in @('Community','Professional','Enterprise','BuildTools')) {
+                $candidate = Join-Path (Join-Path $versionDir.FullName $edition) ''
+                $devenv = Join-Path $candidate 'Common7\IDE\devenv.exe'
+                $msbuild = Join-Path $candidate 'MSBuild\Current\Bin\MSBuild.exe'
+                if ((Test-Path -LiteralPath $devenv) -or (Test-Path -LiteralPath $msbuild)) {
+                    $vsPath = $candidate.TrimEnd('\')
+                    break
+                }
+            }
+            if ($vsPath) { break }
+        }
+        if ($vsPath) { break }
+    }
+}
+
+# If no VS instance exists, download the official Microsoft bootstrapper directly.
+# This avoids winget entirely and installs only the required native C++ toolchain.
+if (-not $vsPath) {
+    Write-Step 'Installing Visual Studio 2026 Build Tools directly from Microsoft'
+    $vsBootstrapper = Join-Path $BuildTemp 'vs_BuildTools_2026.exe'
+    $vsBootstrapperUrl = 'https://aka.ms/vs/18/release/vs_BuildTools.exe'
+    Invoke-WebRequest -UseBasicParsing -Uri $vsBootstrapperUrl -OutFile $vsBootstrapper
+    $vsSignature = Get-AuthenticodeSignature -FilePath $vsBootstrapper
+    if ($vsSignature.Status -ne 'Valid' -or $vsSignature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+        Remove-Item -LiteralPath $vsBootstrapper -Force -ErrorAction SilentlyContinue
+        throw 'Visual Studio bootstrapper signature is not valid or is not signed by Microsoft Corporation.'
+    }
+    $vsBootstrapArgs = @(
+        '--wait','--quiet','--norestart',
+        '--add','Microsoft.VisualStudio.Workload.NativeDesktop',
+        '--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+        '--add','Microsoft.VisualStudio.Component.VC.ATL',
+        '--add','Microsoft.VisualStudio.Component.Windows11SDK.26100'
+    )
+    $vsProc = Start-Process -FilePath $vsBootstrapper -ArgumentList $vsBootstrapArgs -Wait -PassThru
+    if (($vsProc.ExitCode -ne 0) -and ($vsProc.ExitCode -ne 3010) -and ($vsProc.ExitCode -ne 1641)) {
+        throw ("Visual Studio bootstrapper failed with exit code " + $vsProc.ExitCode)
+    }
+    if (($vsProc.ExitCode -eq 3010) -or ($vsProc.ExitCode -eq 1641)) {
+        Write-Warning 'Windows may need a restart before the Windows desktop build works.'
+    }
+    Refresh-Path
+    if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
+        $vsPath = (& $vswhere -latest -products '*' -version '[17.0,19.0)' -property installationPath 2>$null | Select-Object -First 1)
+    }
+    if (-not $vsPath) {
+        throw 'Visual Studio installer completed, but no Visual Studio 2026 instance could be located.'
+    }
+}
+
+# Find vs_installer.exe beside vswhere, or in the standard installer directory.
+if (-not $vsInstaller -or -not (Test-Path -LiteralPath $vsInstaller)) {
+    $installerCandidates = @()
+    foreach ($root in @($pf86,$pf64,'C:\Program Files (x86)','C:\Program Files')) {
+        if (-not [string]::IsNullOrWhiteSpace($root)) {
+            $installerCandidates += (Join-Path $root 'Microsoft Visual Studio\Installer\vs_installer.exe')
+        }
+    }
+    $vsInstaller = $installerCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if (-not $vsInstaller -or -not (Test-Path -LiteralPath $vsInstaller)) {
+    throw 'Visual Studio Installer executable was not found. Open Visual Studio Installer and repair the existing Visual Studio installation.'
+}
+
+$vsToolchainPath = $null
+if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
+    $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+}
 if ($vsToolchainPath) {
     Write-Host 'Visual Studio C++ tools, ATL and Windows SDK are already installed.' -ForegroundColor DarkGray
 } else {
@@ -459,10 +547,14 @@ if ($vsToolchainPath) {
     if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
     if (($vsCode -eq 3010) -or ($vsCode -eq 1641)) { Write-Warning 'Windows may need a restart before the Windows desktop build works.' }
     Refresh-Path
-    $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+    if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
+        $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+    } else {
+        $vsToolchainPath = $vsPath
+    }
     if (-not $vsToolchainPath) { throw 'Visual Studio is missing a required C++/ATL/Windows SDK component after modify.' }
 }
-
+ 
 # Make the installed Python/Git folders take priority over WindowsApps aliases.
 $gitPaths = @()
 if ($pf64) { $gitPaths += (Join-Path $pf64 'Git\cmd') }
