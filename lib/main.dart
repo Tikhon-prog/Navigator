@@ -1206,10 +1206,142 @@ class _AppShellState extends State<AppShell>{
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PersonalNotesPage()));
   }
+  Future<String> _loadLocalAiSchoolContext() async {
+    final prefs = await SharedPreferences.getInstance();
+    await SchoolScheduleCatalog.load();
+
+    final className =
+        (prefs.getString(_studentScopedPreferenceKey(prefs, 'student_class_name')) ??
+                prefs.getString('student_class_name') ??
+                '')
+            .trim();
+    final contextLines = <String>[
+      'Текущая дата и время: ${DateTime.now().toLocal()}.',
+      'Часовой пояс расписания школы: Europe/Moscow.',
+    ];
+
+    if (className.isNotEmpty) {
+      contextLines.add('Выбранный класс ученика: $className.');
+
+      final groups = <String, int>{
+        for (final subject in SchoolScheduleCatalog.splitSubjects(className))
+          subject: prefs.getInt(
+                _studentScopedPreferenceKey(
+                  prefs,
+                  'student_group_${className}_$subject',
+                ),
+              ) ??
+              1,
+      };
+      final mathNamesByDay = <int, List<String>>{
+        for (var day = 1; day <= 6; day++)
+          day: [
+            for (var slot = 0; slot < 6; slot++)
+              prefs.getString(
+                    _studentScopedPreferenceKey(
+                      prefs,
+                      'math_subject_${className}_${day}_$slot',
+                    ),
+                  ) ??
+                  '',
+          ],
+      };
+      final lessons = SchoolScheduleCatalog.buildPersonal(
+        className,
+        groups,
+        mathNamesByDay: mathNamesByDay,
+      );
+      const dayNames = [
+        '',
+        'Понедельник',
+        'Вторник',
+        'Среда',
+        'Четверг',
+        'Пятница',
+        'Суббота',
+      ];
+      contextLines.add('Локальное расписание ученика:');
+      for (final lesson in lessons.take(48)) {
+        final details = <String>[
+          dayNames[lesson.day],
+          lesson.time,
+          lesson.subject,
+          'группа ${lesson.group}',
+          if (lesson.room.isNotEmpty) 'кабинет ${lesson.room}',
+          if (lesson.teacher.isNotEmpty) 'педагог ${lesson.teacher}',
+        ];
+        contextLines.add('- ${details.join(' • ')}');
+      }
+      if (lessons.isEmpty) {
+        contextLines.add('Для выбранного класса расписание не найдено.');
+      }
+    } else {
+      contextLines.add('Класс ученика ещё не выбран; не придумывай его расписание.');
+    }
+
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var schoolUserId = '';
+    if (rawSchoolUser != null) {
+      try {
+        final account = jsonDecode(rawSchoolUser);
+        if (account is Map) {
+          schoolUserId = (account['id'] ?? '').toString().trim();
+        }
+      } catch (_) {}
+    }
+    final rawSupplements = prefs.getString(
+      studentProfilePreferenceKey('supplements_local', userId: schoolUserId),
+    );
+    if (rawSupplements != null) {
+      try {
+        final rows = jsonDecode(rawSupplements);
+        if (rows is List) {
+          final supplements = rows.whereType<Map>().take(16);
+          final lines = <String>[];
+          for (final raw in supplements) {
+            final item = Map<String, dynamic>.from(raw);
+            final title = (item['title'] ?? '').toString().trim();
+            if (title.isEmpty) continue;
+            final weekday = (item['weekday'] as num?)?.toInt() ?? 0;
+            final time = [
+              (item['start'] ?? '').toString().trim(),
+              (item['end'] ?? '').toString().trim(),
+            ].where((value) => value.isNotEmpty).join('–');
+            final details = <String>[
+              if (weekday >= 1 && weekday <= 6) dayNames[weekday],
+              time,
+              title,
+              if ((item['room'] ?? '').toString().trim().isNotEmpty)
+                'кабинет ${item['room']}',
+              if ((item['teacher'] ?? '').toString().trim().isNotEmpty)
+                'педагог ${item['teacher']}',
+            ].where((value) => value.isNotEmpty);
+            lines.add('- ${details.join(' • ')}');
+          }
+          if (lines.isNotEmpty) {
+            contextLines
+              ..add('Сохранённые дополнительные занятия (ДОПы):')
+              ..addAll(lines);
+          }
+        }
+      } catch (_) {
+        contextLines.add('Локальные данные ДОПов не удалось прочитать.');
+      }
+    }
+
+    return contextLines.join('\\n');
+  }
+
   Future<void> _openAiChat() async {
     key.currentState?.closeDrawer();
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LocalAiChatPage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LocalAiChatPage(
+          schoolContextLoader: _loadLocalAiSchoolContext,
+        ),
+      ),
+    );
   }
   @override
   Widget build(BuildContext context) {
