@@ -19,7 +19,7 @@ if ($env:FLUTTER_ROOT) { $FlutterCandidates += (Join-Path $env:FLUTTER_ROOT 'bin
 if ($env:USERPROFILE) { $FlutterCandidates += (Join-Path $env:USERPROFILE 'flutter\bin\flutter.bat') }
 $FlutterCandidates += @(
     'C:\src\flutter\bin\flutter.bat',
-    'C:\Dev\Programs\PokolenieToolchain\Flutter-3.47.4\flutter\bin\flutter.bat'
+    'C:\Dev\Programs\PokolenieToolchain\Flutter-3.47.9\flutter\bin\flutter.bat'
 )
 $FlutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
 if ($FlutterCommand) { $FlutterCandidates += $FlutterCommand.Source }
@@ -77,7 +77,7 @@ Invoke-FlutterChecked -FlutterArguments @('build', 'windows', '--debug', $ApiDef
 $WindowsBuild = Join-Path $Root 'build\windows\x64\runner\Debug'
 $WindowsExe = Join-Path $WindowsBuild 'pokolenie.exe'
 if (-not (Test-Path -LiteralPath $WindowsExe)) {
-    throw ('Windows EXE was not created at ' + $WindowsExe + '. Install Visual Studio 2022 Build Tools with Desktop development with C++ and ATL, then retry.')
+    throw ('Windows EXE was not created at ' + $WindowsExe + '. Install Visual Studio 2026 Build Tools with Desktop development with C++ and ATL, then retry.')
 }
 
 $WindowsOut = Join-Path $Dist 'windows'
