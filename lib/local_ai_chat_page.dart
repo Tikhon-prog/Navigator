@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
@@ -22,8 +23,11 @@ class _ChatLine {
 
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
   static const _modelFileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
+  // Pin the model revision so the checksum always matches the downloaded file.
   static const _modelUrl =
-      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+      'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/12145bd1d629190a4d44254073650877954d02c9/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+  static const _modelSha256 =
+      '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db';
   static const _systemPrompt = '''
 Ты локальный ИИ-помощник школы «Поколение». Отвечай по-русски, кратко и дружелюбно.
 Ты работаешь на устройстве без облака. Не выдумывай расписание, адреса кабинетов,
@@ -95,55 +99,138 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   Future<void> _downloadModel() async {
-    if (_downloading || _busy) return;
+    if (_downloading || _busy || !mounted) return;
+
     setState(() {
       _downloading = true;
       _downloadProgress = 0;
       _statusError = null;
     });
-    File? file;
+
+    File? modelFile;
+    File? partialFile;
+    File? backupFile;
     IOSink? sink;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+
     try {
-      file = await _modelFile();
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(_modelUrl));
-        request.followRedirects = true;
-        final response = await request.close();
-        if (response.statusCode != HttpStatus.ok) {
-          throw HttpException('Сервер модели вернул HTTP ${response.statusCode}.');
-        }
-        final total = response.contentLength;
-        sink = file.openWrite();
-        var received = 0;
-        await for (final chunk in response) {
-          sink.add(chunk);
-          received += chunk.length;
-          if (mounted && total > 0) {
-            setState(() => _downloadProgress = (received / total).clamp(0.0, 1.0).toDouble());
-          }
-        }
-        await sink.flush();
-        await sink.close();
-        sink = null;
-        if (await file.length() < 100 * 1024 * 1024) {
-          throw const FormatException('Скачанный файл слишком мал и похож на ошибку сервера.');
-        }
-        if (mounted) {
+      modelFile = await _modelFile();
+      partialFile = File('${modelFile.path}.part');
+      backupFile = File('${modelFile.path}.backup');
+
+      // A previous interrupted attempt must never be mistaken for a model.
+      if (await partialFile.exists()) {
+        await partialFile.delete();
+      }
+
+      final request = await client
+          .getUrl(Uri.parse(_modelUrl))
+          .timeout(const Duration(seconds: 30));
+      request
+        ..followRedirects = true
+        ..maxRedirects = 5;
+
+      final response = await request.close().timeout(
+            const Duration(minutes: 2),
+          );
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'Сервер модели вернул HTTP ${response.statusCode}.',
+        );
+      }
+
+      final expectedLength = response.contentLength;
+      const minimumModelSize = 400 * 1024 * 1024;
+      if (expectedLength > 0 && expectedLength < minimumModelSize) {
+        throw const FormatException(
+          'Сервер вернул файл неожиданно маленького размера.',
+        );
+      }
+
+      sink = partialFile.openWrite();
+      var received = 0;
+
+      await for (final chunk in response.timeout(
+        const Duration(minutes: 2),
+      )) {
+        sink.add(chunk);
+        received += chunk.length;
+
+        if (mounted && expectedLength > 0) {
           setState(() {
-            _modelPath = file!.path;
-            _downloadProgress = 1;
+            _downloadProgress =
+                (received / expectedLength).clamp(0.0, 1.0).toDouble();
           });
         }
-      } finally {
-        client.close(force: true);
+      }
+
+      await sink.flush();
+      await sink.close();
+      sink = null;
+
+      final actualLength = await partialFile.length();
+      if (actualLength < minimumModelSize ||
+          (expectedLength > 0 && actualLength != expectedLength)) {
+        throw const FormatException(
+          'Размер скачанного файла не совпадает с ожидаемым.',
+        );
+      }
+
+      final digest = await crypto.sha256.bind(partialFile.openRead()).first;
+      if (digest.toString() != _modelSha256) {
+        throw const FormatException(
+          'Контрольная сумма модели не совпадает. Файл повреждён.',
+        );
+      }
+
+      // Keep the previous file recoverable until the verified download is in
+      // place. This also avoids exposing a half-downloaded model to the app.
+      if (await backupFile.exists()) {
+        await backupFile.delete();
+      }
+      final hadPreviousModel = await modelFile.exists();
+      if (hadPreviousModel) {
+        await modelFile.rename(backupFile.path);
+      }
+
+      try {
+        await partialFile.rename(modelFile.path);
+        if (hadPreviousModel && await backupFile.exists()) {
+          await backupFile.delete();
+        }
+      } catch (_) {
+        if (hadPreviousModel && await backupFile.exists()) {
+          await backupFile.rename(modelFile.path);
+        }
+        rethrow;
+      }
+
+      if (mounted) {
+        setState(() {
+          _modelPath = modelFile!.path;
+          _downloadProgress = 1;
+        });
       }
     } catch (error) {
-      try { await sink?.close(); } catch (_) {}
-      try { if (file != null && await file.exists()) await file.delete(); } catch (_) {}
-      if (mounted) setState(() => _statusError = 'Не удалось скачать модель: $error');
+      try {
+        await sink?.close();
+      } catch (_) {}
+      try {
+        if (partialFile != null && await partialFile.exists()) {
+          await partialFile.delete();
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _statusError = 'Не удалось скачать модель: $error';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _downloading = false);
+      client.close(force: true);
+      if (mounted) {
+        setState(() => _downloading = false);
+      }
     }
   }
 
