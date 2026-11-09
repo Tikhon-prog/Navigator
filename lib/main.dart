@@ -2502,8 +2502,15 @@ class SettingsPage extends StatelessWidget {
     await SchoolScheduleCatalog.load();
     final result = await showDialog<String>(context: context, builder: (_) => const _StudentClassDialog());
     if (!context.mounted || result == null || result.isEmpty) return;
-    await prefs.setString('student_class_name', result); await prefs.setString('student_class_id', result); await showStudentGroupSelection(context, result);
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Профиль расписания: $result')));
+    await prefs.setString('student_class_name', result);
+    await prefs.setString('student_class_id', result);
+    if (!context.mounted) return;
+    await showStudentGroupSelection(context, result);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Профиль расписания: $result')),
+      );
+    }
   }
 
   @override Widget build(BuildContext context) {
