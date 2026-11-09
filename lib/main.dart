@@ -505,7 +505,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
-              value: values[s] ?? groups.first,
+              initialValue: values[s] ?? groups.first,
               items: groups.map((g) => DropdownMenuItem(
                 value: g,
                 child: Text(groupLabel(g), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -518,7 +518,22 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     }).toList())),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      FilledButton(onPressed: () async { final p = await SharedPreferences.getInstance(); for (final e in values.entries) await p.setInt(_studentScopedPreferenceKey(p, 'student_group_${widget.className}_${e.key}'), e.value); if (context.mounted) Navigator.pop(context); }, child: const Text('Сохранить')),
+      FilledButton(
+        onPressed: () async {
+          final prefs = await SharedPreferences.getInstance();
+          for (final entry in values.entries) {
+            await prefs.setInt(
+              _studentScopedPreferenceKey(
+                prefs,
+                'student_group_${widget.className}_${entry.key}',
+              ),
+              entry.value,
+            );
+          }
+          if (context.mounted) Navigator.pop(context);
+        },
+        child: const Text('Сохранить'),
+      ),
     ],
   );
 }
@@ -1198,7 +1213,7 @@ class _AppShellState extends State<AppShell>{
   }
   @override
   Widget build(BuildContext context) {
-    final menu = () => key.currentState?.openDrawer();
+    void menu() => key.currentState?.openDrawer();
     final pages = <Widget>[
       HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
@@ -1444,8 +1459,50 @@ class _MapPageState extends State<MapPage>{
   Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
   @override void dispose(){search.dispose();super.dispose();}
   List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) => query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) || SchoolData.title(r).toLowerCase().contains(query.toLowerCase())).toList();
-  Future<void> _start()async{final r=await showDialog<_StartChoice>(context:context,builder:(_)=>_StartDialog(floor:startFloor,id:startId));if(r==null)return;final p=await SharedPreferences.getInstance();await p.setInt('map_start_floor',r.floor);if(r.id==null)await p.remove('map_start_location');else await p.setString('map_start_location',r.id!);if(mounted)setState((){startFloor=r.floor;startId=r.id;});}
-  void _open(RoomInfo r){setState(()=>selected=r.id);final route=RouteEngine.build(r.id,startFloor:startFloor,startLocationId:startId);if(route==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Маршрут для этой точки недоступен.')));return;}Navigator.push(context,MaterialPageRoute(builder:(_)=>RoutePage(room:r,route:route)));}
+  Future<void> _start() async {
+    final choice = await showDialog<_StartChoice>(
+      context: context,
+      builder: (_) => _StartDialog(floor: startFloor, id: startId),
+    );
+    if (choice == null || !mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    await prefs.setInt('map_start_floor', choice.floor);
+    if (choice.id == null) {
+      await prefs.remove('map_start_location');
+    } else {
+      await prefs.setString('map_start_location', choice.id!);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      startFloor = choice.floor;
+      startId = choice.id;
+    });
+  }
+  void _open(RoomInfo room) {
+    setState(() => selected = room.id);
+    final route = RouteEngine.build(
+      room.id,
+      startFloor: startFloor,
+      startLocationId: startId,
+    );
+    if (route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Маршрут для этой точки недоступен.')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoutePage(room: room, route: route),
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1548,7 +1605,7 @@ class _MapPageState extends State<MapPage>{
   }
 
 }
-class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor${floor}.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.point(SchoolData.room(selected!)),Theme.of(context).colorScheme.primary)))]))));}
+class _MapImage extends StatelessWidget{final int floor;final String? selected;const _MapImage({required this.floor,required this.selected});@override Widget build(BuildContext context)=>Card(clipBehavior:Clip.antiAlias,child:InteractiveViewer(minScale:.7,maxScale:4,child:AspectRatio(aspectRatio:7016/4960,child:Stack(children:[Positioned.fill(child:Image.asset('assets/maps/floor$floor.webp',fit:BoxFit.contain)),if(selected!=null)Positioned.fill(child:CustomPaint(painter:_PointPainter(SchoolData.point(SchoolData.room(selected!)),Theme.of(context).colorScheme.primary)))]))));}
 class _PointPainter extends CustomPainter{final Offset p;final Color color;_PointPainter(this.p,this.color);@override void paint(Canvas c,Size s){final o=Offset(p.dx*s.width,p.dy*s.height);c.drawCircle(o,9,Paint()..color=color);c.drawCircle(o,17,Paint()..color=color.withValues(alpha:.22));}@override bool shouldRepaint(covariant _PointPainter o)=>o.p!=p||o.color!=color;}
 class _MathByDayDialog extends StatefulWidget {
   final String className;
@@ -1583,7 +1640,7 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
           DropdownButtonFormField<String>(
             isExpanded: true,
             decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
-            value: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
+            initialValue: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
             items: subjects.map((x) => DropdownMenuItem(value: x, child: Text(x.isEmpty ? 'Не переименовывать' : x))).toList(),
             onChanged: (v) => setState(() => selected['$d|$slot'] = v ?? ''),
           ),
@@ -1794,7 +1851,7 @@ class _SchedulePageState extends State<SchedulePage> {
                               : ListView.separated(
                                   padding: const EdgeInsets.only(bottom: 20),
                                   itemCount: list.length,
-                                  separatorBuilder: (_, __) => const SizedBox(height: 9),
+                                  separatorBuilder: (_, _) => const SizedBox(height: 9),
                                   itemBuilder: (context, index) {
                                     final e = list[index];
                                     final room = e.room.isEmpty ? null : SchoolData.tryRoom(e.room);
@@ -2053,8 +2110,13 @@ class _FullscreenMapPageState extends State<FullscreenMapPage> {
     final current = _zoom.value.getMaxScaleOnAxis();
     final next = (current + delta).clamp(.6, 6.0).toDouble();
     _zoom.value = Matrix4.identity()
-      ..translate(size.width * (1 - next) / 2, size.height * (1 - next) / 2)
-      ..scale(next);
+      ..translateByDouble(
+        size.width * (1 - next) / 2,
+        size.height * (1 - next) / 2,
+        0,
+        1,
+      )
+      ..scaleByDouble(next, next, next, 1);
   }
 
   @override
