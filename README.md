@@ -17,7 +17,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 .\build_test.ps1
 ```
 
-Скрипт устанавливает зависимости проекта, запускает Flutter-тесты и анализ, собирает отладочный APK и Windows EXE в автономной папке с нужными DLL. Результаты будут в `dist\test\android\` и `dist\test\windows\`; Windows-папка также упаковывается в ZIP. Это тестовые сборки, а не подписанный релиз. Для APK нужны JDK 21 и Android SDK. Для Windows EXE дополнительно нужны Visual Studio 2022 Build Tools с workload **Desktop development with C++** и ATL.
+Скрипт устанавливает зависимости проекта, запускает Flutter-тесты и анализ, собирает отладочный APK и Windows EXE в автономной папке с нужными DLL. Результаты будут в `dist\test\android\` и `dist\test\windows\`; Windows-папка также упаковывается в ZIP. Это тестовые сборки, а не подписанный релиз. Для Android-сборки используются JDK 27 и Android SDK; Gradle 9.9.0 запускается на JDK 27, а байткод приложения намеренно остаётся Java 21 для совместимости с Android. Для Windows EXE нужны Visual Studio 2026 или Build Tools 2026 с workload **Desktop development with C++**, Windows SDK и ATL.
 
 Сборка по умолчанию не передаёт адрес API: карта, локальные данные расписания и заметки рассчитаны на работу офлайн. Настоящие школьные аккаунты/SSO, серверные объявления и push требуют отдельно развёрнутой и настроенной инфраструктуры. **Не встраивай пароли, токены, Firebase service-account ключи или серверные секреты в Dart-код/APK/EXE** — файлы клиента можно извлечь.
 
