@@ -92,10 +92,31 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   Future<void> _findExistingModel() async {
     try {
       final file = await _modelFile();
-      if (await file.exists() && await file.length() > 100 * 1024 * 1024) {
-        if (mounted) setState(() => _modelPath = file.path);
+      if (!await file.exists() || await file.length() < 400 * 1024 * 1024) {
+        return;
       }
-    } catch (_) {}
+
+      final handle = await file.open();
+      late final List<int> header;
+      try {
+        header = await handle.read(4);
+      } finally {
+        await handle.close();
+      }
+
+      if (ascii.decode(header, allowInvalid: true) == 'GGUF' && mounted) {
+        setState(() => _modelPath = file.path);
+      } else if (mounted) {
+        setState(() {
+          _statusError =
+              'Найденный файл модели повреждён. Скачай модель заново.';
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _statusError = 'Не удалось проверить локальную модель: $error');
+      }
+    }
   }
 
   Future<void> _downloadModel() async {
@@ -236,13 +257,15 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   Future<void> _ensureLoaded() async {
     if (_chatRepository != null) return;
-    if (_modelPath == null) {
+    final modelPath = _modelPath;
+    if (modelPath == null) {
       throw StateError('Сначала скачай модель. Это делается один раз.');
     }
+
     if (mounted) setState(() => _loadingModel = true);
+    final repository = LlamaCppRepository();
     try {
-      final repository = LlamaCppRepository();
-      final model = await repository.loadModel(_modelPath!);
+      final model = await repository.loadModel(modelPath);
       final chat = LlamaCppChatRepository.withModel(
         model,
         repository.bindings,
@@ -251,8 +274,20 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       );
       _modelRepository = repository;
       _chatRepository = chat;
+    } catch (_) {
+      // Do not leak the native model repository if loading or chat setup fails.
+      repository.dispose();
+      rethrow;
     } finally {
       if (mounted) setState(() => _loadingModel = false);
+    }
+  }
+
+  void _trimConversationHistory() {
+    // Keep the system instruction and the last five user/assistant turns.
+    const maximumMessages = 11;
+    if (_history.length > maximumMessages) {
+      _history.removeRange(1, _history.length - maximumMessages);
     }
   }
 
@@ -295,6 +330,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _scrollToBottom();
 
     await _catalogLoadFuture;
+    if (!mounted) return;
+
     final offlineAnswer = _offlineRoomAnswer(text);
     if (offlineAnswer != null) {
       setState(() {
@@ -320,6 +357,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     try {
       await _ensureLoaded();
       _history.add(LLMMessage(role: LLMRole.user, content: text));
+      _trimConversationHistory();
       final repo = _chatRepository!;
       await for (final chunk in repo.streamChat(_modelPath!, messages: _history)) {
         final part = chunk.message?.content ?? '';
@@ -333,11 +371,15 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         answerLine.text = 'Модель не вернула ответ. Попробуй сформулировать вопрос короче.';
       }
       _history.add(LLMMessage(role: LLMRole.assistant, content: answerLine.text));
+      _trimConversationHistory();
     } catch (error) {
-      setState(() {
-        _statusError = 'Локальная модель не запустилась: $error';
-        answerLine.text = 'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
-      });
+      answerLine.text =
+          'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
+      if (mounted) {
+        setState(() {
+          _statusError = 'Локальная модель не запустилась: $error';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
