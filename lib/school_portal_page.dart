@@ -263,7 +263,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
         title: Text('Добавить участника • ${group['name'] ?? 'группа'}'),
         content: SizedBox(width: 460, child: DropdownButtonFormField<String>(
-          value: selectedId,
+          initialValue: selectedId,
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Ученик или сотрудник'),
           items: [for (final account in candidates)
@@ -530,7 +530,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           TextField(controller: title, textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(labelText: 'Название занятия')),
           DropdownButtonFormField<int>(
-            value: weekday,
+            initialValue: weekday,
             decoration: const InputDecoration(labelText: 'День недели'),
             items: const [
               DropdownMenuItem(value: 1, child: Text('Понедельник')),
@@ -549,7 +549,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             decoration: const InputDecoration(labelText: 'Педагог / наставник')),
           TextField(controller: room, decoration: const InputDecoration(labelText: 'Кабинет / место')),
           DropdownButtonFormField<String>(
-            value: status,
+            initialValue: status,
             decoration: const InputDecoration(labelText: 'Статус занятия'),
             items: const [
               DropdownMenuItem(value: 'active', child: Text('Активно')),
@@ -617,7 +617,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           TextField(controller: body, decoration: const InputDecoration(labelText: 'Текст сообщения'), minLines: 2, maxLines: 5, maxLength: 4000),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: kind,
+            initialValue: kind,
             decoration: const InputDecoration(labelText: 'Тип'),
             items: [
               const DropdownMenuItem(value: 'targeted', child: Text('Целевое')),
@@ -628,13 +628,20 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             onChanged: (v) => setDialogState(() {
               final previousTarget = targetType;
               kind = v ?? 'targeted';
-              if (kind == 'global' || kind == 'emergency') targetType = 'all';
-              else if (kind == 'personal') targetType = 'user';
-              else if (targetType == 'all') {
-                targetType = isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position)
-                    ? 'class' : 'user';
+              if (kind == 'global' || kind == 'emergency') {
+                targetType = 'all';
+              } else if (kind == 'personal') {
+                targetType = 'user';
+              } else if (targetType == 'all') {
+                targetType =
+                    isLead || const {'homeroom_teacher', 'dop_coordinator'}.contains(position)
+                        ? 'class'
+                        : 'user';
               }
-              if (targetType != previousTarget) targetId.clear();
+
+              if (targetType != previousTarget) {
+                targetId.clear();
+              }
               if (kind == 'emergency') {
                 // Emergency alerts are dispatched immediately by policy.
                 scheduleMessage = false;
@@ -644,7 +651,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: targetType,
+            initialValue: targetType,
             decoration: const InputDecoration(labelText: 'Кому'),
             items: [
               if (isLead) const DropdownMenuItem(value: 'all', child: Text('Вся школа')),
@@ -661,7 +668,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           ),
           if (targetType == 'group' && notificationGroups.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: notificationGroups.any((group) => group['id']?.toString() == targetId.text)
+              initialValue: notificationGroups.any((group) => group['id']?.toString() == targetId.text)
                   ? targetId.text : null,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Группа рассылки'),
@@ -674,7 +681,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             )
           else if (targetType == 'class' && classOptions.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: classOptions.contains(targetId.text) ? targetId.text : null,
+              initialValue: classOptions.contains(targetId.text) ? targetId.text : null,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Класс-получатель'),
               items: [for (final className in classOptions)
@@ -683,7 +690,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             )
           else if (targetType == 'user' && students.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: students.any((student) => student['id']?.toString() == targetId.text)
+              initialValue: students.any((student) => student['id']?.toString() == targetId.text)
                   ? targetId.text : null,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Получатель'),
@@ -716,12 +723,12 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                   firstDate: DateTime(now.year, now.month, now.day),
                   lastDate: DateTime(now.year + 3),
                 );
-                if (date == null || !dialogContext.mounted) return;
+                if (date == null || !mounted || !dialogContext.mounted) return;
                 final pickedTime = await showTimePicker(
                   context: dialogContext,
                   initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5))),
                 );
-                if (pickedTime == null || !dialogContext.mounted) return;
+                if (pickedTime == null || !mounted || !dialogContext.mounted) return;
                 final selected = DateTime(date.year, date.month, date.day, pickedTime.hour, pickedTime.minute);
                 if (!selected.isAfter(DateTime.now().add(const Duration(seconds: 5)))) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Выбери время в будущем.')));
@@ -905,7 +912,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           TextField(controller: name, decoration: const InputDecoration(labelText: 'ФИО / отображаемое имя')),
           TextField(controller: login, decoration: const InputDecoration(labelText: 'Логин школьной системы')),
           TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Временный локальный пароль', helperText: 'Минимум 14 символов')),
-          DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Тип аккаунта'),
+          DropdownButtonFormField<String>(initialValue: role, decoration: const InputDecoration(labelText: 'Тип аккаунта'),
             items: [
               DropdownMenuItem(value: 'student', child: Text('Ученик')),
               DropdownMenuItem(value: 'teacher', child: Text('Учитель / сотрудник')),
@@ -926,7 +933,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           if (role == 'student') TextField(controller: classId, decoration: const InputDecoration(labelText: 'Класс ученика')),
           if (role != 'student') ...[
             DropdownButtonFormField<String>(
-              value: staffPosition,
+              initialValue: staffPosition,
               decoration: const InputDecoration(labelText: 'Должность / дополнительные права'),
               items: [
                 const DropdownMenuItem(value: '', child: Text('Обычный сотрудник')),
@@ -1001,7 +1008,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         title: Text('Должность: ${account['display_name'] ?? username}'),
         content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
           DropdownButtonFormField<String>(
-            value: position,
+            initialValue: position,
             decoration: const InputDecoration(labelText: 'Должность'),
             items: [
               const DropdownMenuItem(value: '', child: Text('Без отдельной должности')),
@@ -1059,7 +1066,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           title: Text('Назначить сотрудника: ${student['display_name'] ?? 'ученик'}'),
           content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
-              value: assignmentType,
+              initialValue: assignmentType,
               decoration: const InputDecoration(labelText: 'Тип назначения'),
               items: const [
                 DropdownMenuItem(value: 'mentor', child: Text('Наставник')),
@@ -1071,7 +1078,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             if (eligible.isEmpty)
               const Text('Нет активных сотрудников с выбранным типом аккаунта.')
             else DropdownButtonFormField<String>(
-              value: staffId,
+              initialValue: staffId,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Сотрудник'),
               items: [for (final staff in eligible) DropdownMenuItem(
