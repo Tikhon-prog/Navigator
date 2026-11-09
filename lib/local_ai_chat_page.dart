@@ -94,6 +94,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     return File('${directory.path}/$_modelFileName');
   }
 
+  Future<void> _writeModelVerificationMarker(File file) async {
+    final stat = await file.stat();
+    final marker = File('${file.path}.verified');
+    final value =
+        '$_modelSha256:${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+    await marker.writeAsString(value, flush: true);
+  }
+
   Future<void> _findExistingModel() async {
     try {
       final file = await _modelFile();
@@ -113,13 +121,23 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         throw const FormatException('Файл не имеет формата GGUF.');
       }
 
-      // Verify a model left by an older or interrupted installation before
-      // passing it to the native runtime.
-      final digest = await crypto.sha256.bind(file.openRead()).first;
-      if (digest.toString() != _modelSha256) {
-        throw const FormatException(
-          'Контрольная сумма сохранённой модели не совпадает.',
-        );
+      final stat = await file.stat();
+      final marker = File('${file.path}.verified');
+      final expectedMarker =
+          '$_modelSha256:${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+      final markerIsValid = await marker.exists() &&
+          (await marker.readAsString()).trim() == expectedMarker;
+
+      // Hash the large model on first use and whenever its size or modification
+      // time changes. Normal app launches then avoid reading 491 MB again.
+      if (!markerIsValid) {
+        final digest = await crypto.sha256.bind(file.openRead()).first;
+        if (digest.toString() != _modelSha256) {
+          throw const FormatException(
+            'Контрольная сумма сохранённой модели не совпадает.',
+          );
+        }
+        await marker.writeAsString(expectedMarker, flush: true);
       }
 
       if (mounted) setState(() => _modelPath = file.path);
@@ -228,6 +246,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
       try {
         await partialFile.rename(modelFile.path);
+        try {
+          await _writeModelVerificationMarker(modelFile);
+        } catch (_) {
+          // The download was already hash-verified. Without a marker, the next
+          // app launch safely rechecks the checksum once.
+        }
         if (hadPreviousModel && await backupFile.exists()) {
           await backupFile.delete();
         }
