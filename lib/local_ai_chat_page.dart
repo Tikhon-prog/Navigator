@@ -323,6 +323,44 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
       return 'В офлайн-каталоге не найден кабинет №$wanted. Возможно, карта устарела или номер записан иначе. Проверь номер на схеме; я не буду угадывать этаж.';
     }
+    const placeKeywords = <String, List<String>>{
+      'библиотек': ['place_library'],
+      'столов': ['place_canteen'],
+      'пищеблок': ['place_food'],
+      'бассейн': ['place_pool'],
+      'тренажер': ['place_gym'],
+      'тренажёр': ['place_gym'],
+      'спортзал': ['place_sport', 'place_gym'],
+      'спортивн': ['place_sport'],
+      'хореограф': ['place_choreo'],
+      'акт': ['place_auditorium'],
+      'террас': ['place_terrace'],
+      'дрон': ['place_drone'],
+      'инженер': ['place_engineering'],
+      'бактери': ['place_bio_lab'],
+      'гример': ['place_dressing'],
+      'гримёр': ['place_dressing'],
+      'сцен': ['place_stage'],
+    };
+
+    for (final entry in placeKeywords.entries) {
+      if (!query.contains(entry.key)) continue;
+      final matches = _places
+          .where((place) => entry.value.contains(place['id']))
+          .toList();
+      if (matches.length == 1) {
+        final place = matches.single;
+        final floor = place['floor'];
+        return 'По встроенной карте найдено: ${place['name']}.'
+            '${floor == null ? '' : ' Этаж: $floor.'} '
+            'Чтобы построить проверенный маршрут, открой «Карта школы» и выбери эту точку.';
+      }
+      if (matches.length > 1) {
+        final names = matches.map((place) => place['name']).join(' или ');
+        return 'На карте есть несколько подходящих мест: $names. Уточни, куда именно нужно попасть.';
+      }
+    }
+
     if (query.contains('маршрут') || query.contains('как пройти') || query.contains('как дойти')) {
       return 'Маршруты строятся по встроенной схеме коридоров и переходов между этажами. Чтобы не подсказать неверный путь, открой «Карта школы» и выбери точку назначения. Свободный чат не заменяет проверенный алгоритм маршрутизации.';
     }
