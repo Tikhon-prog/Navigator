@@ -576,26 +576,15 @@ class DopParser {
   }) {
     final tagName = tag ?? r'[A-Za-z][A-Za-z0-9-]*';
 
+    final escapedClassName = RegExp.escape(className);
     final doubleQuote = RegExp(
-      '<' +
-          tagName +
-          r'\b[^>]*class\s*=\s*"[^"]*\b' +
-          RegExp.escape(className) +
-          r'\b[^"]*"[^>]*>([\s\S]*?)</' +
-          tagName +
-          r'>',
+      '<$tagName\\b[^>]*class\\s*=\\s*"[^"]*\\b$escapedClassName\\b[^"]*"[^>]*>([\\s\\S]*?)</$tagName>',
       caseSensitive: false,
     ).firstMatch(html);
 
     final match = doubleQuote ??
         RegExp(
-          "<" +
-              tagName +
-              r"\b[^>]*class\s*=\s*'[^']*\b" +
-              RegExp.escape(className) +
-              r"\b[^']*'[^>]*>([\s\S]*?)</" +
-              tagName +
-              r">",
+          "<$tagName\\b[^>]*class\\s*=\\s*'[^']*\\b$escapedClassName\\b[^']*'[^>]*>([\\s\\S]*?)</$tagName>",
           caseSensitive: false,
         ).firstMatch(html);
 
