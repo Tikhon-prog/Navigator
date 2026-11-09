@@ -1215,6 +1215,16 @@ class _AppShellState extends State<AppShell>{
                 prefs.getString('student_class_name') ??
                 '')
             .trim();
+    const dayNames = [
+      '',
+      'Понедельник',
+      'Вторник',
+      'Среда',
+      'Четверг',
+      'Пятница',
+      'Суббота',
+    ];
+
     final contextLines = <String>[
       'Текущая дата и время: ${DateTime.now().toUtc().add(const Duration(hours: 3))}.',
       'Часовой пояс расписания школы: Europe/Moscow.',
@@ -1251,15 +1261,6 @@ class _AppShellState extends State<AppShell>{
         groups,
         mathNamesByDay: mathNamesByDay,
       );
-      const dayNames = [
-        '',
-        'Понедельник',
-        'Вторник',
-        'Среда',
-        'Четверг',
-        'Пятница',
-        'Суббота',
-      ];
       contextLines.add('Локальное расписание ученика:');
       for (final lesson in lessons.take(48)) {
         final details = <String>[
