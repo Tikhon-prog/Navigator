@@ -28,7 +28,7 @@ class DopStudent {
 /// original legacy preference keys for backward compatibility.
 String studentProfilePreferenceKey(String key, {String? userId}) {
   final id = (userId ?? '').trim();
-  return id.isEmpty ? key : '${key}_${id}';
+  return id.isEmpty ? key : '${key}_$id';
 }
 
 /// Временный источник данных ученика.
@@ -232,7 +232,7 @@ class DopParserException implements Exception {
   const DopParserException(this.message);
 
   @override
-  String toString() => 'DopParserException: ' + message;
+  String toString() => 'DopParserException: $message';
 }
 
 class DopParser {
@@ -563,7 +563,7 @@ class DopParser {
   String _textTag(String html, String tag) {
     return _clean(
       RegExp(
-        '<' + tag + r'\b[^>]*>([\s\S]*?)</' + tag + '>',
+        '<$tag\\b[^>]*>([\\s\\S]*?)</$tag>',
         caseSensitive: false,
       ).firstMatch(html)?.group(1) ?? '',
     );
@@ -789,9 +789,7 @@ class _DopSession {
           currentData.entries
               .map(
                 (e) =>
-                    Uri.encodeQueryComponent(e.key) +
-                    '=' +
-                    Uri.encodeQueryComponent(e.value),
+                    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
               )
               .join('&'),
         );
@@ -839,10 +837,7 @@ class _DopSession {
       if (response.statusCode < 200 ||
           response.statusCode >= 400) {
         throw DopParserException(
-          'HTTP ' +
-              response.statusCode.toString() +
-              ' при обращении к ' +
-              currentUri.toString(),
+          'HTTP ${response.statusCode} при обращении к $currentUri',
         );
       }
 
