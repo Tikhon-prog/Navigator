@@ -428,12 +428,14 @@ $missingSdkPackages = @()
 if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'platform-tools\adb.exe'))) { $missingSdkPackages += 'platform-tools' }
 if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'platforms\android-36\android.jar'))) { $missingSdkPackages += 'platforms;android-36' }
 if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'build-tools\36.0.0\aapt.exe'))) { $missingSdkPackages += 'build-tools;36.0.0' }
+if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'ndk\28.2.13676358\source.properties'))) { $missingSdkPackages += 'ndk;28.2.13676358' }
+if (-not (Test-Path -LiteralPath (Join-Path $AndroidSdk 'cmake\3.22.1\bin\cmake.exe'))) { $missingSdkPackages += 'cmake;3.22.1' }
 if ($missingSdkPackages.Count -gt 0) {
     Write-Host ('Installing missing Android SDK packages: ' + ($missingSdkPackages -join ', '))
     & $sdkManager "--sdk_root=$AndroidSdk" --install @missingSdkPackages
     if ($LASTEXITCODE -ne 0) { throw 'Android sdkmanager failed to install required SDK packages.' }
 } else {
-    Write-Host 'Android platform-tools, API 36 and build-tools 36.0.0 are already present.' -ForegroundColor DarkGray
+    Write-Host 'Android platform-tools, API 36, build-tools 36.0.0, NDK 28.2.13676358 and CMake 3.22.1 are already present.' -ForegroundColor DarkGray
 }
 
 # Fetch the exact Flutter release from Google's manifest and verify its SHA-256.
