@@ -80,7 +80,20 @@ class _SupplementsPageState extends State<SupplementsPage> {
   @override
   void initState() {
     super.initState();
+    schoolLocalDataRevision.addListener(_reloadAfterLocalAiChange);
     _load();
+  }
+
+  void _reloadAfterLocalAiChange() {
+    if (!mounted) return;
+    setState(() => loading = true);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    schoolLocalDataRevision.removeListener(_reloadAfterLocalAiChange);
+    super.dispose();
   }
 
   Future<void> _load() async {
