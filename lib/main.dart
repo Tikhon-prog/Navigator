@@ -1435,6 +1435,41 @@ class _AppShellState extends State<AppShell>{
     key.currentState?.closeDrawer();
   }
 
+  Future<void> _openAiSchoolRoute(String destinationId) async {
+    final destination = SchoolData.tryRoom(destinationId);
+    if (destination == null || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    final startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3);
+    final startLocationId = prefs.getString('map_start_location');
+    final route = RouteEngine.build(
+      destination.id,
+      startFloor: startFloor,
+      startLocationId: startLocationId,
+    );
+    if (!mounted) return;
+
+    // The AI page is on this Navigator. Pop it first, then show the real
+    // route page using the Shell's still-mounted context.
+    Navigator.of(context).pop();
+    if (route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось построить маршрут по текущей схеме коридоров.'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      selectedRoom = destination.id;
+      index = 1;
+    });
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RoutePage(room: destination, route: route),
+      ),
+    );
+  }
+
   Future<void> _openAiChat() async {
     key.currentState?.closeDrawer();
     if (!mounted) return;
@@ -1444,6 +1479,7 @@ class _AppShellState extends State<AppShell>{
           schoolContextLoader: _loadLocalAiSchoolContext,
           actionHandler: _handleLocalAiAction,
           onOpenMapLocation: _selectLocationFromAi,
+          onOpenSchoolRoute: _openAiSchoolRoute,
         ),
       ),
     );
@@ -1508,6 +1544,88 @@ class _AppShellState extends State<AppShell>{
         }
         return matches.map((room) =>
             'ID: ${room.id}; ${SchoolData.title(room)}; этаж ${room.floor}.').join('\n');
+
+      case 'plan_school_route':
+        await SchoolScheduleCatalog.load();
+        final destinationQuery = arg('destination').toLowerCase();
+        if (destinationQuery.isEmpty) {
+          return 'Укажи номер кабинета или место назначения.';
+        }
+
+        RoomInfo? resolveLocation(String value) {
+          final query = value.toLowerCase().trim();
+          if (query.isEmpty) return null;
+          final numeric = RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)')
+              .firstMatch(query)
+              ?.group(1);
+          if (numeric != null) {
+            final byNumber = SchoolData.tryRoom(numeric);
+            if (byNumber != null) return byNumber;
+          }
+          final exact = SchoolData.locations.where((room) =>
+              room.id.toLowerCase() == query ||
+              SchoolData.title(room).toLowerCase() == query ||
+              room.name.toLowerCase() == query).toList();
+          if (exact.length == 1) return exact.single;
+
+          final matches = SchoolData.locations.where((room) =>
+              SchoolData.title(room).toLowerCase().contains(query) ||
+              room.name.toLowerCase().contains(query) ||
+              query.contains(SchoolData.title(room).toLowerCase())).toList();
+          if (matches.length == 1) return matches.single;
+          return null;
+        }
+
+        final destination = resolveLocation(destinationQuery);
+        if (destination == null) {
+          final suggestions = SchoolData.locations.where((room) =>
+              SchoolData.title(room).toLowerCase().contains(destinationQuery) ||
+              room.id.toLowerCase().contains(destinationQuery)).take(8)
+              .map((room) => '${SchoolData.title(room)} (этаж ${room.floor})')
+              .join(', ');
+          return suggestions.isEmpty
+              ? 'Не нашёл место «${arg('destination')}» в школьной карте. Проверь номер кабинета или название.'
+              : 'Есть несколько/похожие места: $suggestions. Уточни точное назначение.';
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        var originId = (prefs.getString('map_start_location') ?? '').trim();
+        var startFloor = (prefs.getInt('map_start_floor') ?? 1).clamp(1, 3);
+        final originQuery = arg('origin');
+        if (originQuery.isNotEmpty &&
+            !originQuery.toLowerCase().contains('главн') &&
+            !originQuery.toLowerCase().contains('вход')) {
+          final origin = resolveLocation(originQuery);
+          if (origin == null) {
+            return 'Не нашёл точку старта «$originQuery». Укажи номер кабинета или место из школьной карты.';
+          }
+          originId = origin.id;
+          startFloor = origin.floor;
+        } else if (originQuery.isNotEmpty) {
+          originId = '';
+          startFloor = 1;
+        }
+        final route = RouteEngine.build(
+          destination.id,
+          startFloor: startFloor,
+          startLocationId: originId.isEmpty ? null : originId,
+        );
+        if (route == null) {
+          return 'По текущей схеме не удалось построить маршрут до ${SchoolData.title(destination)}. Я не стану придумывать путь.';
+        }
+        final steps = RouteEngine.instructions(route);
+        final originLabel = originId.isEmpty
+            ? 'главный вход'
+            : SchoolData.title(SchoolData.room(originId));
+        final summary = StringBuffer()
+          ..writeln('Маршрут построен по графу коридоров школы.')
+          ..writeln('Откуда: $originLabel.')
+          ..writeln('Куда: ${SchoolData.title(destination)}, этаж ${destination.floor}.')
+          ..writeln('Шаги:')
+          ..writeAll(steps.asMap().entries.map(
+            (entry) => '${entry.key + 1}. ${entry.value.text} (${entry.value.floor}-й этаж)\\n',
+          ));
+        return '__OPEN_ROUTE__:${destination.id}\\n$summary';
 
       case 'open_school_location':
         final locationId = arg('location_id');
