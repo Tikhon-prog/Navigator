@@ -97,7 +97,7 @@ class SchoolApiTests(unittest.TestCase):
         })
         with patch.dict(os.environ, {"NAVIGATOR_ALLOW_NON_SSO_PASSWORD_LOGIN": "false"}):
             with self.assertRaises(HTTPException) as raised:
-                api.login(api.LoginBody(username="student1", password="correct horse battery"), request)
+                api.login(api.LoginBody(username="student", password="correct horse battery"), request)
         self.assertEqual(raised.exception.status_code, 403)
 
     def test_admin_password_login_remains_available_for_technical_recovery(self):
