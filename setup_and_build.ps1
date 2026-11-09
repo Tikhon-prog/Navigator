@@ -425,6 +425,45 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw ("Command failed (exit " + $LASTEXITCODE + "): " + $File) }
 }
 
+function Get-RunningVisualStudioInstaller {
+    param([string]$InstallerDirectory)
+    $expectedPaths = @(
+        (Join-Path $InstallerDirectory 'setup.exe'),
+        (Join-Path $InstallerDirectory 'vs_installer.exe')
+    )
+    try {
+        $processes = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='setup.exe' OR Name='vs_installer.exe'" -ErrorAction Stop)
+    } catch {
+        throw ("Could not check whether Visual Studio Installer is already running: " + $_.Exception.Message)
+    }
+    return @($processes | Where-Object {
+        $_.ExecutablePath -and ($expectedPaths -contains $_.ExecutablePath)
+    })
+}
+
+function Wait-ForVisualStudioInstallerIdle {
+    param(
+        [string]$InstallerDirectory,
+        [int]$TimeoutSeconds = 900
+    )
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $lastNotice = -15
+    while ($true) {
+        $running = @(Get-RunningVisualStudioInstaller -InstallerDirectory $InstallerDirectory)
+        if ($running.Count -eq 0) { return }
+        if ($timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+            $pids = ($running | ForEach-Object { $_.ProcessId }) -join ', '
+            throw ("Visual Studio Installer is still running (PID: " + $pids + "). Close the Visual Studio Installer window and rerun the script.")
+        }
+        if (($timer.Elapsed.TotalSeconds - $lastNotice) -ge 15) {
+            $pids = ($running | ForEach-Object { $_.ProcessId }) -join ', '
+            Write-Host ("Waiting for the other Visual Studio Installer process to finish (PID: " + $pids + ")...") -ForegroundColor Yellow
+            $lastNotice = [int]$timer.Elapsed.TotalSeconds
+        }
+        Start-Sleep -Seconds 5
+    }
+}
+
 Write-Step 'Installing Git, Python 3.12, verified JDK 27 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
 
@@ -542,17 +581,38 @@ if ($vsToolchainPath) {
 } else {
     Write-Step 'Adding missing Visual Studio C++ / ATL / Windows SDK components'
     $vsArgs = @('modify','--installPath',$vsPath,'--add','Microsoft.VisualStudio.Workload.NativeDesktop','--includeRecommended','--add','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','--add','Microsoft.VisualStudio.Component.VC.ATL','--add','Microsoft.VisualStudio.Component.Windows11SDK.26100','--quiet','--norestart')
-    & $vsInstaller @vsArgs
-    $vsCode = $LASTEXITCODE
-    if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) { throw ("Visual Studio installer failed with exit code " + $vsCode) }
-    if (($vsCode -eq 3010) -or ($vsCode -eq 1641)) { Write-Warning 'Windows may need a restart before the Windows desktop build works.' }
-    Refresh-Path
-    if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
-        $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
-    } else {
-        $vsToolchainPath = $vsPath
+    $modifySucceeded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        # Visual Studio Installer has a single-instance lock. A second invocation may
+        # return exit code 0 without applying anything if the GUI/installer is already open.
+        Wait-ForVisualStudioInstallerIdle -InstallerDirectory $vsInstallerDir -TimeoutSeconds 900
+        Write-Host ("Visual Studio component update, attempt " + $attempt + " of 3...")
+        & $vsInstaller @vsArgs
+        $vsCode = $LASTEXITCODE
+        if (($vsCode -ne 0) -and ($vsCode -ne 3010) -and ($vsCode -ne 1641)) {
+            throw ("Visual Studio installer failed with exit code " + $vsCode)
+        }
+        if (($vsCode -eq 3010) -or ($vsCode -eq 1641)) {
+            Write-Warning 'Windows may need a restart before the Windows desktop build works.'
+        }
+        # Wait for setup.exe to release the installer lock and finish applying packages.
+        Wait-ForVisualStudioInstallerIdle -InstallerDirectory $vsInstallerDir -TimeoutSeconds 1800
+        Refresh-Path
+        if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
+            $vsToolchainPath = (& $vswhere @vsQueryArgs 2>$null | Select-Object -First 1)
+        }
+        if ($vsToolchainPath) {
+            $modifySucceeded = $true
+            break
+        }
+        if ($attempt -lt 3) {
+            Write-Warning 'The installer returned, but Visual Studio still reports missing components. Retrying after the installer lock is released.'
+            Start-Sleep -Seconds 5
+        }
     }
-    if (-not $vsToolchainPath) { throw 'Visual Studio is missing a required C++/ATL/Windows SDK component after modify.' }
+    if (-not $modifySucceeded) {
+        throw 'Visual Studio still reports missing C++/ATL/Windows SDK components after 3 modify attempts. Open Visual Studio Installer, check the Community installation for pending actions, apply them, close the installer, and rerun.'
+    }
 }
  
 # Make the installed Python/Git folders take priority over WindowsApps aliases.
