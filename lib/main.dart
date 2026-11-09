@@ -1789,7 +1789,124 @@ class _AppShellState extends State<AppShell>{
         final teacher = arg('teacher');
         final description = arg('description');
         if (title.isEmpty || day == null) return 'Для ДОПа нужны название и корректный день недели.';
-        final clockPattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d
+        final clockPattern = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+        if ((start.isNotEmpty && !clockPattern.hasMatch(start)) ||
+            (end.isNotEmpty && !clockPattern.hasMatch(end))) {
+          return 'Время должно быть в формате HH:mm или оставлено пустым, если оно неизвестно.';
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final accountId = _currentSchoolUserId(prefs);
+        final storageKey =
+            studentProfilePreferenceKey('supplements_local', userId: accountId);
+        final raw = prefs.getString(storageKey);
+        final supplements = <Map<String, dynamic>>[];
+        if (raw != null) {
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is List) {
+              supplements.addAll(
+                decoded.whereType<Map>().map(
+                  (item) => Map<String, dynamic>.from(item),
+                ),
+              );
+            }
+          } catch (_) {
+            return 'Существующий список ДОПов не удалось прочитать; я ничего не перезаписал.';
+          }
+        }
+
+        final id = 'local_${DateTime.now().microsecondsSinceEpoch}';
+        supplements.add({
+          'id': id,
+          'title': title,
+          'weekday': day,
+          'start': start,
+          'end': end,
+          'teacher': teacher,
+          'room': room,
+          'place': '',
+          'group': '',
+          'description': description,
+        });
+        await prefs.setString(storageKey, jsonEncode(supplements));
+        notifySchoolLocalDataChanged();
+        if (prefs.getBool('dop_reminders_enabled') ?? false) {
+          try {
+            await LocalNotificationService().scheduleUpcomingSupplements(
+              entries: supplements.map((item) => (
+                id: item['id'].toString(),
+                day: (item['weekday'] as num?)?.toInt() ?? 1,
+                time: item['start'].toString(),
+                title: item['title'].toString(),
+                room: item['room'].toString(),
+              )).toList(),
+            );
+          } catch (_) {}
+        }
+        const dayNames = [
+          '',
+          'понедельник',
+          'вторник',
+          'среду',
+          'четверг',
+          'пятницу',
+          'субботу',
+        ];
+        return 'Добавлено локальное занятие «$title» на ${dayNames[day]}. Серверная запись не создавалась.';
+
+      case 'delete_supplement':
+        final title = arg('title');
+        if (title.isEmpty) return 'Укажи точное название ДОПа.';
+        final prefs = await SharedPreferences.getInstance();
+        final accountId = _currentSchoolUserId(prefs);
+        final storageKey =
+            studentProfilePreferenceKey('supplements_local', userId: accountId);
+        final raw = prefs.getString(storageKey);
+        if (raw == null) return 'Локальный список ДОПов пуст.';
+        List<dynamic> decoded;
+        try {
+          final value = jsonDecode(raw);
+          if (value is! List) {
+            return 'Формат списка ДОПов неизвестен; я ничего не менял.';
+          }
+          decoded = value;
+        } catch (_) {
+          return 'Список ДОПов повреждён; я ничего не менял.';
+        }
+        final matches = decoded.where((item) =>
+          item is Map &&
+          (item['title'] ?? '').toString().trim().toLowerCase() ==
+              title.toLowerCase()).length;
+        if (matches == 0) return 'ДОП «$title» не найден.';
+        if (matches > 1) {
+          return 'Найдено несколько занятий с таким названием. Уточни день недели.';
+        }
+        final updated = decoded.where((item) =>
+          !(item is Map &&
+            (item['title'] ?? '').toString().trim().toLowerCase() ==
+                title.toLowerCase())).toList();
+        await prefs.setString(storageKey, jsonEncode(updated));
+        notifySchoolLocalDataChanged();
+        if (prefs.getBool('dop_reminders_enabled') ?? false) {
+          try {
+            await LocalNotificationService().scheduleUpcomingSupplements(
+              entries: updated.whereType<Map>().map((item) => (
+                id: (item['id'] ?? '').toString(),
+                day: (item['weekday'] as num?)?.toInt() ?? 1,
+                time: (item['start'] ?? '').toString(),
+                title: (item['title'] ?? '').toString(),
+                room: (item['room'] ?? '').toString(),
+              )).toList(),
+            );
+          } catch (_) {}
+        }
+        return 'Локальный ДОП «$title» удалён.';
+
+      default:
+        return 'Неизвестное действие приложения: $action.';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     void menu() => key.currentState?.openDrawer();
