@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -13,6 +16,7 @@ class LocalNotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  final Map<int, Timer> _windowsTimers = <int, Timer>{};
 
   static const String channelId = 'navigator_lessons';
   static const String channelName = 'Уроки';
@@ -37,7 +41,16 @@ class LocalNotificationService {
       appUserModelId: 'Pokolenie.Navigator.Desktop',
       guid: '7b68277c-0c39-4f4c-94ce-4f899cc2f7d4',
     );
-    const settings = InitializationSettings(android: android, windows: windows);
+    const darwin = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(
+      android: android,
+      iOS: darwin,
+      windows: windows,
+    );
     await plugin.initialize(settings);
 
     final androidPlugin = plugin
@@ -71,10 +84,23 @@ class LocalNotificationService {
     );
 
     await androidPlugin?.requestNotificationsPermission();
+    final iosPlugin = plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
     _initialized = true;
   }
 
-  Future<void> cancelAll() => plugin.cancelAll();
+  Future<void> cancelAll() async {
+    for (final timer in _windowsTimers.values) {
+      timer.cancel();
+    }
+    _windowsTimers.clear();
+    await plugin.cancelAll();
+  }
 
   Future<void> cancelDopReminders() async {
     if (!_initialized) return;
@@ -108,12 +134,53 @@ class LocalNotificationService {
   }
 
   Future<void> _cancelNotificationRange(int from, int to) async {
+    for (final id in _windowsTimers.keys
+        .where((id) => id >= from && id <= to)
+        .toList()) {
+      _windowsTimers.remove(id)?.cancel();
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) return;
+
     final pending = await plugin.pendingNotificationRequests();
     for (final notification in pending) {
       if (notification.id >= from && notification.id <= to) {
         await plugin.cancel(notification.id);
       }
     }
+  }
+
+  Future<void> _scheduleNotification({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduled,
+    required NotificationDetails details,
+  }) async {
+    final now = tz.TZDateTime.now(tz.local);
+    if (!scheduled.isAfter(now)) return;
+
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      _windowsTimers.remove(id)?.cancel();
+      final delay = scheduled.difference(now);
+      _windowsTimers[id] = Timer(delay, () async {
+        _windowsTimers.remove(id);
+        try {
+          await plugin.show(id, title, body, details);
+        } catch (_) {
+          // The user may have disabled Windows notifications after scheduling.
+        }
+      });
+      return;
+    }
+
+    await plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      scheduled,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
   }
 
   Future<void> scheduleNextLesson({
@@ -126,12 +193,12 @@ class LocalNotificationService {
     final scheduled = tz.TZDateTime.from(start, tz.local);
     if (!scheduled.isAfter(tz.TZDateTime.now(tz.local))) return;
 
-    await plugin.zonedSchedule(
-      id,
-      'Следующий урок',
-      '$subject → кабинет $room',
-      scheduled,
-      const NotificationDetails(
+    await _scheduleNotification(
+      id: id,
+      title: 'Следующий урок',
+      body: '$subject → кабинет $room',
+      scheduled: scheduled,
+      details: const NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
           channelName,
@@ -142,9 +209,13 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
         windows: WindowsNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
   }
 
@@ -158,12 +229,12 @@ class LocalNotificationService {
     final scheduled = tz.TZDateTime.from(remindAt, tz.local);
     if (!scheduled.isAfter(tz.TZDateTime.now(tz.local))) return;
     final destination = room.trim().isEmpty ? title : '$title • кабинет $room';
-    await plugin.zonedSchedule(
-      id,
-      'Скоро дополнительное занятие',
-      destination,
-      scheduled,
-      const NotificationDetails(
+    await _scheduleNotification(
+      id: id,
+      title: 'Скоро дополнительное занятие',
+      body: destination,
+      scheduled: scheduled,
+      details: const NotificationDetails(
         android: AndroidNotificationDetails(
           supplementsChannelId,
           supplementsChannelName,
@@ -174,9 +245,13 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
         windows: WindowsNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
   }
 
