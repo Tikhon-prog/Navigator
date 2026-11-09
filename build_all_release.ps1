@@ -73,8 +73,14 @@ $registryRoots = @(
 )
 foreach ($registryRoot in $registryRoots) {
     foreach ($entry in (Get-ItemProperty -Path $registryRoot -ErrorAction SilentlyContinue)) {
-        if ($entry.DisplayName -match '^Inno Setup' -and $entry.InstallLocation) {
-            $isccCandidates += (Join-Path $entry.InstallLocation 'ISCC.exe')
+        # Registry uninstall entries are not guaranteed to expose these optional fields.
+        # Access them through PSObject.Properties so StrictMode does not terminate the build.
+        $displayNameProperty = $entry.PSObject.Properties['DisplayName']
+        $installLocationProperty = $entry.PSObject.Properties['InstallLocation']
+        if ($displayNameProperty -and $installLocationProperty -and
+            $displayNameProperty.Value -match '^Inno Setup' -and
+            -not [string]::IsNullOrWhiteSpace([string]$installLocationProperty.Value)) {
+            $isccCandidates += (Join-Path ([string]$installLocationProperty.Value) 'ISCC.exe')
         }
     }
 }
