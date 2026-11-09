@@ -52,11 +52,16 @@ $userFlutterExe = if ($userFlutterSdk) { Join-Path $userFlutterSdk 'bin\flutter.
 if ($userFlutterExe -and (Test-Path -LiteralPath $userFlutterExe)) {
     $userFlutterVersionText = (& $userFlutterExe --version 2>&1 | Out-String)
     if ($userFlutterVersionText -match 'Flutter\s+(\d+\.\d+\.\d+)') {
-        $FlutterVersion = $Matches[1]
-        $FlutterSdk = $userFlutterSdk
-        $FlutterParent = $null
-        $UseExistingFlutter = $true
-        Write-Host ("Reusing existing Flutter " + $FlutterVersion + " at " + $FlutterSdk) -ForegroundColor DarkGray
+        $detectedFlutterVersion = $Matches[1]
+        if ($detectedFlutterVersion -eq $PinnedFlutterVersion) {
+            $FlutterVersion = $detectedFlutterVersion
+            $FlutterSdk = $userFlutterSdk
+            $FlutterParent = $null
+            $UseExistingFlutter = $true
+            Write-Host ("Reusing existing Flutter " + $FlutterVersion + " at " + $FlutterSdk) -ForegroundColor DarkGray
+        } else {
+            Write-Host ("Existing Flutter " + $detectedFlutterVersion + " is not the pinned " + $PinnedFlutterVersion + "; installing the pinned SDK instead.") -ForegroundColor Yellow
+        }
     }
 }
 $AndroidSdk = Join-Path $DevRoot 'Android\Sdk'
@@ -351,9 +356,9 @@ if ($gh) {
     Write-Host 'gh is not installed; that is OK. Git + Git Credential Manager will be used for repository access.' -ForegroundColor DarkGray
 }
 
-# Find JDK 21 and add JAVA_HOME persistently.
+# Find JDK 27 and add JAVA_HOME persistently.
 $javaHome = Find-Jdk27Home
-if (-not $javaHome) { throw 'Java 21 was not found after the verified ZIP installation.' }
+if (-not $javaHome) { throw 'Java 27 was not found after the verified ZIP installation.' }
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
 
