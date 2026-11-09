@@ -57,6 +57,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   bool _busy = false;
   bool _downloading = false;
   bool _loadingModel = false;
+  bool _checkingModel = false;
   double? _downloadProgress;
   String? _statusError;
   List<Map<String, dynamic>> _rooms = [];
@@ -89,9 +90,19 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   Future<File> _modelFile() async {
     final support = await getApplicationSupportDirectory();
-    final directory = Directory('${support.path}/local_ai_models');
+    final directory = Directory(
+      '${support.path}${Platform.pathSeparator}local_ai_models',
+    );
     await directory.create(recursive: true);
-    return File('${directory.path}/$_modelFileName');
+    if (!await directory.exists()) {
+      throw FileSystemException(
+        'Не удалось создать каталог локальной модели.',
+        directory.path,
+      );
+    }
+    return File(
+      '${directory.path}${Platform.pathSeparator}$_modelFileName',
+    );
   }
 
   Future<void> _writeModelVerificationMarker(File file) async {
@@ -103,9 +114,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   Future<void> _findExistingModel() async {
+    if (mounted) setState(() => _checkingModel = true);
     try {
       final file = await _modelFile();
-      if (!await file.exists() || await file.length() < 400 * 1024 * 1024) {
+      if (!await file.exists() ||
+          await file.length() < 400 * 1024 * 1024) {
         return;
       }
 
@@ -143,8 +156,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       if (mounted) setState(() => _modelPath = file.path);
     } catch (error) {
       if (mounted) {
-        setState(() => _statusError = 'Не удалось проверить локальную модель: $error');
+        setState(() {
+          _statusError = 'Не удалось проверить локальную модель: $error';
+        });
       }
+    } finally {
+      if (mounted) setState(() => _checkingModel = false);
     }
   }
 
@@ -160,26 +177,32 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     File? modelFile;
     File? partialFile;
     File? backupFile;
-    IOSink? sink;
+    RandomAccessFile? writer;
     final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30);
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..userAgent = 'PokolenieSchoolApp/0.2';
 
     try {
       modelFile = await _modelFile();
       partialFile = File('${modelFile.path}.part');
       backupFile = File('${modelFile.path}.backup');
 
-      // A previous interrupted attempt must never be mistaken for a model.
+      // Explicitly create the parent and the temporary file. This avoids
+      // asking File.length() about a path that was never materialized.
+      await partialFile.parent.create(recursive: true);
       if (await partialFile.exists()) {
         await partialFile.delete();
       }
+      await partialFile.create(recursive: true);
+      writer = await partialFile.open(mode: FileMode.write);
 
       final request = await client
           .getUrl(Uri.parse(_modelUrl))
           .timeout(const Duration(seconds: 30));
       request
         ..followRedirects = true
-        ..maxRedirects = 5;
+        ..maxRedirects = 5
+        ..headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
 
       final response = await request.close().timeout(
             const Duration(minutes: 2),
@@ -187,24 +210,29 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Сервер модели вернул HTTP ${response.statusCode}.',
+          response.uri,
         );
       }
 
       final expectedLength = response.contentLength;
       const minimumModelSize = 400 * 1024 * 1024;
-      if (expectedLength > 0 && expectedLength < minimumModelSize) {
+      if (expectedLength == 0 ||
+          (expectedLength > 0 && expectedLength < minimumModelSize)) {
         throw const FormatException(
-          'Сервер вернул файл неожиданно маленького размера.',
+          'Сервер вернул пустой или слишком маленький файл модели. '
+          'Проверь доступ к Hugging Face и повтори загрузку.',
         );
       }
+      if (mounted) {
+        setState(() => _downloadProgress = expectedLength > 0 ? 0 : null);
+      }
 
-      sink = partialFile.openWrite();
       var received = 0;
-
       await for (final chunk in response.timeout(
-        const Duration(minutes: 2),
+        const Duration(minutes: 3),
       )) {
-        sink.add(chunk);
+        if (chunk.isEmpty) continue;
+        await writer.writeFrom(chunk);
         received += chunk.length;
 
         if (mounted && expectedLength > 0) {
@@ -215,15 +243,25 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         }
       }
 
-      await sink.flush();
-      await sink.close();
-      sink = null;
+      await writer.flush();
+      await writer.close();
+      writer = null;
+
+      if (!await partialFile.exists()) {
+        throw FileSystemException(
+          'Временный файл модели не был создан после загрузки.',
+          partialFile.path,
+        );
+      }
 
       final actualLength = await partialFile.length();
-      if (actualLength < minimumModelSize ||
+      if (received == 0 ||
+          actualLength < minimumModelSize ||
+          actualLength != received ||
           (expectedLength > 0 && actualLength != expectedLength)) {
-        throw const FormatException(
-          'Размер скачанного файла не совпадает с ожидаемым.',
+        throw FormatException(
+          'Загрузка модели неполная: получено ${actualLength} байт'
+          '${expectedLength > 0 ? ' из $expectedLength' : ''}.',
         );
       }
 
@@ -235,7 +273,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
 
       // Keep the previous file recoverable until the verified download is in
-      // place. This also avoids exposing a half-downloaded model to the app.
+      // place. Never replace a working model with an unverified download.
       if (await backupFile.exists()) {
         await backupFile.delete();
       }
@@ -266,11 +304,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         setState(() {
           _modelPath = modelFile!.path;
           _downloadProgress = 1;
+          _statusError = null;
         });
       }
     } catch (error) {
       try {
-        await sink?.close();
+        await writer?.close();
       } catch (_) {}
       try {
         if (partialFile != null && await partialFile.exists()) {
@@ -555,7 +594,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                     const SizedBox(height: 5),
                     const Text('Около 491 МБ. Модель не входит в APK, чтобы не раздувать установщик. После однократной загрузки чат работает без интернета. На слабых устройствах ответы могут генерироваться медленно.'),
                     const SizedBox(height: 10),
-                    if (_downloading) ...[
+                    if (_checkingModel && !_downloading) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 5),
+                      const Text('Проверяем, есть ли модель на устройстве…'),
+                    ] else if (_downloading) ...[
                       LinearProgressIndicator(value: _downloadProgress),
                       const SizedBox(height: 5),
                       Text(_downloadProgress == null
@@ -599,26 +642,31 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                 child: Text(_statusError!, style: TextStyle(color: colors.error)),
               ),
             Expanded(
-              child: ListView.builder(
+              child: Scrollbar(
                 controller: _scroll,
-                padding: const EdgeInsets.all(14),
-                itemCount: _lines.length,
-                itemBuilder: (context, index) {
-                  final line = _lines[index];
-                  return Align(
-                    alignment: line.fromUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .86),
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                      decoration: BoxDecoration(
-                        color: line.fromUser ? colors.primaryContainer : colors.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(18),
+                thumbVisibility: true,
+                interactive: true,
+                child: ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.all(14),
+                  itemCount: _lines.length,
+                  itemBuilder: (context, index) {
+                    final line = _lines[index];
+                    return Align(
+                      alignment: line.fromUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .86),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        decoration: BoxDecoration(
+                          color: line.fromUser ? colors.primaryContainer : colors.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: SelectableText(line.text.isEmpty && _busy ? 'Думаю…' : line.text),
                       ),
-                      child: SelectableText(line.text.isEmpty && _busy ? 'Думаю…' : line.text),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
             Padding(
