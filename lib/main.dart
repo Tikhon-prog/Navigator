@@ -1206,15 +1206,12 @@ class _AppShellState extends State<AppShell>{
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PersonalNotesPage()));
   }
-  Future<String> _loadLocalAiSchoolContext() async {
+  Future<String> _loadLocalAiSchoolContext(String question) async {
     final prefs = await SharedPreferences.getInstance();
     await SchoolScheduleCatalog.load();
 
-    final className =
-        (prefs.getString(_studentScopedPreferenceKey(prefs, 'student_class_name')) ??
-                prefs.getString('student_class_name') ??
-                '')
-            .trim();
+    final now = DateTime.now().toUtc().add(const Duration(hours: 3));
+    final tomorrow = now.add(const Duration(days: 1));
     const dayNames = [
       '',
       'Понедельник',
@@ -1224,10 +1221,73 @@ class _AppShellState extends State<AppShell>{
       'Пятница',
       'Суббота',
     ];
+    final query = question.toLowerCase();
+    final selectedDates = <DateTime>{};
 
+    if (query.contains('сегодня')) {
+      selectedDates.add(DateTime(now.year, now.month, now.day));
+    }
+    if (query.contains('послезавтра')) {
+      selectedDates.add(DateTime(
+        now.year,
+        now.month,
+        now.day + 2,
+      ));
+    } else if (query.contains('завтра')) {
+      selectedDates.add(DateTime(
+        tomorrow.year,
+        tomorrow.month,
+        tomorrow.day,
+      ));
+    }
+
+    const weekdayKeywords = <String, int>{
+      'понедельник': 1,
+      'вторник': 2,
+      'сред': 3,
+      'четверг': 4,
+      'пятниц': 5,
+      'суббот': 6,
+    };
+    for (final entry in weekdayKeywords.entries) {
+      if (!query.contains(entry.key)) continue;
+      var daysAhead = (entry.value - now.weekday) % 7;
+      if (daysAhead < 0) daysAhead += 7;
+      selectedDates.add(DateTime(
+        now.year,
+        now.month,
+        now.day + daysAhead,
+      ));
+    }
+
+    final wantsWeek = query.contains('недел') ||
+        query.contains('все уроки') ||
+        query.contains('всё расписание');
+    if (selectedDates.isEmpty || wantsWeek) {
+      for (var offset = 0; offset < 7; offset++) {
+        final date = DateTime(now.year, now.month, now.day + offset);
+        if (date.weekday >= 1 && date.weekday <= 6) {
+          selectedDates.add(date);
+        }
+      }
+    }
+    final orderedDates = selectedDates.toList()
+      ..sort((a, b) => a.compareTo(b));
+    final selectedWeekdays = orderedDates.map((date) => date.weekday).toSet();
+
+    final className =
+        (prefs.getString(_studentScopedPreferenceKey(
+                  prefs,
+                  'student_class_name',
+                )) ??
+                prefs.getString('student_class_name') ??
+                '')
+            .trim();
     final contextLines = <String>[
-      'Текущая дата и время: ${DateTime.now().toUtc().add(const Duration(hours: 3))}.',
-      'Часовой пояс расписания школы: Europe/Moscow.',
+      'Текущее время по Москве: ${now.toIso8601String()}.',
+      'Сегодня: ${dayNames[now.weekday]} ${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}.',
+      'Завтра: ${dayNames[tomorrow.weekday]} ${tomorrow.day.toString().padLeft(2, '0')}.${tomorrow.month.toString().padLeft(2, '0')}.${tomorrow.year}.',
+      'Запрошенные даты: ${orderedDates.map((date) => '${dayNames[date.weekday]} ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}').join(', ')}.',
     ];
 
     if (className.isNotEmpty) {
@@ -1260,21 +1320,30 @@ class _AppShellState extends State<AppShell>{
         className,
         groups,
         mathNamesByDay: mathNamesByDay,
-      );
-      contextLines.add('Локальное расписание ученика:');
-      for (final lesson in lessons.take(48)) {
-        final details = <String>[
-          if (lesson.day >= 1 && lesson.day <= 6) dayNames[lesson.day],
-          lesson.time,
-          lesson.subject,
-          'группа ${lesson.group}',
-          if (lesson.room.isNotEmpty) 'кабинет ${lesson.room}',
-          if (lesson.teacher.isNotEmpty) 'педагог ${lesson.teacher}',
-        ];
-        contextLines.add('- ${details.join(' • ')}');
+      ).where((lesson) => selectedWeekdays.contains(lesson.day)).toList()
+        ..sort((a, b) {
+          final dayOrder = a.day.compareTo(b.day);
+          return dayOrder != 0 ? dayOrder : a.time.compareTo(b.time);
+        });
+
+      contextLines.add('Локальное расписание на запрошенные даты:');
+      for (final date in orderedDates) {
+        final dayLessons = lessons.where((lesson) =>
+            lesson.day == date.weekday);
+        contextLines.add('${dayNames[date.weekday]} ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}:');
+        for (final lesson in dayLessons) {
+          final details = <String>[
+            lesson.time,
+            lesson.subject,
+            'группа ${lesson.group}',
+            if (lesson.room.isNotEmpty) 'кабинет ${lesson.room}',
+            if (lesson.teacher.isNotEmpty) 'педагог ${lesson.teacher}',
+          ];
+          contextLines.add('- ${details.join(' • ')}');
+        }
       }
       if (lessons.isEmpty) {
-        contextLines.add('Для выбранного класса расписание не найдено.');
+        contextLines.add('Для выбранного периода занятий по этому классу не найдено.');
       }
     } else {
       contextLines.add('Класс ученика ещё не выбран; не придумывай его расписание.');
@@ -1290,6 +1359,7 @@ class _AppShellState extends State<AppShell>{
         }
       } catch (_) {}
     }
+
     final rawSupplements = prefs.getString(
       studentProfilePreferenceKey('supplements_local', userId: schoolUserId),
     );
@@ -1297,13 +1367,13 @@ class _AppShellState extends State<AppShell>{
       try {
         final rows = jsonDecode(rawSupplements);
         if (rows is List) {
-          final supplements = rows.whereType<Map>().take(16);
           final lines = <String>[];
-          for (final raw in supplements) {
+          for (final raw in rows.whereType<Map>()) {
             final item = Map<String, dynamic>.from(raw);
             final title = (item['title'] ?? '').toString().trim();
             if (title.isEmpty) continue;
             final weekday = (item['weekday'] as num?)?.toInt() ?? 0;
+            if (!selectedWeekdays.contains(weekday)) continue;
             final time = [
               (item['start'] ?? '').toString().trim(),
               (item['end'] ?? '').toString().trim(),
@@ -1321,7 +1391,7 @@ class _AppShellState extends State<AppShell>{
           }
           if (lines.isNotEmpty) {
             contextLines
-              ..add('Сохранённые дополнительные занятия (ДОПы):')
+              ..add('Сохранённые дополнительные занятия (ДОПы) на выбранные даты:')
               ..addAll(lines);
           }
         }
@@ -1330,7 +1400,7 @@ class _AppShellState extends State<AppShell>{
       }
     }
 
-    return contextLines.join('\n');
+    return contextLines.join('\\n');
   }
 
   Future<void> _openAiChat() async {
