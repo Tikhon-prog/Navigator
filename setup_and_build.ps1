@@ -221,7 +221,20 @@ function Find-Jdk27Home {
     foreach ($candidate in ($candidateList | Where-Object { $_ } | Select-Object -Unique)) {
         $javaExe = Join-Path $candidate 'bin\java.exe'
         if (-not (Test-Path -LiteralPath $javaExe)) { continue }
-        $versionText = (& $javaExe -version 2>&1 | Out-String)
+        # java -version writes to STDERR. With $ErrorActionPreference = 'Stop',
+        # Windows PowerShell can turn that normal output into a terminating error.
+        # Temporarily allow native STDERR so an older JAVA_HOME (for example JDK 21)
+        # is skipped and the search continues to the managed JDK 27 installation.
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $versionOutput = & $javaExe -version 2>&1
+            $versionText = ($versionOutput | ForEach-Object { $_.ToString() }) -join "`n"
+        } catch {
+            $versionText = ''
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
         if ($versionText -match 'version "27(\.|")') { return $candidate }
     }
     return $null
