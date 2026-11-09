@@ -128,6 +128,11 @@ class LocalNotificationService {
           ticker: 'Поколение',
           autoCancel: true,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
         windows: WindowsNotificationDetails(),
       ),
     );
