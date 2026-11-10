@@ -503,6 +503,16 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           handler: _runAction,
         ),
         _LocalAiTool(
+          name: 'set_favorite_location',
+          description:
+              'Добавить кабинет или место в избранное либо убрать его оттуда. Сначала найди точный ID через search_school_map.',
+          parameters: [
+            LLMToolParam(name: 'location_id', type: 'string', description: 'Точный ID помещения из школьной карты', isRequired: true),
+            LLMToolParam(name: 'favorite', type: 'string', description: 'true/да — добавить; false/нет — убрать', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
           name: 'plan_school_route',
           description:
               'Построить настоящий маршрут по графу коридоров школы и показать его на карте. Обязательно используй при просьбе пройти/дойти/построить путь.',
@@ -719,6 +729,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       'Построй маршрут до кабинета 317',
       'Найди библиотеку и открой её на карте',
       'Построй маршрут от кабинета 215 до кабинета 319',
+      'Добавь кабинет 317 в избранное',
     ],
     'Расписание': [
       'Покажи моё расписание на завтра',
