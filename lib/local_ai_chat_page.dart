@@ -84,6 +84,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
+Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания.
 Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Изменяй расписание, ДОПы и настройки только через инструменты приложения.
 ''';
 
@@ -598,6 +599,43 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           ],
           handler: _runAction,
         ),
+        _LocalAiTool(
+          name: 'get_student_tasks',
+          description: 'Прочитать домашние задания, контрольные и проекты ученика. Вызывай перед вопросами о дедлайнах и перед изменением существующего задания.',
+          parameters: [
+            LLMToolParam(name: 'filter', type: 'string', description: 'all, active, today, overdue или completed', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'add_student_task',
+          description: 'Создать домашнее задание, контрольную или проект в локальном списке. Если срок неясен, сначала спроси дату и время, не выдумывай дедлайн.',
+          parameters: [
+            LLMToolParam(name: 'title', type: 'string', description: 'Что нужно сделать', isRequired: true),
+            LLMToolParam(name: 'subject', type: 'string', description: 'Предмет или пустая строка', isRequired: true),
+            LLMToolParam(name: 'due_at', type: 'string', description: 'Точная дата и время в ISO 8601 local time, например 2026-11-12T18:00:00', isRequired: true),
+            LLMToolParam(name: 'kind', type: 'string', description: 'homework, test или project', isRequired: true),
+            LLMToolParam(name: 'priority', type: 'integer', description: '1 срочно, 2 обычно, 3 можно позже', isRequired: true),
+            LLMToolParam(name: 'description', type: 'string', description: 'Страница, упражнения или дополнительные детали', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'complete_student_task',
+          description: 'Отметить задание выполненным. Сначала найди точный ID через get_student_tasks.',
+          parameters: [
+            LLMToolParam(name: 'id', type: 'string', description: 'ID задания из локального списка', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
+        _LocalAiTool(
+          name: 'delete_student_task',
+          description: 'Удалить задание по точному ID. Сначала найди его через get_student_tasks.',
+          parameters: [
+            LLMToolParam(name: 'id', type: 'string', description: 'ID задания из локального списка', isRequired: true),
+          ],
+          handler: _runAction,
+        ),
       ];
 
   void _trimConversationHistory() {
@@ -691,6 +729,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       'Покажи мои дополнительные занятия на неделю',
       'Добавь программирование по средам в мои ДОПы',
       'Какие у меня ближайшие дополнительные занятия?',
+    ],
+    'Задания': [
+      'Что мне нужно сдать сегодня?',
+      'Добавь домашнее задание по алгебре на завтра к 18:00',
+      'Какие контрольные и проекты у меня скоро?',
     ],
     'Заметки': [
       'Сохрани заметку: подготовиться к контрольной по алгебре',
