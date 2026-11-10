@@ -786,12 +786,19 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         lowerQuery.contains('как пройти') ||
         lowerQuery.contains('как дойти') ||
         lowerQuery.contains('как попасть') ||
-        lowerQuery.contains('доведи');
+        lowerQuery.contains('доведи') ||
+        lowerQuery.contains('построй путь') ||
+        lowerQuery.contains('путь до') ||
+        lowerQuery.contains('путь от') ||
+        lowerQuery.contains('пройти до') ||
+        lowerQuery.contains('дойди до');
     final asksForAction = asksForRoute ||
         lowerQuery.contains('добавь') ||
         lowerQuery.contains('добавить') ||
         lowerQuery.contains('в избранное') ||
         lowerQuery.contains('избранного') ||
+        lowerQuery.contains('избранное') ||
+        lowerQuery.contains('избран') ||
         lowerQuery.contains('убери') ||
         lowerQuery.contains('убрать') ||
         lowerQuery.contains('удали') ||
