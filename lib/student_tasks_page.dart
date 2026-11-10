@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'local_notification_service.dart';
+
 enum StudentTaskKind {
   homework('Домашнее задание', Icons.menu_book_rounded),
   test('Контрольная', Icons.quiz_rounded),
@@ -54,6 +56,35 @@ class StudentTask {
 
 class StudentTaskStore {
   static const storageKey = 'pokolenie_student_tasks_v1';
+  static const remindersKey = 'pokolenie_student_task_reminders_enabled';
+
+  static Future<bool> remindersEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(remindersKey) ?? true;
+  }
+
+  static Future<void> setRemindersEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(remindersKey, enabled);
+    final tasks = await load();
+    await _scheduleReminders(enabled ? tasks : const <StudentTask>[]);
+  }
+
+  static Future<void> _scheduleReminders(List<StudentTask> tasks) async {
+    try {
+      await LocalNotificationService().scheduleUpcomingStudentTasks(
+        entries: tasks.where((task) => !task.done).map((task) => (
+          id: task.id,
+          dueAt: task.dueAt,
+          title: task.title,
+          subject: task.subject,
+        )).toList(),
+      );
+    } catch (_) {
+      // Saving homework must remain available even when notification permission
+      // is denied or a desktop platform notification backend is unavailable.
+    }
+  }
 
   static Future<List<StudentTask>> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -80,6 +111,9 @@ class StudentTaskStore {
     final prefs = await SharedPreferences.getInstance();
     final ok = await prefs.setString(storageKey, jsonEncode(tasks.map((task) => task.toJson()).toList()));
     if (!ok) throw StateError('Не удалось сохранить список заданий.');
+    if (prefs.getBool(remindersKey) ?? true) {
+      await _scheduleReminders(tasks);
+    }
   }
 
   static Future<void> upsert(StudentTask task) async {
@@ -120,14 +154,34 @@ class StudentTasksPage extends StatefulWidget {
 class _StudentTasksPageState extends State<StudentTasksPage> {
   List<StudentTask> tasks = [];
   bool loading = true;
+  bool _remindersEnabled = true;
   _TaskFilter filter = _TaskFilter.all;
 
   @override
   void initState() { super.initState(); _reload(); }
 
   Future<void> _reload() async {
-    final data = await StudentTaskStore.load();
-    if (mounted) setState(() { tasks = data; loading = false; });
+    final results = await Future.wait<Object>([
+      StudentTaskStore.load(),
+      StudentTaskStore.remindersEnabled(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      tasks = results[0] as List<StudentTask>;
+      _remindersEnabled = results[1] as bool;
+      loading = false;
+    });
+  }
+
+  Future<void> _toggleReminders(bool enabled) async {
+    try {
+      await StudentTaskStore.setRemindersEnabled(enabled);
+      if (mounted) setState(() => _remindersEnabled = enabled);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось изменить напоминания: $error')),
+      );
+    }
   }
 
   Future<void> _edit([StudentTask? initial]) async {
@@ -228,7 +282,17 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
                   ]),
                 ]),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              Card(
+                child: SwitchListTile(
+                  secondary: const Icon(Icons.notifications_active_outlined),
+                  title: const Text('Напоминать о сроках'),
+                  subtitle: const Text('Операционная система покажет напоминание перед сдачей задания.'),
+                  value: _remindersEnabled,
+                  onChanged: _toggleReminders,
+                ),
+              ),
+              const SizedBox(height: 8),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
