@@ -581,6 +581,7 @@ String _relativeDue(DateTime due) {
   if (difference == 0) return 'сегодня';
   if (difference == 1) return 'завтра';
   if (difference == -1) return 'вчера';
-  if (difference > 1 && difference < 7) return 'через ' + difference.toString() + ' дн.';
+  if (difference > 1) return 'через ' + difference.toString() + ' дн.';
+  if (difference < -1) return 'просрочено на ' + (-difference).toString() + ' дн.';
   return '';
 }
