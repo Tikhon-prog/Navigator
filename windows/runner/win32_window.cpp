@@ -186,8 +186,8 @@ Win32Window::MessageHandler(HWND hwnd,
       const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
       const UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
       const int effective_dpi = dpi == 0 ? 96 : static_cast<int>(dpi);
-      limits->ptMinTrackSize.x = MulDiv(900, effective_dpi, 96);
-      limits->ptMinTrackSize.y = MulDiv(600, effective_dpi, 96);
+      limits->ptMinTrackSize.x = MulDiv(780, effective_dpi, 96);
+      limits->ptMinTrackSize.y = MulDiv(520, effective_dpi, 96);
       return 0;
     }
 
