@@ -1576,7 +1576,12 @@ class _AppShellState extends State<AppShell>{
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => StudentTasksPage(
-          onMenu: () => key.currentState?.openDrawer(),
+          onMenu: () {
+            Navigator.of(context).pop();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) key.currentState?.openDrawer();
+            });
+          },
         ),
       ),
     );
@@ -2048,7 +2053,7 @@ class _AppShellState extends State<AppShell>{
           'срок: ${task.dueAt.toLocal().toString().substring(0, 16)}; '
           'важность: ${task.priority}; задание: ${task.title}'
           '${task.description.isEmpty ? '' : '; подробности: ${task.description}'}'
-        ).join('\\n');
+        ).join('\n');
 
       case 'add_student_task':
         final title = arg('title');
@@ -2069,7 +2074,7 @@ class _AppShellState extends State<AppShell>{
             : rawKind.contains('project') || rawKind.contains('проект')
                 ? StudentTaskKind.project
                 : StudentTaskKind.homework;
-        final priority = (integer('priority') ?? 2).clamp(1, 3);
+        final priority = (integer('priority') ?? 2).clamp(1, 3).toInt();
         final now = DateTime.now();
         final task = StudentTask(
           id: now.microsecondsSinceEpoch.toString(),
