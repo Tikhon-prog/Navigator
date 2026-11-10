@@ -1769,6 +1769,29 @@ class _AppShellState extends State<AppShell>{
         if (room == null) return 'Такой точки нет в справочнике карты. Сначала найди её через search_school_map.';
         return '__OPEN_MAP__:${room.id}';
 
+      case 'set_favorite_location':
+        final locationId = arg('location_id');
+        final room = SchoolData.tryRoom(locationId);
+        if (room == null) return 'Не нашёл это помещение. Сначала найди его через поиск по карте.';
+        final rawFavorite = arg('favorite').toLowerCase();
+        final shouldFavorite = const {'true', 'yes', 'да', 'добавить', 'избранное'}.contains(rawFavorite);
+        final shouldRemove = const {'false', 'no', 'нет', 'убрать', 'удалить'}.contains(rawFavorite);
+        if (!shouldFavorite && !shouldRemove) {
+          return 'Не понял действие. Напиши «добавить» или «убрать».';
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final favoriteIds = (prefs.getStringList('pokolenie_favorite_locations_v1') ?? const <String>[]).toSet();
+        if (shouldFavorite) {
+          favoriteIds.add(room.id);
+        } else {
+          favoriteIds.remove(room.id);
+        }
+        await prefs.setStringList('pokolenie_favorite_locations_v1', favoriteIds.toList()..sort());
+        notifySchoolLocalDataChanged();
+        return shouldFavorite
+            ? '${SchoolData.title(room)} добавлено в избранное.'
+            : '${SchoolData.title(room)} убрано из избранного.';
+
       case 'set_math_lesson_name':
         await SchoolScheduleCatalog.load();
         final prefs = await SharedPreferences.getInstance();
