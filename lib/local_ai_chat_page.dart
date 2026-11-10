@@ -787,7 +787,31 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         lowerQuery.contains('как дойти') ||
         lowerQuery.contains('как попасть') ||
         lowerQuery.contains('доведи');
-    final offlineAnswer = asksForRoute ? null : _offlineRoomAnswer(text);
+    final asksForAction = asksForRoute ||
+        lowerQuery.contains('добавь') ||
+        lowerQuery.contains('добавить') ||
+        lowerQuery.contains('в избранное') ||
+        lowerQuery.contains('избранного') ||
+        lowerQuery.contains('убери') ||
+        lowerQuery.contains('убрать') ||
+        lowerQuery.contains('удали') ||
+        lowerQuery.contains('удалить') ||
+        lowerQuery.contains('сохрани') ||
+        lowerQuery.contains('сохранить') ||
+        lowerQuery.contains('измени') ||
+        lowerQuery.contains('изменить') ||
+        lowerQuery.contains('переименуй') ||
+        lowerQuery.contains('установи') ||
+        lowerQuery.contains('установить') ||
+        lowerQuery.contains('выбери') ||
+        lowerQuery.contains('выбрать') ||
+        lowerQuery.contains('отметь') ||
+        lowerQuery.contains('выполнено') ||
+        lowerQuery.contains('открой') ||
+        lowerQuery.contains('открыть') ||
+        lowerQuery.contains('запиши') ||
+        lowerQuery.contains('создай');
+    final offlineAnswer = asksForAction ? null : _offlineRoomAnswer(text);
     if (offlineAnswer != null) {
       setState(() {
         _lines.add(_ChatLine(false, offlineAnswer));
