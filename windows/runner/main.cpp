@@ -49,9 +49,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       static_cast<int>((work_area.bottom - work_area.top) / scale);
 
   const unsigned int width = static_cast<unsigned int>(
-      std::min(1280, std::max(900, work_width - 48)));
+      std::min(1280, std::max(780, work_width - 48)));
   const unsigned int height = static_cast<unsigned int>(
-      std::min(720, std::max(600, work_height - 64)));
+      std::min(720, std::max(520, work_height - 64)));
   const unsigned int x = static_cast<unsigned int>(
       std::max(0, (work_width - static_cast<int>(width)) / 2));
   const unsigned int y = static_cast<unsigned int>(
