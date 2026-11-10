@@ -2273,6 +2273,8 @@ class HomePage extends StatelessWidget {
                   _DashboardCard(icon: Icons.assignment_rounded, title: 'Домашние задания', subtitle: 'Дедлайны, контрольные и проекты', accent: const Color(0xFF3B82C4), onTap: onTasks),
                 ],
               ),
+              const SizedBox(height: 14),
+              UpcomingStudentTaskPreview(onOpen: onTasks),
               const SizedBox(height: 24),
               Card(
                 child: Padding(
