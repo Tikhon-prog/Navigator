@@ -156,13 +156,21 @@ class StudentTasksPage extends StatefulWidget {
 
 class _StudentTasksPageState extends State<StudentTasksPage> {
   List<StudentTask> tasks = [];
+  final TextEditingController _searchController = TextEditingController();
   bool loading = true;
   bool _remindersEnabled = true;
   String? _loadError;
+  String _query = '';
   _TaskFilter filter = _TaskFilter.all;
 
   @override
   void initState() { super.initState(); _reload(); }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _reload() async {
     if (mounted) setState(() => loading = true);
@@ -236,7 +244,14 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
+    final query = _query.trim().toLowerCase();
     final result = tasks.where((task) {
+      if (query.isNotEmpty &&
+          !task.title.toLowerCase().contains(query) &&
+          !task.subject.toLowerCase().contains(query) &&
+          !task.description.toLowerCase().contains(query)) {
+        return false;
+      }
       switch (filter) {
         case _TaskFilter.all: return true;
         case _TaskFilter.active: return !task.done;
@@ -334,6 +349,25 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
                   subtitle: const Text('Операционная система покажет напоминание перед сдачей задания.'),
                   value: _remindersEnabled,
                   onChanged: _toggleReminders,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _searchController,
+                onChanged: (value) => setState(() => _query = value),
+                decoration: InputDecoration(
+                  hintText: 'Поиск по заданию или предмету',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Очистить поиск',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                 ),
               ),
               const SizedBox(height: 8),
