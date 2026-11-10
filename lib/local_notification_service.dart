@@ -295,6 +295,7 @@ class LocalNotificationService {
 
     final now = tz.TZDateTime.now(tz.local);
     final nextIds = <String>[];
+    final usedIds = <int>{};
     for (final entry in entries) {
       if (entry.id.isEmpty || entry.title.trim().isEmpty) continue;
       final dueAt = tz.TZDateTime.from(entry.dueAt, tz.local);
@@ -314,7 +315,10 @@ class LocalNotificationService {
         hash ^= unit;
         hash = (hash * 16777619) & 0x7fffffff;
       }
-      final notificationId = 3000 + (hash % 1000000);
+      var notificationId = 3000 + (hash % 1000000);
+      while (!usedIds.add(notificationId)) {
+        notificationId++;
+      }
       final taskLabel = entry.subject.trim().isEmpty
           ? entry.title
           : '${entry.subject}: ${entry.title}';
