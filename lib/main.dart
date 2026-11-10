@@ -739,6 +739,7 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
     if (name.contains('столовая') ||
         name.contains('пищеблок') ||
         name.contains('библиотек') ||
+        name.contains('библиотеч') ||
         name.contains('терраса') ||
         name.contains('лекторий')) {
       return SchoolLocationCategory.common;
