@@ -2440,6 +2440,16 @@ class _MapPageState extends State<MapPage>{
       showFavoritesOnly = favorites;
     });
   }
+
+  int _countForCategory(SchoolLocationCategory? category) {
+    return SchoolData.locationsOnFloor(floor)
+        .where((room) => category == null || SchoolData.category(room) == category)
+        .length;
+  }
+
+  int get _favoriteCountOnFloor => SchoolData.locationsOnFloor(floor)
+      .where((room) => favoriteIds.contains(room.id))
+      .length;
   @override void dispose(){
     schoolLocalDataRevision.removeListener(_reloadPreferencesAfterAi);
     search.dispose();
@@ -2620,7 +2630,7 @@ class _MapPageState extends State<MapPage>{
                   Padding(
                     padding: const EdgeInsets.only(right: 7),
                     child: ChoiceChip(
-                      label: const Text('Все'),
+                      label: Text('Все (${_countForCategory(null)})'),
                       selected: activeCategory == null && !showFavoritesOnly,
                       onSelected: (_) => _selectCategory(null),
                     ),
@@ -2630,7 +2640,7 @@ class _MapPageState extends State<MapPage>{
                       padding: const EdgeInsets.only(right: 7),
                       child: ChoiceChip(
                         avatar: Icon(category.icon, size: 17),
-                        label: Text(category.label),
+                        label: Text('${category.label} (${_countForCategory(category)})'),
                         selected: activeCategory == category && !showFavoritesOnly,
                         onSelected: (_) => _selectCategory(category),
                       ),
@@ -2639,7 +2649,7 @@ class _MapPageState extends State<MapPage>{
                     padding: const EdgeInsets.only(right: 7),
                     child: FilterChip(
                       avatar: const Icon(Icons.star_rounded, size: 17),
-                      label: const Text('Избранное'),
+                      label: Text('Избранное ($_favoriteCountOnFloor)'),
                       selected: showFavoritesOnly,
                       onSelected: (value) => _selectCategory(null, favorites: value),
                     ),
