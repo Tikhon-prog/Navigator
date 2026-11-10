@@ -92,7 +92,9 @@ class StudentTaskStore {
     if (raw == null || raw.trim().isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
+      if (decoded is! List) {
+        throw const FormatException('Список заданий имеет неизвестный формат.');
+      }
       final tasks = decoded.whereType<Map>()
           .map((item) => StudentTask.fromJson(Map<String, dynamic>.from(item)))
           .where((task) => task.id.isNotEmpty && task.title.trim().isNotEmpty).toList();
@@ -102,8 +104,8 @@ class StudentTaskStore {
         return a.dueAt.compareTo(b.dueAt);
       });
       return tasks;
-    } catch (_) {
-      return [];
+    } catch (error) {
+      throw FormatException('Не удалось прочитать сохранённые задания: $error');
     }
   }
 
@@ -155,22 +157,33 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
   List<StudentTask> tasks = [];
   bool loading = true;
   bool _remindersEnabled = true;
+  String? _loadError;
   _TaskFilter filter = _TaskFilter.all;
 
   @override
   void initState() { super.initState(); _reload(); }
 
   Future<void> _reload() async {
-    final results = await Future.wait<Object>([
-      StudentTaskStore.load(),
-      StudentTaskStore.remindersEnabled(),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      tasks = results[0] as List<StudentTask>;
-      _remindersEnabled = results[1] as bool;
-      loading = false;
-    });
+    if (mounted) setState(() => loading = true);
+    try {
+      final results = await Future.wait<Object>([
+        StudentTaskStore.load(),
+        StudentTaskStore.remindersEnabled(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        tasks = results[0] as List<StudentTask>;
+        _remindersEnabled = results[1] as bool;
+        _loadError = null;
+        loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.toString();
+        loading = false;
+      });
+    }
   }
 
   Future<void> _toggleReminders(bool enabled) async {
@@ -260,7 +273,36 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 920),
-          child: loading ? const Center(child: CircularProgressIndicator()) : ListView(
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : _loadError != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.sync_problem_rounded, size: 44, color: scheme.error),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Не удалось прочитать задания',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Сохранённые данные не были перезаписаны. Проверь хранилище приложения и повтори чтение. Ошибка: $_loadError',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 14),
+                          FilledButton.icon(
+                            onPressed: _reload,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Повторить'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 100),
             children: [
               Container(
