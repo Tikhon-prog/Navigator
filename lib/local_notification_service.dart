@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -23,6 +24,10 @@ class LocalNotificationService {
   static const String schoolChannelId = 'pokolenie_school_alerts';
   static const String schoolChannelName = 'Школьные оповещения';
   static const String schoolChannelDescription = 'Общие, целевые и экстренные сообщения школы';
+  static const String tasksChannelId = 'pokolenie_student_tasks';
+  static const String tasksChannelName = 'Домашние задания';
+  static const String tasksChannelDescription = 'Напоминания о сроках домашних заданий, контрольных и проектов';
+  static const String _taskNotificationIdsKey = 'pokolenie_student_task_notification_ids_v1';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -76,6 +81,14 @@ class LocalNotificationService {
         schoolChannelName,
         description: schoolChannelDescription,
         importance: Importance.max,
+      ),
+    );
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        tasksChannelId,
+        tasksChannelName,
+        description: tasksChannelDescription,
+        importance: Importance.high,
       ),
     );
 
@@ -264,6 +277,76 @@ class LocalNotificationService {
         }
       }
     }
+  }
+
+  /// Schedule one operating-system reminder for each active student task.
+  /// IDs are saved so updates cancel only task reminders, not lessons, DOPs or
+  /// incoming school announcements.
+  Future<void> scheduleUpcomingStudentTasks({
+    required List<({String id, DateTime dueAt, String title, String subject})> entries,
+  }) async {
+    await initialize();
+    final prefs = await SharedPreferences.getInstance();
+    final previousIds = prefs.getStringList(_taskNotificationIdsKey) ?? const <String>[];
+    for (final rawId in previousIds) {
+      final id = int.tryParse(rawId);
+      if (id != null) await plugin.cancel(id);
+    }
+
+    final now = tz.TZDateTime.now(tz.local);
+    final nextIds = <String>[];
+    for (final entry in entries) {
+      if (entry.id.isEmpty || entry.title.trim().isEmpty) continue;
+      final dueAt = tz.TZDateTime.from(entry.dueAt, tz.local);
+      if (!dueAt.isAfter(now)) continue;
+
+      // Give a one-hour warning for planned work. Very short deadlines get
+      // a five-minute warning instead, provided that time is still ahead.
+      final preferred = dueAt.subtract(const Duration(hours: 1));
+      final fallback = dueAt.subtract(const Duration(minutes: 5));
+      final remindAt = preferred.isAfter(now) ? preferred : fallback;
+      if (!remindAt.isAfter(now)) continue;
+
+      // Stable FNV-1a ID in a dedicated range; the exact IDs are also persisted
+      // and cancelled on the next reschedule.
+      var hash = 2166136261;
+      for (final unit in entry.id.codeUnits) {
+        hash ^= unit;
+        hash = (hash * 16777619) & 0x7fffffff;
+      }
+      final notificationId = 3000 + (hash % 1000000);
+      final taskLabel = entry.subject.trim().isEmpty
+          ? entry.title
+          : '${entry.subject}: ${entry.title}';
+      final body = 'Срок сдачи: ${dueAt.toLocal().toString().substring(0, 16)}';
+
+      await _scheduleNotification(
+        id: notificationId,
+        title: 'Не забудь про задание',
+        body: '$taskLabel. $body',
+        scheduled: remindAt,
+        details: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            tasksChannelId,
+            tasksChannelName,
+            channelDescription: tasksChannelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+            category: AndroidNotificationCategory.reminder,
+            ticker: 'Поколение',
+            autoCancel: true,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+          windows: WindowsNotificationDetails(),
+        ),
+      );
+      nextIds.add(notificationId.toString());
+    }
+    await prefs.setStringList(_taskNotificationIdsKey, nextIds);
   }
 
   Future<void> scheduleUpcomingLessons({
