@@ -45,7 +45,7 @@ class StudentTask {
       description: (json['description'] ?? '').toString(),
       dueAt: DateTime.tryParse((json['due_at'] ?? '').toString())?.toLocal() ?? now.add(const Duration(days: 1)),
       kind: StudentTaskKind.values.firstWhere((item) => item.name == kindName, orElse: () => StudentTaskKind.homework),
-      priority: ((json['priority'] as num?)?.toInt() ?? 2).clamp(1, 3),
+      priority: ((json['priority'] as num?)?.toInt() ?? 2).clamp(1, 3).toInt(),
       done: json['done'] == true,
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString())?.toLocal() ?? now,
     );
