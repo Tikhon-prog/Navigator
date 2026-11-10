@@ -713,7 +713,7 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
         name.contains('медицинской физики') ||
         name.contains('генетики') ||
         name.contains('агротехнолог') ||
-        name.contains('био') ||
+        name.contains('биотехнолог') ||
         name.contains('точного земледелия')) {
       return SchoolLocationCategory.laboratories;
     }
@@ -1838,6 +1838,9 @@ class _AppShellState extends State<AppShell>{
         if (floor == null || floor < 1 || floor > 3) {
           return 'Этаж должен быть 1, 2 или 3.';
         }
+        if (locationId.isEmpty && floor != 1) {
+          return 'Главный вход находится на 1-м этаже. Чтобы начать со 2-го или 3-го, укажи конкретный кабинет или место.';
+        }
         if (locationId.isNotEmpty) {
           final room = SchoolData.tryRoom(locationId);
           if (room == null || room.floor != floor) {
@@ -2011,6 +2014,93 @@ class _AppShellState extends State<AppShell>{
           } catch (_) {}
         }
         return 'Локальный ДОП «$title» удалён.';
+
+      case 'get_student_tasks':
+        final filter = arg('filter').toLowerCase();
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final tomorrow = today.add(const Duration(days: 1));
+        final allTasks = await StudentTaskStore.load();
+        final matching = allTasks.where((task) {
+          switch (filter) {
+            case 'active':
+              return !task.done;
+            case 'today':
+              return !task.done &&
+                  !task.dueAt.isBefore(today) &&
+                  task.dueAt.isBefore(tomorrow);
+            case 'overdue':
+              return !task.done && task.dueAt.isBefore(now);
+            case 'completed':
+              return task.done;
+            default:
+              return true;
+          }
+        }).take(30).toList();
+        if (matching.isEmpty) {
+          return filter == 'overdue'
+              ? 'Просроченных заданий нет.'
+              : 'В выбранной категории заданий пока нет.';
+        }
+        return matching.map((task) =>
+          'ID: ${task.id}; ${task.done ? 'выполнено' : 'активно'}; '
+          '${task.kind.label}; предмет: ${task.subject.isEmpty ? 'не указан' : task.subject}; '
+          'срок: ${task.dueAt.toLocal().toString().substring(0, 16)}; '
+          'важность: ${task.priority}; задание: ${task.title}'
+          '${task.description.isEmpty ? '' : '; подробности: ${task.description}'}'
+        ).join('\\n');
+
+      case 'add_student_task':
+        final title = arg('title');
+        final subject = arg('subject');
+        final dueText = arg('due_at');
+        final description = arg('description');
+        if (title.isEmpty) return 'Укажи, что нужно сделать.';
+        if (title.length > 180 || description.length > 3000) {
+          return 'Слишком длинное задание или описание.';
+        }
+        final dueAt = DateTime.tryParse(dueText);
+        if (dueAt == null) {
+          return 'Не удалось разобрать срок сдачи. Уточни дату и время в формате ISO 8601.';
+        }
+        final rawKind = arg('kind').toLowerCase();
+        final kind = rawKind.contains('test') || rawKind.contains('контроль')
+            ? StudentTaskKind.test
+            : rawKind.contains('project') || rawKind.contains('проект')
+                ? StudentTaskKind.project
+                : StudentTaskKind.homework;
+        final priority = (integer('priority') ?? 2).clamp(1, 3);
+        final now = DateTime.now();
+        final task = StudentTask(
+          id: now.microsecondsSinceEpoch.toString(),
+          title: title,
+          subject: subject,
+          description: description,
+          dueAt: dueAt.isUtc ? dueAt.toLocal() : dueAt,
+          kind: kind,
+          priority: priority,
+          done: false,
+          createdAt: now,
+        );
+        await StudentTaskStore.upsert(task);
+        notifySchoolLocalDataChanged();
+        return 'Задание «$title» сохранено локально. Срок: ${task.dueAt.toLocal().toString().substring(0, 16)}. ID: ${task.id}.';
+
+      case 'complete_student_task':
+        final taskId = arg('id');
+        if (taskId.isEmpty) return 'Не указан ID задания.';
+        final completed = await StudentTaskStore.setCompleted(taskId, true);
+        if (!completed) return 'Задание с таким ID не найдено.';
+        notifySchoolLocalDataChanged();
+        return 'Задание отмечено выполненным.';
+
+      case 'delete_student_task':
+        final taskId = arg('id');
+        if (taskId.isEmpty) return 'Не указан ID задания.';
+        final deleted = await StudentTaskStore.delete(taskId);
+        if (!deleted) return 'Задание с таким ID не найдено.';
+        notifySchoolLocalDataChanged();
+        return 'Задание удалено с этого устройства.';
 
       default:
         return 'Неизвестное действие приложения: $action.';
@@ -2243,14 +2333,20 @@ class _StartDialogState extends State<_StartDialog> {
   late String choice = widget.id ?? '__entrance__';
   @override Widget build(BuildContext context) {
     final rooms = SchoolData.locations.where((r) => r.floor == floor).toList();
-    final values = <String>['__entrance__', ...rooms.map((r) => r.id)];
-    if (!values.contains(choice)) choice = '__entrance__';
+    final values = <String>[
+      if (floor == 1) '__entrance__',
+      ...rooms.map((r) => r.id),
+    ];
+    if (!values.contains(choice)) choice = values.first;
     return AlertDialog(
       title: const Text('Начало маршрута'),
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
         SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v){setState((){floor=v.first;choice='__entrance__';});}),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')), ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text(SchoolData.isPlace(r) ? SchoolData.title(r) : '${r.id} — ${r.name}')))], onChanged:(v)=>setState(()=>choice=v??'__entrance__')),
+        DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [
+          if (floor == 1) const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')),
+          ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text(SchoolData.isPlace(r) ? SchoolData.title(r) : '${r.id} — ${r.name}'))),
+        ], onChanged:(v)=>setState(()=>choice=v??values.first)),
       ])),
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:()=>Navigator.pop(context,_StartChoice(floor:floor,id:choice=='__entrance__'?null:choice)),child:const Text('Сохранить'))],
     );
