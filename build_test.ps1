@@ -86,14 +86,24 @@ if (Test-Path -LiteralPath $WindowsOut) {
 }
 New-Item -ItemType Directory -Force -Path $WindowsOut | Out-Null
 Copy-Item -Path (Join-Path $WindowsBuild '*') -Destination $WindowsOut -Recurse -Force
-$Zip = Join-Path $Dist 'Pokolenie-Windows-Debug.zip'
-if (Test-Path -LiteralPath $Zip) { Remove-Item -LiteralPath $Zip -Force }
-Compress-Archive -Path (Join-Path $WindowsOut '*') -DestinationPath $Zip -CompressionLevel Optimal
+$RequiredWindowsFiles = @(
+    (Join-Path $WindowsOut 'pokolenie.exe'),
+    (Join-Path $WindowsOut 'flutter_windows.dll'),
+    (Join-Path $WindowsOut 'data\flutter_assets\AssetManifest.bin')
+)
+foreach ($RequiredFile in $RequiredWindowsFiles) {
+    if (-not (Test-Path -LiteralPath $RequiredFile)) {
+        throw ('Required Windows runtime file is missing: ' + $RequiredFile)
+    }
+}
+$WindowsExeDestination = Join-Path $WindowsOut 'pokolenie.exe'
+$WindowsExeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $WindowsExeDestination).Hash.ToLowerInvariant()
+Set-Content -LiteralPath "$WindowsExeDestination.sha256" -Value "$WindowsExeHash  pokolenie.exe" -Encoding ascii
 
 Write-Host ''
 Write-Host 'TEST BUILDS SUCCEEDED' -ForegroundColor Green
 Write-Host ('Android APK: ' + $ApkDestination) -ForegroundColor Green
-Write-Host ('Windows EXE: ' + (Join-Path $WindowsOut 'pokolenie.exe')) -ForegroundColor Green
-Write-Host ('Windows package: ' + $Zip) -ForegroundColor Green
-Write-Host 'The Windows EXE must stay with its DLL files and data directory.'
+Write-Host ('Windows EXE: ' + $WindowsExeDestination) -ForegroundColor Green
+Write-Host ('Windows EXE SHA-256: ' + $WindowsExeHash) -ForegroundColor Green
+Write-Host 'Keep the Windows EXE together with flutter_windows.dll and the data directory.'
 Write-Host 'School SSO, server accounts, remote announcements and cloud push need separately configured school infrastructure.';
