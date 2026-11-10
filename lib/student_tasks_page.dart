@@ -660,7 +660,6 @@ class _UpcomingStudentTaskPreviewState extends State<UpcomingStudentTaskPreview>
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final dueDay = DateTime(local.year, local.month, local.day);
-    final days = dueDay.difference(today).inDays;
     final label = days == 0
         ? 'Сегодня'
         : days == 1
