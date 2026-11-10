@@ -100,8 +100,9 @@ class StudentTaskStore {
           .where((task) => task.id.isNotEmpty && task.title.trim().isNotEmpty).toList();
       tasks.sort((a, b) {
         if (a.done != b.done) return a.done ? 1 : -1;
-        if (a.priority != b.priority) return a.priority.compareTo(b.priority);
-        return a.dueAt.compareTo(b.dueAt);
+        final deadlineOrder = a.dueAt.compareTo(b.dueAt);
+        if (deadlineOrder != 0) return deadlineOrder;
+        return a.priority.compareTo(b.priority);
       });
       return tasks;
     } catch (error) {
@@ -246,8 +247,9 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
     }).toList();
     result.sort((a, b) {
       if (a.done != b.done) return a.done ? 1 : -1;
-      if (a.priority != b.priority) return a.priority.compareTo(b.priority);
-      return a.dueAt.compareTo(b.dueAt);
+      final deadlineOrder = a.dueAt.compareTo(b.dueAt);
+      if (deadlineOrder != 0) return deadlineOrder;
+      return a.priority.compareTo(b.priority);
     });
     return result;
   }
