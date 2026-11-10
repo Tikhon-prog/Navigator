@@ -121,6 +121,22 @@ class RoomInfo {
   const RoomInfo(this.id, this.floor, this.name, this.point, this.corridor);
 }
 
+/// Functional groups for the school map. Categories are derived from the
+/// verified room catalog; they do not alter room IDs or route graph anchors.
+enum SchoolLocationCategory {
+  classrooms('Учебные', Icons.school_rounded),
+  laboratories('Лаборатории и IT', Icons.science_rounded),
+  workshops('Мастерские и творчество', Icons.palette_rounded),
+  sports('Спорт и здоровье', Icons.sports_basketball_rounded),
+  administration('Администрация', Icons.badge_rounded),
+  common('Общие пространства', Icons.meeting_room_rounded);
+
+  const SchoolLocationCategory(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+
 
 
 // Специализированные пространства со схем этажей. Номер кабинета не требуется:
@@ -662,8 +678,78 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
   static List<RoomInfo> roomsOnFloor(int floor) => rooms.where((r) => r.floor == floor).toList();
   static List<RoomInfo> locationsOnFloor(int floor) => locations.where((r) => r.floor == floor).toList();
   static bool isPlace(RoomInfo r) => r.id.startsWith('place_');
+
+  static SchoolLocationCategory category(RoomInfo room) {
+    final name = room.name.toLowerCase();
+    final id = room.id.toLowerCase();
+
+    if (name.contains('административ') ||
+        name.contains('директор') ||
+        name.contains('учительская') ||
+        name.contains('приёмная') ||
+        name.contains('приемная')) {
+      return SchoolLocationCategory.administration;
+    }
+
+    if (name.contains('бассейн') ||
+        name.contains('спортив') ||
+        name.contains('тренажёр') ||
+        name.contains('тренажер') ||
+        name.contains('тренерская') ||
+        name.contains('медицинский пункт') ||
+        name.contains('психологической разгрузки')) {
+      return SchoolLocationCategory.sports;
+    }
+
+    if (name.contains('лаборатор') ||
+        name.contains('робототех') ||
+        name.contains('беспилот') ||
+        name.contains('искусственного интеллекта') ||
+        name.contains('киберспорт') ||
+        name.contains('инженерный цех') ||
+        name.contains('дрон-рейсинг') ||
+        name.contains('космических технологий') ||
+        name.contains('медицинской физики') ||
+        name.contains('генетики') ||
+        name.contains('агротехнолог') ||
+        name.contains('био') ||
+        name.contains('точного земледелия')) {
+      return SchoolLocationCategory.laboratories;
+    }
+
+    if (name.contains('мастерская') ||
+        name.contains('студия') ||
+        name.contains('сцена') ||
+        name.contains('гример') ||
+        name.contains('гримёр') ||
+        name.contains('телестудия') ||
+        name.contains('издательский') ||
+        name.contains('музей') ||
+        name.contains('кулинария') ||
+        name.contains('столярная') ||
+        name.contains('слесарная') ||
+        name.contains('инструментальная') ||
+        name.contains('центр детских инициатив') ||
+        name.contains('хореограф') ||
+        name.contains('актовый зал')) {
+      return SchoolLocationCategory.workshops;
+    }
+
+    if (name.contains('столовая') ||
+        name.contains('пищеблок') ||
+        name.contains('библиотек') ||
+        name.contains('терраса') ||
+        name.contains('лекторий')) {
+      return SchoolLocationCategory.common;
+    }
+
+    if (id.startsWith('place_')) return SchoolLocationCategory.common;
+    return SchoolLocationCategory.classrooms;
+  }
+
   static String title(RoomInfo r) => isPlace(r) ? r.name : 'Кабинет ${r.id}';
-  static String typeLabel(RoomInfo r) => isPlace(r) ? 'Место' : 'Кабинет';
+  static String typeLabel(RoomInfo r) =>
+      isPlace(r) ? category(r).label : 'Кабинет';
   static Offset point(RoomInfo r) => DoorPoints.of(r.id, r.point);
 }
 
@@ -2162,7 +2248,16 @@ class MapPage extends StatefulWidget {
   @override State<MapPage> createState()=>_MapPageState();
 }
 class _MapPageState extends State<MapPage>{
-  int floor=1; String query=''; String? selected; int startFloor=1; String? startId; final search=TextEditingController();
+  static const _favoritesKey = 'pokolenie_favorite_locations_v1';
+  int floor=1;
+  String query='';
+  String? selected;
+  int startFloor=1;
+  String? startId;
+  SchoolLocationCategory? activeCategory;
+  bool showFavoritesOnly = false;
+  Set<String> favoriteIds = {};
+  final search=TextEditingController();
   @override void initState(){
     super.initState();
     selected=widget.initialRoom;
@@ -2184,13 +2279,43 @@ class _MapPageState extends State<MapPage>{
       }
     }
   }
-  Future<void> _load()async{final p=await SharedPreferences.getInstance();startFloor=p.getInt('map_start_floor')??1;startId=p.getString('map_start_location');if(mounted)setState((){});}
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    startFloor = prefs.getInt('map_start_floor') ?? 1;
+    startId = prefs.getString('map_start_location');
+    favoriteIds = (prefs.getStringList(_favoritesKey) ?? const <String>[]).toSet();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleFavorite(RoomInfo room) async {
+    final next = Set<String>.from(favoriteIds);
+    if (!next.add(room.id)) next.remove(room.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_favoritesKey, next.toList()..sort());
+    if (mounted) setState(() => favoriteIds = next);
+  }
+
+  void _selectCategory(SchoolLocationCategory? category, {bool favorites = false}) {
+    setState(() {
+      activeCategory = category;
+      showFavoritesOnly = favorites;
+    });
+  }
   @override void dispose(){
     schoolLocalDataRevision.removeListener(_reloadPreferencesAfterAi);
     search.dispose();
     super.dispose();
   }
-  List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((r) => query.isEmpty || r.id.toLowerCase().contains(query.toLowerCase()) || SchoolData.title(r).toLowerCase().contains(query.toLowerCase())).toList();
+  List<RoomInfo> get rooms => SchoolData.locationsOnFloor(floor).where((room) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final matchesQuery = normalizedQuery.isEmpty ||
+        room.id.toLowerCase().contains(normalizedQuery) ||
+        SchoolData.title(room).toLowerCase().contains(normalizedQuery);
+    final matchesCategory = activeCategory == null ||
+        SchoolData.category(room) == activeCategory;
+    final matchesFavorites = !showFavoritesOnly || favoriteIds.contains(room.id);
+    return matchesQuery && matchesCategory && matchesFavorites;
+  }).toList();
   Future<void> _start() async {
     final choice = await showDialog<_StartChoice>(
       context: context,
@@ -2267,9 +2392,18 @@ class _MapPageState extends State<MapPage>{
               child: Column(children: [
                 Icon(Icons.search_off_rounded, size: 34, color: scheme.onSurfaceVariant),
                 const SizedBox(height: 8),
-                const Text('Ничего не найдено', style: TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  showFavoritesOnly ? 'Пока нет избранных мест' : 'Ничего не найдено',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 4),
-                Text('Попробуй другой номер или название.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+                Text(
+                  showFavoritesOnly
+                      ? 'Отметь кабинет звёздочкой, чтобы быстро находить его здесь.'
+                      : 'Попробуй другой запрос или категорию.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
               ]),
             )
           else
@@ -2281,8 +2415,31 @@ class _MapPageState extends State<MapPage>{
                   dense: true,
                   leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(13)), child: Icon(SchoolData.isPlace(r) ? Icons.place_rounded : Icons.meeting_room_rounded, color: scheme.primary)),
                   title: Text(SchoolData.title(r), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                  subtitle: Text(SchoolData.isPlace(r) ? 'Специальное место' : 'Кабинет ${r.id}', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-                  trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                  subtitle: Text(
+                    '${SchoolData.category(r).label} · этаж ${r.floor}',
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: favoriteIds.contains(r.id)
+                            ? 'Убрать из избранного'
+                            : 'Добавить в избранное',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _toggleFavorite(r),
+                        icon: Icon(
+                          favoriteIds.contains(r.id)
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: favoriteIds.contains(r.id)
+                              ? scheme.tertiary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                    ],
+                  ),
                   onTap: () => _open(r),
                 ),
               ),
@@ -2314,6 +2471,42 @@ class _MapPageState extends State<MapPage>{
                   onSelectionChanged: (v) => setState(() => floor = v.first),
                 ),
               ]),
+            ),
+            SizedBox(
+              height: 46,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 7),
+                    child: ChoiceChip(
+                      label: const Text('Все'),
+                      selected: activeCategory == null && !showFavoritesOnly,
+                      onSelected: (_) => _selectCategory(null),
+                    ),
+                  ),
+                  for (final category in SchoolLocationCategory.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: ChoiceChip(
+                        avatar: Icon(category.icon, size: 17),
+                        label: Text(category.label),
+                        selected: activeCategory == category && !showFavoritesOnly,
+                        onSelected: (_) => _selectCategory(category),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 7),
+                    child: FilterChip(
+                      avatar: const Icon(Icons.star_rounded, size: 17),
+                      label: const Text('Избранное'),
+                      selected: showFavoritesOnly,
+                      onSelected: (value) => _selectCategory(null, favorites: value),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: wideScreen
