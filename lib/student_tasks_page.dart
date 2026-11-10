@@ -55,6 +55,7 @@ class StudentTask {
 }
 
 class StudentTaskStore {
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static const storageKey = 'pokolenie_student_tasks_v1';
   static const remindersKey = 'pokolenie_student_task_reminders_enabled';
 
@@ -114,6 +115,7 @@ class StudentTaskStore {
     final prefs = await SharedPreferences.getInstance();
     final ok = await prefs.setString(storageKey, jsonEncode(tasks.map((task) => task.toJson()).toList()));
     if (!ok) throw StateError('Не удалось сохранить список заданий.');
+    revision.value++;
     if (prefs.getBool(remindersKey) ?? true) {
       await _scheduleReminders(tasks);
     }
@@ -620,4 +622,143 @@ String _relativeDue(DateTime due) {
   if (difference > 1) return 'через ' + difference.toString() + ' дн.';
   if (difference < -1) return 'просрочено на ' + (-difference).toString() + ' дн.';
   return '';
+}
+
+class UpcomingStudentTaskPreview extends StatefulWidget {
+  const UpcomingStudentTaskPreview({super.key, required this.onOpen});
+  final VoidCallback onOpen;
+
+  @override
+  State<UpcomingStudentTaskPreview> createState() => _UpcomingStudentTaskPreviewState();
+}
+
+class _UpcomingStudentTaskPreviewState extends State<UpcomingStudentTaskPreview> {
+  late Future<List<StudentTask>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = StudentTaskStore.load();
+    StudentTaskStore.revision.addListener(_reload);
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() => _future = StudentTaskStore.load());
+  }
+
+  @override
+  void dispose() {
+    StudentTaskStore.revision.removeListener(_reload);
+    super.dispose();
+  }
+
+  String _dueText(DateTime due) {
+    final local = due.toLocal();
+    final date = '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}';
+    final time = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(local.year, local.month, local.day);
+    final days = dueDay.difference(today).inDays;
+    final label = days == 0
+        ? 'Сегодня'
+        : days == 1
+            ? 'Завтра'
+            : days == -1
+                ? 'Вчера'
+                : date;
+    return '$label в $time';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return FutureBuilder<List<StudentTask>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final task = snapshot.data
+            ?.where((item) => !item.done)
+            .toList()
+          ?..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+        final next = task == null || task.isEmpty ? null : task.first;
+        final overdue = next != null && next.dueAt.isBefore(DateTime.now());
+        final accent = overdue ? scheme.error : scheme.primary;
+
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onOpen,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      overdue ? Icons.warning_amber_rounded : Icons.event_note_rounded,
+                      color: accent,
+                    ),
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Ближайшее задание',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 4),
+                        if (snapshot.connectionState == ConnectionState.waiting)
+                          Text('Загружаю…', style: TextStyle(color: scheme.onSurfaceVariant))
+                        else if (snapshot.hasError)
+                          Text(
+                            'Не удалось прочитать список. Нажми, чтобы открыть задания.',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          )
+                        else if (next == null)
+                          Text(
+                            'Активных заданий пока нет',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          )
+                        else ...[
+                          Text(
+                            next.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              if (next.subject.isNotEmpty) next.subject,
+                              _dueText(next.dueAt),
+                              if (overdue) 'Просрочено',
+                            ].join(' · '),
+                            style: TextStyle(
+                              color: overdue ? scheme.error : scheme.onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
