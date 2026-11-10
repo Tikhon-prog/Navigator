@@ -16,6 +16,7 @@ void main() {
     String title = 'Упражнения 12–15',
     bool done = false,
     int priority = 2,
+    DateTime? dueAt,
   }) {
     final now = DateTime(2026, 11, 10, 12);
     return StudentTask(
@@ -23,7 +24,7 @@ void main() {
       title: title,
       subject: 'Алгебра',
       description: 'Страница 42',
-      dueAt: DateTime(2026, 11, 12, 18),
+      dueAt: dueAt ?? DateTime(2026, 11, 12, 18),
       kind: StudentTaskKind.homework,
       priority: priority,
       done: done,
@@ -72,6 +73,25 @@ void main() {
 
     final loaded = await StudentTaskStore.load();
     expect(loaded.map((task) => task.id).toList(), ['active', 'done']);
+  });
+
+  test('nearest deadline is listed before a more urgent later task', () async {
+    await StudentTaskStore.upsert(buildTask(
+      id: 'later-urgent',
+      priority: 1,
+      dueAt: DateTime(2026, 11, 20, 18),
+    ));
+    await StudentTaskStore.upsert(buildTask(
+      id: 'tomorrow-normal',
+      priority: 2,
+      dueAt: DateTime(2026, 11, 11, 18),
+    ));
+
+    final loaded = await StudentTaskStore.load();
+    expect(
+      loaded.map((task) => task.id).toList(),
+      ['tomorrow-normal', 'later-urgent'],
+    );
   });
 
   test('missing task updates return false', () async {
