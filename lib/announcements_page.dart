@@ -85,7 +85,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
   List<SchoolAnnouncement> _items = [];
   bool _loading = true;
   bool _refreshing = false;
-  bool _serverConfigured = false;
   bool _connectionFailed = false;
   String _classId = '';
 
@@ -95,7 +94,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     _load();
   }
 
-  Future<void> _load({bool manual = false}) async {
+  Future<void> _load() async {
     if (_refreshing) return;
     setState(() {
       _loading = _items.isEmpty;
@@ -159,7 +158,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     if (!enabled || base.isEmpty) {
       if (mounted) {
         setState(() {
-          _serverConfigured = false;
           _loading = false;
           _refreshing = false;
         });
@@ -177,7 +175,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     if (!isSecureApiBaseUrl(base)) {
       if (mounted) {
         setState(() {
-          _serverConfigured = false;
           _connectionFailed = true;
           _loading = false;
           _refreshing = false;
@@ -272,7 +269,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
       if (mounted) {
         setState(() {
           _items = parsed;
-          _serverConfigured = true;
           _connectionFailed = false;
           _loading = false;
           _refreshing = false;
@@ -281,7 +277,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _serverConfigured = false;
           _connectionFailed = true;
           _loading = false;
           _refreshing = false;
@@ -342,7 +337,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
         actions: [
           IconButton(
             tooltip: 'Обновить',
-            onPressed: _refreshing ? null : () => _load(manual: true),
+            onPressed: _refreshing ? null : () => _load(),
             icon: _refreshing
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.refresh_rounded),
@@ -429,7 +424,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                             ),
                             const SizedBox(height: 14),
                             OutlinedButton.icon(
-                              onPressed: _refreshing ? null : () => _load(manual: true),
+                              onPressed: _refreshing ? null : () => _load(),
                               icon: const Icon(Icons.refresh_rounded),
                               label: const Text('Повторить'),
                             ),
