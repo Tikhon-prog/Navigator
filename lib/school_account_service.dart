@@ -319,7 +319,12 @@ class SchoolAccountService {
     return true;
   }
 
-  Future<void> _registerToken(String baseUrl, String accessToken, String token, String platform) async {
+  Future<void> _registerToken(
+    String baseUrl,
+    String accessToken,
+    String token,
+    String platform,
+  ) async {
     await http.post(
       _endpoint(baseUrl, 'devices/register'),
       headers: {'Accept': 'application/json', 'Content-Type': 'application/json',

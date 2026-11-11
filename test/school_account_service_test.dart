@@ -39,7 +39,11 @@ void main() {
     });
 
     test('does not attempt FCM on unsupported native desktop platforms', () {
-      for (final platform in [TargetPlatform.windows, TargetPlatform.linux, TargetPlatform.fuchsia]) {
+      for (final platform in [
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+        TargetPlatform.fuchsia,
+      ]) {
         expect(
           SchoolAccountService.resolveDevicePlatform(
             isWeb: false,
