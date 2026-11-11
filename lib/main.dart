@@ -2257,7 +2257,7 @@ class _AnimatedIndexedStack extends StatelessWidget {
                   curve: Curves.easeInOutCubic,
                   child: AnimatedSlide(
                     offset: i == index || reduceMotion ? Offset.zero : const Offset(.018, 0),
-                    duration: const Duration(milliseconds: 280),
+                    duration: duration,
                     curve: Curves.easeOutCubic,
                     child: TickerMode(
                       enabled: i == index,
