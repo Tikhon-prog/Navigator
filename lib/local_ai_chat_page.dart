@@ -464,7 +464,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           builder: (dialogContext) => AlertDialog(
             title: const Text('Подтвердить удаление'),
             content: Text(
-              '$description\\n\\nЭто действие нельзя автоматически отменить.',
+              '$description\n\nЭто действие нельзя автоматически отменить.',
             ),
             actions: [
               TextButton(
