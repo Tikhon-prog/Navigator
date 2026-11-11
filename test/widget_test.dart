@@ -10,4 +10,17 @@ void main() {
     await tester.pump();
     expect(find.byType(MaterialApp), findsOneWidget);
   });
+  testWidgets('About page explains who the app is for', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: AboutPage()),
+    );
+
+    expect(
+      find.text('Приложение создано для учеников и учителей школы «Поколение».'),
+      findsOneWidget,
+    );
+    expect(find.text('Навигация по школе'), findsOneWidget);
+    expect(find.text('Школьная жизнь'), findsOneWidget);
+  });
+
 }
