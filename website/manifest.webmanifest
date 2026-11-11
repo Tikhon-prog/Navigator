@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Поколение — школьный помощник",
+  "short_name": "Поколение",
+  "description": "Школьный помощник: расписание, навигация и дополнительные занятия.",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
+  "background_color": "#101827",
+  "theme_color": "#101827",
+  "icons": [
+    {"src": "assets/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any"}
+  ]
+}
