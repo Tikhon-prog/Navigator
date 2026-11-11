@@ -2209,6 +2209,7 @@ class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (MediaQuery.of(context).disableAnimations) return child;
     final curved = CurvedAnimation(
       parent: animation,
       curve: Curves.easeOutCubic,
@@ -2237,6 +2238,10 @@ class _AnimatedIndexedStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration = reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 280);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -2248,10 +2253,10 @@ class _AnimatedIndexedStack extends StatelessWidget {
                 excluding: i != index,
                 child: AnimatedOpacity(
                   opacity: i == index ? 1 : 0,
-                  duration: const Duration(milliseconds: 280),
+                  duration: duration,
                   curve: Curves.easeInOutCubic,
                   child: AnimatedSlide(
-                    offset: i == index ? Offset.zero : const Offset(.018, 0),
+                    offset: i == index || reduceMotion ? Offset.zero : const Offset(.018, 0),
                     duration: const Duration(milliseconds: 280),
                     curve: Curves.easeOutCubic,
                     child: TickerMode(
