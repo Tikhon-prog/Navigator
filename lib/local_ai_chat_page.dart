@@ -260,8 +260,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           );
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
-          'Сервер модели вернул HTTP ${response.statusCode}.',
-          uri: response.uri,
+          'Сервер модели вернул HTTP ${response.statusCode} для $_modelUrl.',
         );
       }
 
