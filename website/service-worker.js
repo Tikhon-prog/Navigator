@@ -24,7 +24,7 @@ self.addEventListener("fetch", function (event) {
   const url = new URL(req.url);
   const scope = new URL(self.registration.scope);
   if (url.origin !== scope.origin ||
-      /(^|\\/)api(?:\\/|$)/.test(url.pathname) ||
+      url.pathname.split("/").indexOf("api") !== -1 ||
       req.headers.has("Authorization")) return;
   if (req.mode === "navigate") {
     event.respondWith(fetch(req).then(function (response) {
