@@ -26,7 +26,11 @@ class SchoolAccountService {
     bool? isWeb,
     TargetPlatform? platform,
   }) {
-    if (isWeb ?? kIsWeb) return 'web';
+    if (isWeb ?? kIsWeb) {
+      // Web push needs a configured VAPID key and Firebase messaging service worker.
+      // Neither is part of the current web client configuration.
+      return null;
+    }
     switch (platform ?? defaultTargetPlatform) {
       case TargetPlatform.android:
         return 'android';

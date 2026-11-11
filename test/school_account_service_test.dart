@@ -28,13 +28,13 @@ void main() {
       );
     });
 
-    test('identifies web independently of the host platform', () {
+    test('keeps web push disabled until VAPID and messaging worker are configured', () {
       expect(
         SchoolAccountService.resolveDevicePlatform(
           isWeb: true,
           platform: TargetPlatform.android,
         ),
-        'web',
+        isNull,
       );
     });
 
