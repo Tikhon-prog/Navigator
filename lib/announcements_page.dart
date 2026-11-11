@@ -87,7 +87,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
   bool _refreshing = false;
   bool _serverConfigured = false;
   bool _connectionFailed = false;
-  String _status = 'Проверяю подключение…';
   String _classId = '';
 
   @override
@@ -101,7 +100,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     setState(() {
       _loading = _items.isEmpty;
       _refreshing = true;
-      _status = manual ? 'Обновляю объявления…' : 'Проверяю подключение…';
     });
 
     final prefs = await SharedPreferences.getInstance();
@@ -164,9 +162,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           _serverConfigured = false;
           _loading = false;
           _refreshing = false;
-          _status = _items.isEmpty
-              ? 'Сервер ещё не настроен. Карта и расписание по-прежнему работают офлайн.'
-              : 'Показана сохранённая копия. Для обновления настрой сервер в «Кабинете школы».';
         });
       }
       return;
@@ -176,7 +171,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
     if (_items.isNotEmpty && mounted) {
       setState(() {
         _loading = false;
-        _status = 'Сохранённая копия • проверяю обновления…';
       });
     }
 
@@ -187,7 +181,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           _connectionFailed = true;
           _loading = false;
           _refreshing = false;
-          _status = 'Адрес сервера должен использовать HTTPS без логина, пароля и параметров.';
         });
       }
       return;
@@ -283,7 +276,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           _connectionFailed = false;
           _loading = false;
           _refreshing = false;
-          _status = 'Обновлено с сервера • ${parsed.length}';
         });
       }
     } catch (_) {
@@ -293,9 +285,6 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           _connectionFailed = true;
           _loading = false;
           _refreshing = false;
-          _status = _items.isEmpty
-              ? 'Не удалось подключиться. Проверь адрес API и доступность школьной сети.'
-              : 'Сервер недоступен. Показана последняя сохранённая копия.';
         });
       }
     }
@@ -369,56 +358,73 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [scheme.primaryContainer, scheme.surfaceContainerHigh],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 8, 4, 18),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withValues(alpha: .11),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              Icons.campaign_rounded,
+                              color: scheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Новости школы',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          if (_classId.isNotEmpty)
+                            Text(
+                              _classId,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                        ],
                       ),
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
-                          child: Icon(Icons.campaign_rounded, color: scheme.primary, size: 26),
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('Новости школы', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                          const SizedBox(height: 5),
-                          Text(_status, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4, fontSize: 12)),
-                          if (_classId.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text('Класс: $_classId', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
-                          ],
-                        ])),
-                      ]),
                     ),
-                    const SizedBox(height: 16),
                     if (_items.isEmpty)
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(26),
                           child: Column(children: [
-                            Icon(_serverConfigured ? Icons.cloud_off_rounded : Icons.campaign_outlined, size: 44, color: scheme.onSurfaceVariant),
+                            Icon(
+                              _connectionFailed ? Icons.refresh_rounded : Icons.campaign_outlined,
+                              size: 42,
+                              color: scheme.onSurfaceVariant,
+                            ),
                             const SizedBox(height: 12),
                             Text(
-                              _connectionFailed ? 'Не удалось загрузить объявления' : _serverConfigured ? 'Объявлений пока нет' : 'Нет подключённого источника',
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                              _connectionFailed
+                                  ? 'Не удалось обновить объявления'
+                                  : 'Объявления появятся здесь',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 8),
                             Text(
                               _connectionFailed
-                                  ? 'Проверь адрес API и подключение к школьной сети, затем нажми «Повторить».'
-                                  : _serverConfigured
-                                      ? 'Когда школа опубликует объявление, оно появится здесь.'
-                                      : 'В «Настройки → Кабинет школы → Синхронизация» можно указать адрес API. Без сервера Поколение продолжит работать офлайн.',
-                              style: TextStyle(color: scheme.onSurfaceVariant, height: 1.45),
+                                  ? 'Попробуйте обновить позже.'
+                                  : 'Когда школа опубликует объявление, оно появится здесь.',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.45,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 14),
