@@ -9,6 +9,10 @@ if [[ ! -x "$ANDROID_HOME/platform-tools/adb" ]]; then
   exit 1
 fi
 
+if [[ ! -s "android/key.properties" ]]; then
+  echo "WARNING: Android release APK will use the local debug key. Testing only; configure a dedicated persistent release key before distribution." >&2
+fi
+
 flutter pub get
 
 if [[ -n "$POKOLENIE_API_BASE_URL" ]]; then
