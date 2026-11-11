@@ -261,7 +261,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Сервер модели вернул HTTP ${response.statusCode}.',
-          response.uri,
+          uri: response.uri,
         );
       }
 
@@ -929,8 +929,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         options: const LLMChatOptions(toolAttempts: 4),
       )) {
         final message = chunk.message;
-        if (message?.rawContent.isNotEmpty == true) {
-          rawAssistantTurn = message!.rawContent;
+        final rawContent = message?.rawContent;
+        if (rawContent != null && rawContent.isNotEmpty) {
+          rawAssistantTurn = rawContent;
         }
         final part = message?.content ?? '';
         if (part.isNotEmpty && mounted) {
