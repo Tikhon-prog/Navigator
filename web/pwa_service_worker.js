@@ -4,14 +4,14 @@ const CACHE_PREFIX = 'pokolenie-pwa-shell-';
 const CACHE_NAME = `${CACHE_PREFIX}v1`;
 
 function isApiPath(pathname) {
-  return /^\/api(?:\/|$)/.test(pathname);
+  return /(?:^|\/)api(?:\/|$)/.test(pathname);
 }
 
 function isStaticRequest(request, url) {
   const staticDestination = ['script', 'style', 'image', 'font', 'worker']
     .includes(request.destination);
   const bundledAsset = url.pathname.includes('/assets/');
-  const staticExtension = /\.(?:js|css|png|jpe?g|webp|svg|ico|woff2?|ttf|wasm|json)$/i
+  const staticExtension = /\.(?:js|css|png|jpe?g|webp|svg|ico|woff2?|ttf|wasm)$/i
     .test(url.pathname);
   return staticDestination || bundledAsset || staticExtension;
 }

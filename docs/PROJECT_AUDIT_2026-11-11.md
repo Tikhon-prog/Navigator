@@ -25,7 +25,7 @@
 
 8. **Сценарий полной release-сборки.** Исправлен синтаксически повреждённый `build_all_release.ps1`: восстановлена полная проверка версии вида `major.minor.patch+build`, а случайно продублированный блок после `finally` удалён. Сборка не запускалась; PowerShell parser и локальный Windows toolchain должны подтвердить скрипт на библиотечном ноутбуке.
 
-9. **PWA offline shell.** Добавлен отсутствовавший `web/pwa_service_worker.js`, на который уже ссылался `web/index.html`. Worker использует network-first для навигации и статических ресурсов с offline fallback; same-origin `/api/**`, cross-origin запросы и запросы с `Authorization` не кешируются. Регулярные выражения API-пути и расширений статики дополнительно проверены на типовых путях. Это source implementation; её поведение нужно проверить после `flutter build web` на HTTPS-хостинге.
+9. **PWA offline shell.** Добавлен отсутствовавший `web/pwa_service_worker.js`, на который уже ссылался `web/index.html`. Worker использует network-first для навигации и статических ресурсов с offline fallback; same-origin `/api/**` (в том числе при размещении сайта в подпути), cross-origin запросы и запросы с `Authorization` не кешируются. Произвольные JSON-файлы не кешируются по одному только расширению; JSON внутри каталога ресурсов приложения кешируется как bundled asset. Регулярные выражения дополнительно проверены на типовых путях. Это source implementation; её поведение нужно проверить после `flutter build web` на HTTPS-хостинге.
 
 
 ## На что обратить внимание до распространения
