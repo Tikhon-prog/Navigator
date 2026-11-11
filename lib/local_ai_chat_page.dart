@@ -84,7 +84,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
-Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания.
+Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания. Для удаления ДОПа или задания приложение обязательно запросит отдельное подтверждение пользователя.
 Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, ДОПы, задания, избранное и настройки только через инструменты приложения.
 ''';
 
@@ -442,10 +442,59 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
   }
 
+  Future<bool> _confirmDestructiveAction(
+    String action,
+    Map<String, dynamic> args,
+  ) async {
+    if (!mounted) return false;
+
+    final isSupplement = action == 'delete_supplement';
+    final subject = (args[isSupplement ? 'title' : 'id'] ?? '')
+        .toString()
+        .trim();
+    if (subject.isEmpty) return false;
+
+    final description = isSupplement
+        ? 'Удалить локальное дополнительное занятие «$subject»?'
+        : 'Удалить задание с ID $subject с этого устройства?';
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Подтвердить удаление'),
+            content: Text(
+              '$description\\n\\nЭто действие нельзя автоматически отменить.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Не удалять'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                ),
+                child: const Text('Удалить'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   Future<String> _runAction(String name, Map<String, dynamic> args) async {
     final handler = widget.actionHandler;
     if (handler == null) {
       return 'Действия приложения пока не подключены в этой сборке.';
+    }
+    if (name == 'delete_supplement' || name == 'delete_student_task') {
+      final approved = await _confirmDestructiveAction(name, args);
+      if (!approved) {
+        return 'Пользователь отменил удаление. Не повторяй это действие без нового прямого запроса.';
+      }
     }
     final result = await handler(name, args);
     final mapPrefix = '__OPEN_MAP__:';
