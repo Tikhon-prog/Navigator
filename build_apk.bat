@@ -56,7 +56,7 @@ if errorlevel 1 exit /b 1
 for %%F in ("dist\Pokolenie-0.2.1+3.apk") do echo APK size: %%~zF bytes
 echo APK: %CD%\dist\Pokolenie-0.2.1+3.apk
 echo SHA-256: %CD%\dist\Pokolenie-0.2.1+3.apk.sha256
-echo Version: 0.2.1 ^(build 2^)
+echo Version: 0.2.1 ^(build 3^)
 echo.
 echo This offline-first build does not embed a school API URL.
 echo Keep this APK private until the tests, signing and school data are approved.
