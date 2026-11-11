@@ -244,15 +244,16 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   static String _friendlyModelError(Object error) {
     final details = error.toString().toLowerCase();
-    if (details.contains('no backends are loaded') ||
-        details.contains('backend') ||
-        details.contains('ggml')) {
-      return 'Не удалось запустить вычислительный модуль ИИ. Обнови приложение и повтори запрос.';
-    }
     if (details.contains('out of memory') ||
         details.contains('not enough memory') ||
         details.contains('allocation failed')) {
       return 'Устройству не хватило памяти для запуска модели. Закрой лишние приложения и попробуй ещё раз.';
+    }
+    if (details.contains('no backends are loaded') ||
+        details.contains('backend') ||
+        details.contains('ggml') ||
+        details.contains('dynamiclibraryopen')) {
+      return 'Не удалось запустить вычислительный модуль ИИ. Обнови приложение и повтори запрос.';
     }
     return 'Не удалось запустить локальную модель. Попробуй повторить запрос.';
   }
@@ -543,6 +544,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         });
       }
     } catch (error) {
+      debugPrint('[Поколение AI] Ошибка загрузки модели: $error');
       try {
         await writer?.close();
       } catch (_) {}
@@ -553,7 +555,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       } catch (_) {}
       if (mounted) {
         setState(() {
-          _statusError = 'Не удалось скачать модель: $error';
+          _statusError = 'Не удалось скачать модель. Проверь подключение и повтори загрузку.';
         });
       }
     } finally {
