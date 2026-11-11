@@ -29,6 +29,7 @@ POSITIONS = {
     "director", "deputy", "homeroom_teacher", "dop_coordinator",
     "mentor_coordinator", "teacher", "mentor", "librarian",
 }
+TOP_LEADERSHIP_POSITIONS = frozenset({"director", "deputy"})
 PERMISSIONS = {
     "director": {"dashboard.read", "students.read_all", "dop.read_all", "dop.manage",
                  "staff.read", "staff.manage", "assignments.manage", "announcements.publish",
@@ -339,6 +340,36 @@ def _position(user_id: str) -> tuple[str | None, str | None]:
         # missing position tables never grant elevated permissions.
         return None, None
 
+def _protect_top_leadership_target(actor: dict[str, Any], target_position: str | None) -> None:
+    """Only a technical administrator may change a director's or deputy's account."""
+    if actor.get("role") != "admin" and target_position in TOP_LEADERSHIP_POSITIONS:
+        raise HTTPException(
+            status_code=403,
+            detail="Only a technical administrator may modify top school leadership accounts",
+        )
+
+
+def _ensure_another_active_director(
+    db: sqlite3.Connection,
+    user_id: str,
+    target_position: str | None,
+    target_active: bool,
+) -> None:
+    """Prevent administrative actions from leaving the school without an active director."""
+    if target_position != "director" or not target_active:
+        return
+    remaining = db.execute(
+        "SELECT COUNT(*) AS n FROM users u JOIN staff_positions p ON p.user_id=u.id "
+        "WHERE u.role IN ('teacher','admin') AND u.active=1 "
+        "AND p.position='director' AND u.id<>?",
+        (user_id,),
+    ).fetchone()["n"]
+    if remaining < 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot remove or deactivate the last active school director",
+        )
+
 
 def _has(actor: dict[str, Any], permission: str) -> bool:
     if actor.get("role") == "admin":
@@ -464,15 +495,18 @@ def remove_position(username: str, actor: dict[str, Any] = Depends(core.current_
         raise HTTPException(status_code=403, detail="School leadership permission required")
     with core._db() as db:
         target = db.execute(
-            "SELECT u.id,p.position FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
-            "WHERE u.username=? COLLATE NOCASE AND u.active=1", (username,)
+            "SELECT u.id,u.active,p.position FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.username=? COLLATE NOCASE AND u.active=1",
+            (username,),
         ).fetchone()
         if not target:
             raise HTTPException(status_code=404, detail="Staff account not found")
+        _protect_top_leadership_target(actor, target["position"])
         if actor["role"] != "admin" and target["id"] == actor["id"]:
             raise HTTPException(status_code=403, detail="School leadership cannot remove its own position")
-        if actor["role"] != "admin" and target["position"] in {"director", "deputy"}:
+        if actor["role"] != "admin" and target["position"] in TOP_LEADERSHIP_POSITIONS:
             raise HTTPException(status_code=403, detail="Only an administrator can remove top leadership positions")
+        _ensure_another_active_director(db, target["id"], target["position"], bool(target["active"]))
         db.execute("DELETE FROM staff_positions WHERE user_id=?", (target["id"],))
     core._audit(actor["id"], "staff.position_removed", target["id"], {"previous_position": target["position"]})
     return {"status": "removed"}
@@ -513,19 +547,9 @@ def patch_user(user_id: str, body: UserPatch,
     changes = body.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="No fields to update")
-    with core._db() as db:
-        target_role = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
-    if target_role and target_role["role"] == "admin" and actor["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Only an existing administrator can modify administrator accounts")
     if "password" in changes and (not isinstance(changes["password"], str) or len(changes["password"]) < 14):
         raise HTTPException(status_code=422, detail="New password must contain at least 14 characters")
-    if "active" in changes and not changes["active"]:
-        with core._db() as db:
-            target = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
-            if target and target["role"] == "admin":
-                admins = db.execute("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1").fetchone()["n"]
-                if admins <= 1:
-                    raise HTTPException(status_code=409, detail="Cannot deactivate the last active administrator")
+
     fields = []
     values: list[Any] = []
     for key in ("display_name", "class_id", "active"):
@@ -538,22 +562,44 @@ def patch_user(user_id: str, body: UserPatch,
         values.append(core._hash_password(changes["password"]))
     if credentials_changed:
         fields.append("token_version=token_version+1")
+
     with core._db() as db:
-        exists = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
-        if not exists:
+        target = db.execute(
+            "SELECT u.role,u.active,p.position FROM users u "
+            "LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?",
+            (user_id,),
+        ).fetchone()
+        if not target:
             raise HTTPException(status_code=404, detail="Account not found")
+        _protect_top_leadership_target(actor, target["position"])
+        if target["role"] == "admin" and actor["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Only an existing administrator can modify administrator accounts")
+        if "active" in changes and not changes["active"]:
+            if target["role"] == "admin":
+                admins = db.execute(
+                    "SELECT COUNT(*) AS n FROM users WHERE role='admin' AND active=1"
+                ).fetchone()["n"]
+                if target["active"] and admins <= 1:
+                    raise HTTPException(status_code=409, detail="Cannot deactivate the last active administrator")
+            _ensure_another_active_director(db, user_id, target["position"], bool(target["active"]))
+
         db.execute(f"UPDATE users SET {','.join(fields)} WHERE id=?", (*values, user_id))
         if credentials_changed:
             # Invalidate all sessions and device registrations after a password or
             # account-status change; incremented token_version also invalidates
             # already issued access tokens without waiting for their expiry.
-            db.execute("UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
-                       (_now(), _now(), user_id))
-            db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=?",
-                       (_now(), user_id))
+            db.execute(
+                "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (_now(), _now(), user_id),
+            )
+            db.execute(
+                "UPDATE devices SET active=0,updated_at=? WHERE user_id=?",
+                (_now(), user_id),
+            )
         row = db.execute(
             "SELECT u.id,u.username,u.role,u.display_name,u.class_id,u.active,p.position,p.scope_class "
-            "FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?", (user_id,)
+            "FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?",
+            (user_id,),
         ).fetchone()
     core._audit(actor["id"], "user.updated", user_id, {"fields": sorted(changes)})
     return {"user": dict(row)}
@@ -562,26 +608,33 @@ def patch_user(user_id: str, body: UserPatch,
 @router.post("/management/users/{user_id}/reset-password")
 def reset_user_password(user_id: str, body: PasswordResetBody,
                         actor: dict[str, Any] = Depends(require_permission("staff.manage"))) -> dict[str, str]:
-    position, _ = _position(actor["id"])
     with core._db() as db:
-        target = db.execute("SELECT id,role,active FROM users WHERE id=?", (user_id,)).fetchone()
+        target = db.execute(
+            "SELECT u.id,u.role,u.active,p.position FROM users u "
+            "LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?",
+            (user_id,),
+        ).fetchone()
         if not target or not target["active"]:
             raise HTTPException(status_code=404, detail="Active account not found")
+        _protect_top_leadership_target(actor, target["position"])
         if actor["role"] != "admin" and target["role"] == "admin":
             raise HTTPException(status_code=403, detail="Only an administrator can reset another administrator's password")
         if actor["role"] != "admin" and target["id"] == actor["id"]:
             raise HTTPException(status_code=403, detail="Use the school SSO or contact the technical administrator to recover your own account")
         db.execute(
             "UPDATE users SET password_hash=?,token_version=token_version+1 WHERE id=?",
-            (core._hash_password(body.password), user_id)
+            (core._hash_password(body.password), user_id),
         )
         db.execute(
             "UPDATE refresh_tokens SET revoked_at=?,last_used_at=? WHERE user_id=? AND revoked_at IS NULL",
-            (_now(), _now(), user_id)
+            (_now(), _now(), user_id),
         )
         # A password reset forces every device to authenticate again; do not
         # continue sending private notifications to an old/stale installation.
-        db.execute("UPDATE devices SET active=0,updated_at=? WHERE user_id=?", (_now(), user_id))
+        db.execute(
+            "UPDATE devices SET active=0,updated_at=? WHERE user_id=?",
+            (_now(), user_id),
+        )
     core._audit(actor["id"], "user.password_reset", user_id, {"source": "school_portal"})
     return {"status": "password_reset", "user_id": user_id, "sessions_revoked": "true"}
 
@@ -592,16 +645,22 @@ def assign_position(body: PositionBody,
     actor_position, _ = _position(actor["id"])
     if actor["role"] != "admin" and actor_position not in {"director", "deputy"}:
         raise HTTPException(status_code=403, detail="School leadership permission required")
-    if actor["role"] != "admin" and body.position in {"director", "deputy"}:
+    if actor["role"] != "admin" and body.position in TOP_LEADERSHIP_POSITIONS:
         raise HTTPException(status_code=403, detail="Only an existing administrator can assign top leadership positions")
     if body.position not in POSITIONS:
         raise HTTPException(status_code=422, detail="Unsupported staff position")
     if body.position == "homeroom_teacher" and not body.scope_class:
         raise HTTPException(status_code=422, detail="Homeroom teacher requires scope_class")
     with core._db() as db:
-        user = db.execute("SELECT id,role,active FROM users WHERE username=? COLLATE NOCASE", (body.username,)).fetchone()
+        user = db.execute(
+            "SELECT u.id,u.role,u.active,p.position FROM users u "
+            "LEFT JOIN staff_positions p ON p.user_id=u.id "
+            "WHERE u.username=? COLLATE NOCASE",
+            (body.username,),
+        ).fetchone()
         if not user or not user["active"]:
             raise HTTPException(status_code=404, detail="Active account not found")
+        _protect_top_leadership_target(actor, user["position"])
         if user["role"] not in {"teacher", "mentor", "admin"}:
             raise HTTPException(status_code=422, detail="Only staff accounts can receive school positions")
         mentor_positions = {"mentor", "mentor_coordinator"}
@@ -617,6 +676,8 @@ def assign_position(body: PositionBody,
             raise HTTPException(status_code=422, detail="School leadership positions require a teacher or administrator account")
         if actor["role"] != "admin" and user["id"] == actor["id"]:
             raise HTTPException(status_code=403, detail="School leadership cannot change its own position")
+        if body.position != user["position"]:
+            _ensure_another_active_director(db, user["id"], user["position"], bool(user["active"]))
         db.execute(
             "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?) "
             "ON CONFLICT(user_id) DO UPDATE SET position=excluded.position,scope_class=excluded.scope_class,"
@@ -630,9 +691,15 @@ def assign_position(body: PositionBody,
 @router.delete("/admin/staff-positions/by-id/{user_id}")
 def remove_position_by_id(user_id: str, actor: dict[str, Any] = Depends(core.require_roles("admin"))) -> dict[str, str]:
     with core._db() as db:
-        cur = db.execute("DELETE FROM staff_positions WHERE user_id=?", (user_id,))
-    if not cur.rowcount:
-        raise HTTPException(status_code=404, detail="Position assignment not found")
+        target = db.execute(
+            "SELECT u.active,p.position FROM users u LEFT JOIN staff_positions p ON p.user_id=u.id WHERE u.id=?",
+            (user_id,),
+        ).fetchone()
+        if not target or target["position"] is None:
+            raise HTTPException(status_code=404, detail="Position assignment not found")
+        _protect_top_leadership_target(actor, target["position"])
+        _ensure_another_active_director(db, user_id, target["position"], bool(target["active"]))
+        db.execute("DELETE FROM staff_positions WHERE user_id=?", (user_id,))
     core._audit(actor["id"], "staff.position_removed", user_id)
     return {"status": "removed"}
 

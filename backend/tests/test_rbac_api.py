@@ -42,6 +42,22 @@ class SchoolPositionTests(unittest.TestCase):
         self.db_patch.stop()
         self.tmp.cleanup()
 
+    def _install_director_and_deputy(self):
+        with core._db() as db:
+            db.execute(
+                "UPDATE staff_positions SET position='director',scope_class=NULL WHERE user_id='teacher1'"
+            )
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("deputy1", "deputy.one", core._hash_password("deputy-account-password-45"),
+                 "teacher", "Deputy One", core._utc_now()),
+            )
+            db.execute(
+                "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?)",
+                ("deputy1", "deputy", None, "admin1", core._utc_now()),
+            )
+
+
     def test_configured_bootstrap_creates_one_director_and_links_optional_sso_identity(self):
         env = {
             "POKOLENIE_BOOTSTRAP_DIRECTOR_USERNAME": "director.one",
@@ -153,6 +169,78 @@ class SchoolPositionTests(unittest.TestCase):
                 {"id": "teacher1", "role": "teacher"},
             )
         self.assertEqual(raised.exception.status_code, 403)
+
+    def test_deputy_cannot_modify_director_account(self):
+        self._install_director_and_deputy()
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.patch_user(
+                "teacher1",
+                rbac_api.UserPatch(display_name="Changed"),
+                {"id": "deputy1", "role": "teacher"},
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_deputy_cannot_reset_director_password(self):
+        self._install_director_and_deputy()
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.reset_user_password(
+                "teacher1",
+                rbac_api.PasswordResetBody(password="new-reset-password-long-enough"),
+                {"id": "deputy1", "role": "teacher"},
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_deputy_cannot_replace_director_position(self):
+        self._install_director_and_deputy()
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.assign_position(
+                rbac_api.PositionBody(username="teacher", position="teacher"),
+                {"id": "deputy1", "role": "teacher"},
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_administrator_cannot_deactivate_the_last_active_director(self):
+        with core._db() as db:
+            db.execute(
+                "UPDATE staff_positions SET position='director',scope_class=NULL WHERE user_id='teacher1'"
+            )
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.patch_user(
+                "teacher1",
+                rbac_api.UserPatch(active=False),
+                {"id": "admin1", "role": "admin"},
+            )
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_administrator_cannot_remove_the_last_active_director_position(self):
+        with core._db() as db:
+            db.execute(
+                "UPDATE staff_positions SET position='director',scope_class=NULL WHERE user_id='teacher1'"
+            )
+        with self.assertRaises(HTTPException) as raised:
+            rbac_api.remove_position_by_id("teacher1", {"id": "admin1", "role": "admin"})
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_administrator_can_deactivate_one_of_multiple_directors(self):
+        with core._db() as db:
+            db.execute(
+                "UPDATE staff_positions SET position='director',scope_class=NULL WHERE user_id='teacher1'"
+            )
+            db.execute(
+                "INSERT INTO users(id,username,password_hash,role,display_name,created_at) VALUES(?,?,?,?,?,?)",
+                ("director2", "director.two", core._hash_password("director-account-password-46"),
+                 "teacher", "Director Two", core._utc_now()),
+            )
+            db.execute(
+                "INSERT INTO staff_positions(user_id,position,scope_class,assigned_by,updated_at) VALUES(?,?,?,?,?)",
+                ("director2", "director", None, "admin1", core._utc_now()),
+            )
+        result = rbac_api.patch_user(
+            "teacher1",
+            rbac_api.UserPatch(active=False),
+            {"id": "admin1", "role": "admin"},
+        )
+        self.assertFalse(result["user"]["active"])
 
     def test_class_labels_normalize_cyrillic_and_latin_lookalikes(self):
         self.assertEqual(core.normalize_class_id("8А"), core.normalize_class_id("8A"))
