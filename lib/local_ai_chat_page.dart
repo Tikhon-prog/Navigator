@@ -181,7 +181,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
 
     var registered = registeredBackendCount();
-    if (registered == 0 && cpuBackends.isNotEmpty) {
+    if (registered == 0) {
       // Prefer llama.cpp's Android-safe path-based discovery.
       try {
         final loadAllFromPath = llama.lookupFunction<
