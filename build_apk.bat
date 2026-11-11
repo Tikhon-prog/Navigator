@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
@@ -21,22 +22,22 @@ if errorlevel 1 (
 )
 
 echo [1/5] Resolving packages...
-flutter pub get
+call flutter pub get
 if errorlevel 1 exit /b 1
 
 echo.
 echo [2/5] Running Flutter tests...
-flutter test
+call flutter test
 if errorlevel 1 exit /b 1
 
 echo.
 echo [3/5] Analyzing Dart source...
-flutter analyze --no-fatal-infos --no-fatal-warnings
+call flutter analyze --no-fatal-infos --no-fatal-warnings
 if errorlevel 1 exit /b 1
 
 echo.
 echo [4/5] Building release APK...
-flutter build apk --release
+call flutter build apk --release
 if errorlevel 1 exit /b 1
 
 set "APK_PATH=build\app\outputs\flutter-apk\app-release.apk"
@@ -61,3 +62,4 @@ echo.
 echo This offline-first build does not embed a school API URL.
 echo Keep this APK private until the tests, signing and school data are approved.
 endlocal
+exit /b 0
