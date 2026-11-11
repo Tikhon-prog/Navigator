@@ -6,6 +6,8 @@
 
 ## Быстрый старт
 
+Для единого окружения Flutter/Dart, Python и Android SDK без установки этих инструментов на каждый ноутбук см. [разработку в Docker](docs/DOCKER_DEVELOPMENT.md). Запуск: `scripts/dev-container.ps1` в Windows PowerShell или `bash scripts/dev-container.sh` в Linux. Docker-контейнер собирает Android APK; Windows EXE по-прежнему требует нативной Windows-среды с MSVC.
+
 Подробное и единое техническое руководство: **[docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**. В нём описаны структура исходников, локальная сборка, сервер, конфигурация, API, роли, SSO, уведомления, тесты и требования к выпуску.
 
 Для автоматической настройки чистой Windows 10/11 x64 прочитай [инструкцию сборки](docs/BUILD_INSTRUCTIONS.md). Скрипт автоматизации остаётся в корне: [setup_and_build.ps1](setup_and_build.ps1).

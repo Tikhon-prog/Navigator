@@ -1,0 +1,40 @@
+# Separate from docker-compose.yml: this is a local developer shell,
+# not the school API service.
+services:
+  flutter-dev:
+    image: pokolenie/flutter-dev:3.47.9-jdk27
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+      args:
+        FLUTTER_VERSION: "3.47.9"
+        FLUTTER_SHA256: "25ed8c3c29d51a7353f2a944310b478af8214920639524b19c50a19e6c044c5a"
+        ANDROID_TOOLS_BUILD: "13114758"
+        ANDROID_TOOLS_SHA256: "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee"
+    working_dir: /workspace
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      ANDROID_HOME: /opt/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
+      JAVA_HOME: /opt/java
+      PUB_CACHE: /home/dev/.pub-cache
+      GRADLE_USER_HOME: /home/dev/.gradle
+      FLUTTER_SUPPRESS_ANALYTICS: "true"
+      CI: "true"
+      POKOLENIE_API_BASE_URL: ${POKOLENIE_API_BASE_URL:-}
+    volumes:
+      - .:/workspace
+      - android_sdk:/opt/android-sdk
+      - flutter_artifacts:/opt/flutter/bin/cache
+      - flutter_pub_cache:/home/dev/.pub-cache
+      - gradle_cache:/home/dev/.gradle
+    command: ["bash"]
+
+volumes:
+  android_sdk:
+  flutter_artifacts:
+  flutter_pub_cache:
+  gradle_cache:
