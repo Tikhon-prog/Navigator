@@ -2284,6 +2284,7 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         leading: IconButton(onPressed: onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Поколение'),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1180),
