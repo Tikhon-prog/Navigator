@@ -38,8 +38,3 @@ flutter:
     - assets/data/door_points.json
     - assets/data/schedule.json
     - assets/data/school_schedule_2026-10-05.json
-    - Расписание_с_05.10.xlsx
-    - assets/maps/school_maps_source.pdf
-    - assets/maps/floor1_source.png
-    - assets/maps/floor2_source.png
-    - assets/maps/floor3_source.png

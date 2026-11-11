@@ -45,7 +45,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 | `lib/dop_parser.dart`, `lib/supplements_page.dart` | Дополнительные занятия |
 | `lib/announcements_page.dart`, `lib/notes_page.dart` | Объявления и заметки |
 | `lib/student_tasks_page.dart` | Локальные задания, дедлайны и напоминания |
-| `assets/maps/`, `assets/data/` | Планировки, точки и граф навигации, локальные данные расписания |
+| `assets/maps/`, `assets/data/` | Офлайн-карты, точки, граф навигации и локальный снимок расписания; исходные PDF/PNG/XLSX не входят в APK/EXE |
 | `backend/` | FastAPI API, SQLite, роли, SSO, синхронизация и уведомления |
 | `test/`, `backend/tests/` | Тесты Flutter и сервера |
 | `docs/` | Единое руководство и вспомогательные документы |
