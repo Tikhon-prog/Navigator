@@ -1,35 +1,67 @@
 "use strict";
-(function(){
-const screens=[...document.querySelectorAll("[data-screen]")];
-const tabs=[...document.querySelectorAll("[data-tab]")];
-const dialog=document.getElementById("install-dialog");
-function activate(name){
- if(!screens.some(s=>s.dataset.screen===name))name="home";
- screens.forEach(s=>{const on=s.dataset.screen===name;s.hidden=!on;s.classList.toggle("active",on);});
- tabs.forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle("active",on);if(on)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
- if(history.replaceState)history.replaceState(null,"","#"+name);
- window.scrollTo({top:0,behavior:"smooth"});
-}
-document.addEventListener("click",e=>{
- const t=e.target.closest("[data-tab]"),g=e.target.closest("[data-go]");
- if(t)activate(t.dataset.tab);
- if(g)activate(g.dataset.go);
-});
-const now=new Date();
-document.getElementById("date-day").textContent=String(now.getDate()).padStart(2,"0");
-document.getElementById("date-month").textContent=new Intl.DateTimeFormat("ru-RU",{month:"short"}).format(now).replace(".","");
-document.getElementById("today").textContent=new Intl.DateTimeFormat("ru-RU",{weekday:"long",day:"numeric",month:"long"}).format(now).toLocaleUpperCase("ru-RU");
-function standalone(){return navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;}
-function ios(){return /iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
-function showInstall(){if(dialog&&dialog.showModal)dialog.showModal();else alert("В Safari нажми «Поделиться» → «На экран Домой» → «Добавить».");}
-document.getElementById("install").addEventListener("click",showInstall);
-document.getElementById("show-install").addEventListener("click",showInstall);
-document.getElementById("close-dialog").addEventListener("click",()=>dialog.close());
-document.getElementById("done-dialog").addEventListener("click",()=>dialog.close());
-document.getElementById("hide-hint").addEventListener("click",()=>{document.getElementById("install-hint").hidden=true;});
-if(standalone()){document.getElementById("install").hidden=true;document.getElementById("install-hint").hidden=true;}
-else if(ios()){document.getElementById("install-hint").hidden=false;}
-const apiConfigured=Boolean(window.POKOLENIE_API_BASE_URL);
-document.getElementById("connection").textContent=apiConfigured?"API настроен":"Локальный режим";
-activate(location.hash.slice(1)||"home");
+(function () {
+  const screens = [...document.querySelectorAll("[data-screen]")];
+  const tabs = [...document.querySelectorAll("[data-tab]")];
+  const validScreens = new Set(screens.map((screen) => screen.dataset.screen));
+  const dialog = document.getElementById("install-dialog");
+  const installButton = document.getElementById("install");
+
+  function activate(name, addHistory) {
+    const target = validScreens.has(name) ? name : "home";
+    screens.forEach((screen) => {
+      const active = screen.dataset.screen === target;
+      screen.hidden = !active;
+      screen.classList.toggle("active", active);
+    });
+    tabs.forEach((tab) => {
+      const active = tab.dataset.tab === target;
+      tab.classList.toggle("active", active);
+      if (active) tab.setAttribute("aria-current", "page");
+      else tab.removeAttribute("aria-current");
+    });
+    if (addHistory && location.hash !== "#" + target) {
+      history.pushState({ screen: target }, "", "#" + target);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-tab]");
+    const link = event.target.closest("[data-go]");
+    if (tab) activate(tab.dataset.tab, true);
+    else if (link) activate(link.dataset.go, true);
+  });
+
+  window.addEventListener("popstate", () => {
+    activate(location.hash.slice(1) || "home", false);
+  });
+
+  const now = new Date();
+  const today = document.getElementById("today");
+  today.textContent = new Intl.DateTimeFormat("ru-RU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long"
+  }).format(now).toLocaleUpperCase("ru-RU");
+
+  function isStandalone() {
+    return navigator.standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches;
+  }
+
+  function isIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function showInstallHelp() {
+    if (dialog && typeof dialog.showModal === "function") dialog.showModal();
+  }
+
+  installButton.addEventListener("click", showInstallHelp);
+  document.getElementById("close-dialog").addEventListener("click", () => dialog.close());
+  document.getElementById("done-dialog").addEventListener("click", () => dialog.close());
+
+  installButton.hidden = !isIOS() || isStandalone();
+  activate(location.hash.slice(1) || "home", false);
 })();
