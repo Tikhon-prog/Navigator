@@ -3840,23 +3840,6 @@ class AboutPage extends StatelessWidget {
                   title: 'Локальный ИИ-помощник',
                   description: 'Помогает работать с возможностями приложения прямо на устройстве.',
                 ),
-                const SizedBox(height: 12),
-                Card(
-                  color: scheme.surfaceContainerHigh,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Часть функций доступна без подключения к сети. '
-                      'Школьная учётная запись, синхронизация и получение '
-                      'новых объявлений зависят от настроенной инфраструктуры школы.',
-                      style: TextStyle(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.5,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 16),
                 Text(
                   'Для школьного сообщества «Поколение».',
