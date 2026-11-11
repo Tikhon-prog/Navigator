@@ -20,6 +20,26 @@ class SchoolAccountService {
   static const _userKey = 'school_user_v1';
   static const _refreshKey = 'school_refresh_token_v1';
   static const _expiresKey = 'school_access_expires_at_v1';
+
+  @visibleForTesting
+  static String? resolveDevicePlatform({
+    bool? isWeb,
+    TargetPlatform? platform,
+  }) {
+    if (isWeb ?? kIsWeb) return 'web';
+    switch (platform ?? defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'android';
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.macOS:
+        return 'macos';
+      default:
+        // FCM is not supported by the current native Linux/Windows clients.
+        return null;
+    }
+  }
+
   static StreamSubscription<String>? _tokenSubscription;
   static StreamSubscription<RemoteMessage>? _messageSubscription;
   static Future<String?>? _refreshInFlight;
@@ -266,10 +286,10 @@ class SchoolAccountService {
   }
 
   Future<bool> _initializePush(Map<String, dynamic> config, String baseUrl, String accessToken) async {
-    // firebase_messaging currently supports Android, iOS, macOS and web,
-    // not native Windows desktop. The rest of the school session must work
-    // normally when the app runs as a Windows EXE.
-    if (defaultTargetPlatform == TargetPlatform.windows) return false;
+    // Do not attempt FCM on unsupported native desktop platforms.
+    // The account session and other online features continue to work normally.
+    final platform = resolveDevicePlatform();
+    if (platform == null) return false;
     final rawFirebase = config['firebase'];
     if (rawFirebase is! Map || rawFirebase['enabled'] != true) return false;
     if (Firebase.apps.isEmpty) {
@@ -284,12 +304,12 @@ class SchoolAccountService {
     await messaging.requestPermission(alert: true, badge: true, sound: true);
     final token = await messaging.getToken();
     if (token == null || token.isEmpty) return false;
-    await _registerToken(baseUrl, accessToken, token);
+    await _registerToken(baseUrl, accessToken, token, platform);
     await _tokenSubscription?.cancel();
     await _messageSubscription?.cancel();
     _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       final fresh = await validAccessToken();
-      if (fresh != null) await _registerToken(baseUrl, fresh, newToken);
+      if (fresh != null) await _registerToken(baseUrl, fresh, newToken, platform);
     });
     _messageSubscription = FirebaseMessaging.onMessage.listen((message) async {
       final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Поколение';
@@ -299,12 +319,12 @@ class SchoolAccountService {
     return true;
   }
 
-  Future<void> _registerToken(String baseUrl, String accessToken, String token) async {
+  Future<void> _registerToken(String baseUrl, String accessToken, String token, String platform) async {
     await http.post(
       _endpoint(baseUrl, 'devices/register'),
       headers: {'Accept': 'application/json', 'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken'},
-      body: jsonEncode({'token': token, 'platform': 'android'}),
+      body: jsonEncode({'token': token, 'platform': platform}),
     ).timeout(const Duration(seconds: 10));
   }
 
