@@ -244,8 +244,11 @@ def _dispatch_due_notifications() -> int:
         with core._db() as db:
             claimed = db.execute(
                 "UPDATE notifications SET delivery_status='processing',delivery_attempts=delivery_attempts+1,next_attempt_at=NULL "
-                "WHERE id=? AND delivery_status IN ('queued','scheduled','retry') AND (next_attempt_at IS NULL OR next_attempt_at<=?)",
-                (notification_id, now)
+                "WHERE id=? AND delivery_status IN ('queued','scheduled','retry') "
+                "AND (next_attempt_at IS NULL OR next_attempt_at<=?) "
+                "AND (scheduled_at IS NULL OR scheduled_at<=?) "
+                "AND (expires_at IS NULL OR expires_at>?)",
+                (notification_id, now, now, now)
             )
             if claimed.rowcount != 1:
                 continue
