@@ -3,28 +3,12 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
+import 'package:llm_llamacpp/src/backend_initializer.dart';
 import 'package:path_provider/path_provider.dart';
 
-
-final class _AndroidDlInfo extends ffi.Struct {
-  external ffi.Pointer<ffi.Char> dli_fname;
-  external ffi.Pointer<ffi.Void> dli_fbase;
-  external ffi.Pointer<ffi.Char> dli_sname;
-  external ffi.Pointer<ffi.Void> dli_saddr;
-}
-
-typedef _DladdrNative = ffi.Int Function(
-  ffi.Pointer<ffi.Void>,
-  ffi.Pointer<_AndroidDlInfo>,
-);
-typedef _DladdrDart = int Function(
-  ffi.Pointer<ffi.Void>,
-  ffi.Pointer<_AndroidDlInfo>,
-);
 
 typedef _LocalAiActionHandler = Future<String> Function(
   String action,
@@ -86,161 +70,10 @@ class _ChatLine {
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
   // Keep the native engine alive across chat-page closes and screen changes.
   // llama.cpp itself performs inference in a worker isolate.
-  static LlamaCppRepository? _sharedModelRepository;
+  static LlamaCppModel? _sharedModel;
   static LlamaCppChatRepository? _sharedChatRepository;
   static String? _sharedModelPath;
   static Future<void>? _sharedLoadFuture;
-  static Future<void>? _androidBackendsFuture;
-  static bool _androidBackendsReady = false;
-
-  /// llm_llamacpp 0.7.0 uses ggml_backend_load_all() on Android. That
-  /// discovery path can be blocked by Android's filesystem sandbox, leaving
-  /// llama.cpp with zero registered backends. Register CPU backends directly
-  /// from the extracted native-library directory before the package loads a model.
-  static Future<void> _ensureAndroidLlamaBackends() async {
-    if (!Platform.isAndroid || _androidBackendsReady) return;
-    final pending = _androidBackendsFuture;
-    if (pending != null) {
-      await pending;
-      return;
-    }
-
-    final initialization = _initializeAndroidLlamaBackends();
-    _androidBackendsFuture = initialization;
-    try {
-      await initialization;
-      _androidBackendsReady = true;
-    } catch (_) {
-      _androidBackendsFuture = null;
-      rethrow;
-    }
-  }
-
-  static Future<void> _initializeAndroidLlamaBackends() async {
-    // Load core dependencies in the same order used by llm_llamacpp's loader.
-    for (final name in ['libggml-base.so', 'libggml.so', 'libomp.so']) {
-      try {
-        ffi.DynamicLibrary.open(name);
-      } catch (error) {
-        debugPrint('[Поколение AI] Не удалось предварительно загрузить $name: $error');
-      }
-    }
-
-    final llama = ffi.DynamicLibrary.open('libllama.so');
-    final libc = ffi.DynamicLibrary.open('libc.so');
-    final dladdr = libc.lookupFunction<_DladdrNative, _DladdrDart>('dladdr');
-    final symbol = llama.lookup<ffi.Void>('llama_backend_init');
-    final info = calloc<_AndroidDlInfo>();
-
-    late final String libraryPath;
-    try {
-      final result = dladdr(symbol, info);
-      if (result == 0 || info.ref.dli_fname.address == 0) {
-        throw StateError('Не удалось определить каталог нативных библиотек Android.');
-      }
-      libraryPath = info.ref.dli_fname.cast<Utf8>().toDartString();
-    } finally {
-      calloc.free(info);
-    }
-
-    // If Android maps .so files directly from the APK, ggml cannot enumerate
-    // the backend directory. The app manifest/build settings enable extraction.
-    if (libraryPath.contains('.apk!')) {
-      throw StateError(
-        'Нативные библиотеки модели не извлечены из APK. Пересобери приложение с extractNativeLibs.',
-      );
-    }
-
-    final separator = libraryPath.lastIndexOf('/');
-    if (separator <= 0) {
-      throw StateError('Некорректный путь к libllama.so: $libraryPath');
-    }
-    final nativeDirectory = Directory(libraryPath.substring(0, separator));
-    if (!nativeDirectory.existsSync()) {
-      throw StateError('Каталог нативных библиотек не найден: ${nativeDirectory.path}');
-    }
-
-    final cpuBackends = nativeDirectory
-        .listSync(followLinks: true)
-        .whereType<File>()
-        .where((file) {
-          final name = file.uri.pathSegments.last;
-          return name.startsWith('libggml-cpu-') && name.endsWith('.so');
-        })
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-
-    int registeredBackendCount() {
-      try {
-        return llama.lookupFunction<ffi.Size Function(), int Function()>(
-          'ggml_backend_reg_count',
-        )();
-      } catch (_) {
-        return 0;
-      }
-    }
-
-    var registered = registeredBackendCount();
-    if (registered == 0) {
-      // Prefer llama.cpp's Android-safe path-based discovery.
-      try {
-        final loadAllFromPath = llama.lookupFunction<
-            ffi.Void Function(ffi.Pointer<ffi.Char>),
-            void Function(ffi.Pointer<ffi.Char>)>(
-          'ggml_backend_load_all_from_path',
-        );
-        final pathPointer = nativeDirectory.path.toNativeUtf8();
-        try {
-          loadAllFromPath(pathPointer.cast<ffi.Char>());
-        } finally {
-          calloc.free(pathPointer);
-        }
-      } catch (error) {
-        debugPrint('[Поколение AI] Автозагрузка CPU-бэкенда не сработала: $error');
-      }
-      registered = registeredBackendCount();
-    }
-
-    var manuallyLoaded = 0;
-    if (registered == 0 && cpuBackends.isNotEmpty) {
-      final loadBackend = llama.lookupFunction<
-          ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>),
-          ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>)>(
-        'ggml_backend_load',
-      );
-
-      for (final file in cpuBackends) {
-        // Preload the library first so its dependencies are visible to dlopen.
-        try {
-          ffi.DynamicLibrary.open(file.path);
-        } catch (error) {
-          debugPrint('[Поколение AI] Пропущен CPU-бэкенд ${file.path}: $error');
-          continue;
-        }
-
-        final pathPointer = file.path.toNativeUtf8();
-        try {
-          final handle = loadBackend(pathPointer.cast<ffi.Char>());
-          if (handle.address != 0) manuallyLoaded++;
-        } finally {
-          calloc.free(pathPointer);
-        }
-      }
-      registered = registeredBackendCount();
-    }
-
-    if (registered == 0 && manuallyLoaded == 0) {
-      throw StateError(
-        'Не найден ни один рабочий CPU-бэкенд llama.cpp. '
-        'Проверь состав Android APK и наличие libggml-cpu-*.so.',
-      );
-    }
-
-    debugPrint(
-      '[Поколение AI] Android CPU-бэкенды готовы: '
-      '$registered зарегистрировано, $manuallyLoaded загружено вручную.',
-    );
-  }
 
   static String _friendlyModelError(Object error) {
     final details = error.toString().toLowerCase();
@@ -284,7 +117,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     LLMMessage(role: LLMRole.system, content: _systemPrompt),
   ];
 
-  LlamaCppRepository? _modelRepository;
   LlamaCppChatRepository? _chatRepository;
   String? _modelPath;
   bool _busy = false;
@@ -572,8 +404,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       throw StateError('Сначала скачай модель. Это делается один раз.');
     }
 
-    if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
-      _modelRepository = _sharedModelRepository;
+    if (_sharedChatRepository != null &&
+        _sharedModel != null &&
+        _sharedModelPath == modelPath) {
       _chatRepository = _sharedChatRepository;
       return;
     }
@@ -581,8 +414,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     final activeLoad = _sharedLoadFuture;
     if (activeLoad != null) {
       await activeLoad;
-      if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
-        _modelRepository = _sharedModelRepository;
+      if (_sharedChatRepository != null &&
+          _sharedModel != null &&
+          _sharedModelPath == modelPath) {
         _chatRepository = _sharedChatRepository;
         return;
       }
@@ -593,7 +427,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     if (mounted) setState(() => _loadingModel = true);
     try {
       await load;
-      _modelRepository = _sharedModelRepository;
       _chatRepository = _sharedChatRepository;
       if (mounted) setState(() => _statusError = null);
     } finally {
@@ -604,29 +437,55 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   static Future<void> _loadSharedModel(String modelPath) async {
     final oldChat = _sharedChatRepository;
-    final oldRepository = _sharedModelRepository;
+    final oldModel = _sharedModel;
     _sharedChatRepository = null;
-    _sharedModelRepository = null;
+    _sharedModel = null;
+    _sharedModelPath = null;
     oldChat?.dispose();
-    oldRepository?.dispose();
+    oldModel?.dispose();
 
-    if (Platform.isAndroid) {
-      await _ensureAndroidLlamaBackends();
-    }
-    final repository = LlamaCppRepository();
+    LlamaCppModel? model;
+    LlamaCppChatRepository? chat;
     try {
-      final model = await repository.loadModel(modelPath);
-      final chat = LlamaCppChatRepository.withModel(
+      // Use the dependency's Android-aware initializer. It resolves the actual
+      // extracted native-library directory, loads dynamic backends once per
+      // process, and avoids the legacy ModelLoader's generic Android path.
+      final backend = BackendInitializer.initializeBackend();
+      final library = backend.$1;
+      final bindings = backend.$2;
+
+      if (Platform.isAndroid) {
+        final backendCount = library.lookupFunction<
+            ffi.Size Function(),
+            int Function()>(
+          'ggml_backend_reg_count',
+        )();
+        if (backendCount <= 0) {
+          throw StateError(
+            'llama.cpp не зарегистрировал CPU-бэкенд Android.',
+          );
+        }
+      }
+
+      model = LlamaCppModel.load(
+        modelPath,
+        bindings,
+        nGpuLayers: 0,
+        useMemoryMap: true,
+      );
+      chat = LlamaCppChatRepository.withModel(
         model,
-        repository.bindings,
+        bindings,
         contextSize: 4096,
         nGpuLayers: 0,
       );
-      _sharedModelRepository = repository;
+
+      _sharedModel = model;
       _sharedChatRepository = chat;
       _sharedModelPath = modelPath;
     } catch (_) {
-      repository.dispose();
+      chat?.dispose();
+      model?.dispose();
       _sharedModelPath = null;
       rethrow;
     }
