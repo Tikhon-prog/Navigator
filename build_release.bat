@@ -54,13 +54,13 @@ echo.
 echo Preparing named release files...
 if not exist "dist" mkdir "dist"
 if errorlevel 1 exit /b 1
-copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\Pokolenie-0.2.1+3.apk" >nul
+copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\Pokolenie-0.2.1+5.apk" >nul
 if errorlevel 1 exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+3.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+3.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+3.apk') -Encoding ascii"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+5.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+5.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+5.apk') -Encoding ascii"
 if errorlevel 1 exit /b 1
 echo.
 echo «Поколение» release APK подписан и проверен.
-echo File: %CD%\dist\Pokolenie-0.2.1+3.apk
-echo SHA-256: %CD%\dist\Pokolenie-0.2.1+3.apk.sha256
+echo File: %CD%\dist\Pokolenie-0.2.1+5.apk
+echo SHA-256: %CD%\dist\Pokolenie-0.2.1+5.apk.sha256
 endlocal
 exit /b 0
