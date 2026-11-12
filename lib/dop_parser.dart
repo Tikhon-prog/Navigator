@@ -977,6 +977,7 @@ class DopSelectionFormParser {
 
       final method = parser._attr(attributes, 'method').toUpperCase();
       final hidden = <MapEntry<String, String>>[];
+      var hasUnsupportedControls = false;
       String submitName = '';
       String submitValue = '';
 
@@ -995,7 +996,21 @@ class DopSelectionFormParser {
             submitName.isEmpty) {
           submitName = name;
           submitValue = value;
+        } else if (type == 'checkbox') {
+          final classes = parser._attr(tag, 'class').split(RegExp(r'\\s+'));
+          if (name.isNotEmpty && !classes.contains('discipline-checkbox')) {
+            hasUnsupportedControls = true;
+          }
+        } else if (name.isNotEmpty && type != 'button' && type != 'reset') {
+          hasUnsupportedControls = true;
         }
+      }
+
+      if (RegExp(
+        r'<(?:select|textarea)\\b[^>]*\\bname\\s*=',
+        caseSensitive: false,
+      ).hasMatch(body)) {
+        hasUnsupportedControls = true;
       }
 
       if (submitName.isEmpty) {
@@ -1020,6 +1035,7 @@ class DopSelectionFormParser {
         hiddenFields: List<MapEntry<String, String>>.unmodifiable(hidden),
         submitName: submitName,
         submitValue: submitValue,
+        hasUnsupportedControls: hasUnsupportedControls,
       );
     }
     return null;
@@ -1032,6 +1048,7 @@ class DopSelectionFormInfo {
   final List<MapEntry<String, String>> hiddenFields;
   final String submitName;
   final String submitValue;
+  final bool hasUnsupportedControls;
 
   const DopSelectionFormInfo({
     required this.action,
@@ -1039,6 +1056,7 @@ class DopSelectionFormInfo {
     required this.hiddenFields,
     required this.submitName,
     required this.submitValue,
+    this.hasUnsupportedControls = false,
   });
 }
 
@@ -1065,6 +1083,7 @@ class DopCatalogSession {
       !_closed &&
       _form != null &&
       _form.method == 'POST' &&
+      !_form.hasUnsupportedControls &&
       programs.any((program) => program.subgroups.any((group) =>
           group.selectionName.trim().isNotEmpty &&
           group.selectionValue.trim().isNotEmpty));
@@ -1079,7 +1098,9 @@ class DopCatalogSession {
       throw const DopParserException('Сначала выбери хотя бы одну группу.');
     }
     final form = _form;
-    if (form == null || form.method != 'POST') {
+    if (form == null ||
+        form.method != 'POST' ||
+        form.hasUnsupportedControls) {
       throw const DopParserException(
         'На странице каталога не найдена поддерживаемая форма отправки. '
         'Просмотр доступен, но записывать через приложение пока небезопасно.',
