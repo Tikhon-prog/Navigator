@@ -121,7 +121,7 @@ jobs:
       - name: Build release APK
         env:
           POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
-        run: flutter build apk --release --dart-define="POKOLENIE_API_BASE_URL=$POKOLENIE_API_BASE_URL"
+        run: flutter build apk --release --target-platform android-arm64,android-x64 --dart-define="POKOLENIE_API_BASE_URL=$POKOLENIE_API_BASE_URL"
 
       - name: Verify APK and create SHA-256 checksum
         shell: bash
