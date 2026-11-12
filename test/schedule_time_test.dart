@@ -18,6 +18,15 @@ void main() {
     expect(normalizeLessonTimeRange('09:05 - 09:45'), '09:05 - 09:45');
   });
 
+  test('normalizes single online start times and canonical slot keys', () {
+    expect(normalizeLessonTime('9:05'), '09:05');
+    expect(normalizeLessonTime('09:05'), '09:05');
+    expect(normalizeLessonTime('9:05 - 9:45'), '09:05 - 09:45');
+    expect(canonicalLessonTimeKey('9:05 - 9:45'), '09:05 - 09:45');
+    expect(normalizeLessonTime('25:05'), isNull);
+    expect(normalizeLessonTime('урок 3'), isNull);
+  });
+
   test('rejects invalid and overnight lesson ranges', () {
     expect(normalizeLessonTimeRange('25:00 - 25:40'), isNull);
     expect(normalizeLessonTimeRange('09:70 - 10:10'), isNull);
