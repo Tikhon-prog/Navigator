@@ -113,6 +113,7 @@ void main() {
       expect(form.hiddenFields.single.value, 'token-123');
       expect(form.submitName, 'apply');
       expect(form.submitValue, 'save');
+      expect(form.selectionLocked, isFalse);
       expect(form.hasUnsupportedControls, isFalse);
     });
 
@@ -174,6 +175,7 @@ void main() {
           method="post"
           id="disciplines-form"
           class="selection-locked"
+          data-fresh-selection="1"
           aria-disabled="true">
           <input type="hidden" name="csrf_token" value="fixture-token">
           <article class="discipline-card program-card profile-theme profile-theme--engineering"
@@ -185,7 +187,7 @@ void main() {
               <section class="program-subgroup" data-subgroup-card="">
                 <input class="discipline-checkbox" type="checkbox"
                     name="choices[]" value="188:226" id="choice-188-226"
-                    disabled aria-disabled="true"
+                    checked disabled aria-disabled="true"
                     data-program-id="188" data-subgroup-id="226"
                     data-hours="4" data-limit-hours="4"
                     data-name="Тестовая инженерная программа"
@@ -218,6 +220,7 @@ void main() {
       expect(subgroup.selectionName, 'choices[]');
       expect(subgroup.selectionValue, '188:226');
       expect(subgroup.selectionDisabled, isTrue);
+      expect(subgroup.preselected, isFalse);
       expect(subgroup.teacher, 'Тестовый преподаватель');
       expect(subgroup.schedule.single.day, 5);
       expect(subgroup.schedule.single.room, '106');
@@ -230,7 +233,9 @@ void main() {
       expect(form!.action,
           Uri.parse('https://intranet.pokolenie.school/save.php'));
       expect(form.method, 'POST');
-      expect(form.hiddenFields, [const MapEntry('csrf_token', 'fixture-token')]);
+      expect(form.hiddenFields, hasLength(1));
+      expect(form.hiddenFields.single.key, 'csrf_token');
+      expect(form.hiddenFields.single.value, 'fixture-token');
       expect(form.selectionLocked, isTrue);
       expect(form.maxHours, 10);
       expect(form.hasUnsupportedControls, isFalse);

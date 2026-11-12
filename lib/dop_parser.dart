@@ -473,6 +473,18 @@ class DopParser {
 
   List<DopProgram> _parseCatalog(String html) {
     final result = <DopProgram>[];
+    var freshSelection = false;
+    for (final form in RegExp(
+      r'<form\b([^>]*)>',
+      caseSensitive: false,
+    ).allMatches(html)) {
+      final attributes = form.group(1) ?? '';
+      if (_attr(attributes, 'id') == 'disciplines-form') {
+        freshSelection = _attr(attributes, 'data-fresh-selection') == '1';
+        break;
+      }
+    }
+
     final cards = RegExp(
       r'<article\b([^>]*)>([\s\S]*?)</article>',
       caseSensitive: false,
@@ -519,10 +531,11 @@ class DopParser {
         final supplies = _nullable(_textClass(subgroupHtml, 'supplies-inline-text'));
         final selectionName = _attr(input, 'name');
         final selectionValue = _attr(input, 'value');
-        final preselected = RegExp(
-          r'(?:^|\s)checked(?:\s|=|>)',
-          caseSensitive: false,
-        ).hasMatch(input);
+        final preselected = !freshSelection &&
+            RegExp(
+              r'(?:^|\s)checked(?:\s|=|>)',
+              caseSensitive: false,
+            ).hasMatch(input);
         final selectionDisabled = _hasAttribute(input, 'disabled') ||
             _attr(input, 'aria-disabled').toLowerCase() == 'true';
 
@@ -579,16 +592,51 @@ class DopParser {
 
       final hours = _number(_textClass(body, 'hours-badge'));
       final teacher = _teacherFromSubgroup(body);
-      final scheduleText = _textClass(body, 'program-subgroup-schedule');
-
       result.add(DopCurrentApplicationItem(
         name: name,
         hours: hours,
         teacher: teacher,
-        schedule: _parseDisplayedSchedule(scheduleText),
+        schedule: _parseSubgroupSchedule(body),
       ));
     }
     return result;
+  }
+
+  /// The intranet wraps every lesson slot in its own span. Parse those
+  /// elements independently so one slot cannot swallow the following day.
+  List<DopScheduleItem> _parseSubgroupSchedule(String html) {
+    final result = <DopScheduleItem>[];
+    final containers = RegExp(
+      r'<div\b([^>]*)>([\s\S]*?)</div>',
+      caseSensitive: false,
+    ).allMatches(html);
+
+    for (final container in containers) {
+      final attributes = container.group(1) ?? '';
+      final classes = _attr(attributes, 'class').split(RegExp(r'\s+'));
+      if (!classes.contains('program-subgroup-schedule')) continue;
+      final content = container.group(2) ?? '';
+      final spans = RegExp(
+        r'<span\b[^>]*>([\s\S]*?)</span>',
+        caseSensitive: false,
+      ).allMatches(content);
+
+      if (spans.isEmpty) {
+        result.addAll(_parseDisplayedSchedule(_clean(content)));
+      } else {
+        for (final span in spans) {
+          result.addAll(
+            _parseDisplayedSchedule(_clean(span.group(1) ?? '')),
+          );
+        }
+      }
+    }
+
+    return result.isNotEmpty
+        ? result
+        : _parseDisplayedSchedule(
+            _textClass(html, 'program-subgroup-schedule'),
+          );
   }
 
   List<DopScheduleItem> _parseDisplayedSchedule(String text) {
