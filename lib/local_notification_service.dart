@@ -284,10 +284,31 @@ class LocalNotificationService {
   /// incoming school announcements.
   Future<void> scheduleUpcomingStudentTasks({
     required List<({String id, DateTime dueAt, String title, String subject})> entries,
+    String scopeKey = 'local',
   }) async {
     await initialize();
     final prefs = await SharedPreferences.getInstance();
-    final previousIds = prefs.getStringList(_taskNotificationIdsKey) ?? const <String>[];
+    final safeScope = scopeKey.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final idsKey = safeScope.isEmpty || safeScope == 'local'
+        ? _taskNotificationIdsKey
+        : '${_taskNotificationIdsKey}_$safeScope';
+
+    // Only the currently active profile should have task reminders scheduled
+    // on this device. Cancel stale reminders belonging to another signed-in
+    // account before scheduling the active profile's set.
+    final profileKeys = prefs.getKeys().where((key) =>
+        key == _taskNotificationIdsKey ||
+        key.startsWith('${_taskNotificationIdsKey}_')).toList();
+    for (final key in profileKeys) {
+      final storedIds = prefs.getStringList(key) ?? const <String>[];
+      for (final rawId in storedIds) {
+        final id = int.tryParse(rawId);
+        if (id != null) await plugin.cancel(id);
+      }
+      if (key != idsKey) await prefs.remove(key);
+    }
+
+    final previousIds = prefs.getStringList(idsKey) ?? const <String>[];
     for (final rawId in previousIds) {
       final id = int.tryParse(rawId);
       if (id != null) await plugin.cancel(id);
@@ -311,7 +332,9 @@ class LocalNotificationService {
       // Stable FNV-1a ID in a dedicated range; the exact IDs are also persisted
       // and cancelled on the next reschedule.
       var hash = 2166136261;
-      for (final unit in entry.id.codeUnits) {
+      // Hash the profile together with the task ID so separate accounts cannot
+      // accidentally schedule colliding notification IDs.
+      for (final unit in '${safeScope.isEmpty ? 'local' : safeScope}:${entry.id}'.codeUnits) {
         hash ^= unit;
         hash = (hash * 16777619) & 0x7fffffff;
       }
@@ -350,7 +373,7 @@ class LocalNotificationService {
       );
       nextIds.add(notificationId.toString());
     }
-    await prefs.setStringList(_taskNotificationIdsKey, nextIds);
+    await prefs.setStringList(idsKey, nextIds);
   }
 
   Future<void> scheduleUpcomingLessons({
