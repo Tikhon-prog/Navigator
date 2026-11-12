@@ -145,7 +145,7 @@
 - Flutter stable **3.47.9** — версия, закреплённая в README, CI и сценарии сборки.
 - Dart SDK, входящий в подходящую Flutter-сборку; в `pubspec.yaml` диапазон SDK: `>=3.10.0 <4.0.0`.
 - Android SDK и лицензии платформ.
-- JDK 27 для запуска Gradle 9.9.0. Android Java/Kotlin bytecode намеренно собирается с target 21; это отдельная настройка совместимости, не версия установленной JDK.
+- JDK 21.0.13+9 для запуска Gradle 9.9.0. Android Java/Kotlin bytecode намеренно собирается с target 21; это отдельная настройка совместимости, не версия установленной JDK.
 - Интернет и место под SDK/зависимости. Скрипт автоматической установки рекомендует около 25 ГБ свободного места.
 
 ### Windows desktop
@@ -205,7 +205,7 @@ flutter build apk --release
 
 При сборке напрямую Flutter стандартный APK лежит в `build/app/outputs/flutter-apk/`. Скрипт `setup_and_build.ps1` собирает и копирует файлы в отдельный каталог распространения, описанный в [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
 
-В Android-конфигурации `applicationId` — `ru.pokolenie.navigator`, `minSdk` — 23. Gradle запускается на JDK 27, но Java/Kotlin bytecode target намеренно остаётся 21; точный `targetSdk` и compile SDK задаются Flutter. Не меняй package/application ID после выпуска без отдельного плана миграции.
+В Android-конфигурации `applicationId` — `ru.pokolenie.navigator`, `minSdk` — 23. Gradle запускается на JDK 21.0.13+9, но Java/Kotlin bytecode target намеренно остаётся 21; точный `targetSdk` и compile SDK задаются Flutter. Не меняй package/application ID после выпуска без отдельного плана миграции.
 
 ### 5.3 Собрать Windows desktop
 
@@ -629,7 +629,7 @@ Compose использует volume `navigator_data:/data`, но сам по с�
 
 ### Flutter/Gradle использует неправильный Java
 
-Проверь `java -version`, `JAVA_HOME` и используемый Flutter JDK (`flutter doctor -v`): для текущей сборки нужен JDK 27 и Gradle 9.9.0. Java/Kotlin bytecode target приложения остаётся 21.
+Проверь `java -version`, `JAVA_HOME` и используемый Flutter JDK (`flutter doctor -v`): для текущей сборки нужен JDK 21.0.13+9 и Gradle 9.9.0. Java/Kotlin bytecode target приложения остаётся 21.
 
 ### Тесты проходят локально, а реальные данные/маршруты ошибочны
 
