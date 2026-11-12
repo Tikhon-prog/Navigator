@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
 import 'dop_parser.dart';
+import 'dop_catalog_page.dart';
 import 'local_notification_service.dart';
 import 'school_account_service.dart';
 
@@ -285,6 +286,17 @@ class _SupplementsPageState extends State<SupplementsPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openDopCatalog() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DopCatalogPage(
+          onEditStudent: _editStudent,
+          onSelectionSubmitted: _syncFromIntranet,
+        ),
+      ),
+    );
+  }
+
   Future<void> _syncFromIntranet() async {
     if (syncing) return;
     setState(() => syncing = true);
@@ -347,6 +359,11 @@ class _SupplementsPageState extends State<SupplementsPage> {
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Дополнительные занятия'),
         actions: [
+          IconButton(
+            tooltip: 'Найти новые ДОПы',
+            onPressed: _openDopCatalog,
+            icon: const Icon(Icons.explore_outlined),
+          ),
           IconButton(tooltip: 'Профиль ученика', onPressed: _editStudent, icon: const Icon(Icons.person_rounded)),
           IconButton(
             tooltip: syncing ? 'Обновление…' : 'Обновить с intranet',
@@ -396,7 +413,14 @@ class _SupplementsPageState extends State<SupplementsPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              student == null ? 'Укажи ученика для загрузки занятий' : 'Класс ${student!.className} • мои занятия',
+                              student == null
+                                  ? 'Укажи ученика для загрузки занятий'
+                                  : student!.requiresProfile
+                                      ? 'Класс ${student!.className} • ' +
+                                          (student!.hasValidProfile
+                                              ? student!.profile
+                                              : 'направление не выбрано')
+                                      : 'Класс ${student!.className} • мои занятия',
                               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                             ),
                             if (lastSync.isNotEmpty) ...[
@@ -410,6 +434,29 @@ class _SupplementsPageState extends State<SupplementsPage> {
                             IconButton(onPressed: _editStudent, tooltip: 'Изменить профиль', icon: const Icon(Icons.edit_outlined)),
                         ]),
                       ),
+                      if (student?.requiresProfile == true &&
+                          !student!.hasValidProfile) ...[
+                        const SizedBox(height: 12),
+                        Card(
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.warning_amber_rounded,
+                              color: scheme.error,
+                            ),
+                            title: const Text(
+                              'Для 10 класса нужно указать направление обучения',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: const Text(
+                              'Без профиля intranet не отдаёт список доступных ДОПов.',
+                            ),
+                            trailing: TextButton(
+                              onPressed: _editStudent,
+                              child: const Text('Выбрать'),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       Card(
                         child: SwitchListTile.adaptive(
@@ -720,7 +767,10 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
   late final TextEditingController classNumber;
   late final TextEditingController classLetter;
   String selectedProfile = '';
+  List<String> availableProfiles = DopStudent.grade10Profiles;
   bool profileError = false;
+  bool profilesLoading = false;
+  bool profilesRequested = false;
 
   @override
   void initState() {
@@ -733,6 +783,25 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
     if (DopStudent.grade10Profiles.contains(student?.profile)) {
       selectedProfile = student!.profile;
     }
+    if (_isGrade10) _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    if (profilesRequested) return;
+    profilesRequested = true;
+    if (mounted) setState(() => profilesLoading = true);
+    final profiles = await const DopParser().loadGrade10Profiles();
+    if (!mounted) return;
+    final saved = widget.initial?.profile.trim() ?? '';
+    setState(() {
+      availableProfiles = profiles;
+      if (saved.isNotEmpty && profiles.contains(saved)) {
+        selectedProfile = saved;
+      } else if (!profiles.contains(selectedProfile)) {
+        selectedProfile = '';
+      }
+      profilesLoading = false;
+    });
   }
 
   @override
@@ -772,7 +841,14 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
                         controller: classNumber,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Класс'),
-                        onChanged: (_) => setState(() => profileError = false),
+                        onChanged: (value) {
+                          setState(() => profileError = false);
+                          if (value.trim() == '10') {
+                            _loadProfiles();
+                          } else {
+                            profilesRequested = false;
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -791,11 +867,13 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
                     isExpanded: true,
                     initialValue: selectedProfile.isEmpty ? null : selectedProfile,
                     decoration: InputDecoration(
-                      labelText: 'Направление обучения',
-                      helperText: 'Выбери свой профиль 10 класса',
+                      labelText: 'Направление обучения (10 класс)',
+                      helperText: profilesLoading
+                          ? 'Загружаю список направлений школы…'
+                          : 'Выбери значение из списка intranet',
                       errorText: profileError ? 'Нужно выбрать направление' : null,
                     ),
-                    items: DopStudent.grade10Profiles
+                    items: availableProfiles
                         .map((profile) => DropdownMenuItem<String>(
                               value: profile,
                               child: Text(profile, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -828,7 +906,7 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
             onPressed: () {
               final grade10 = _isGrade10;
               final validProfile =
-                  !grade10 || DopStudent.grade10Profiles.contains(selectedProfile);
+                  !grade10 || selectedProfile.trim().isNotEmpty;
               if (lastName.text.trim().isEmpty ||
                   firstName.text.trim().isEmpty ||
                   classNumber.text.trim().isEmpty ||
