@@ -10,7 +10,7 @@
 Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setup_and_build.ps1'; Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/Tikhon-prog/Navigator/main/setup_and_build.ps1' -OutFile $p; & $p
 ```
 
-Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Oracle JDK 27, Android command-line SDK, Flutter 3.47.9 (если совместимый SDK не найден), Visual Studio 2026 Build Tools (workload Desktop development with C++, ATL и Windows SDK) и Inno Setup 6. JDK 27 загружается из официального Oracle ZIP; перед установкой скрипт сверяет SHA-256 контрольную сумму. Android-лицензии принимаются в консоли.
+Нужны интернет и желательно **25 ГБ свободного места**. Скрипт устанавливает Git, Python 3.12, Eclipse Temurin JDK 21.0.13+9, Android command-line SDK, Flutter 3.47.9 (если совместимый SDK не найден), Visual Studio 2026 Build Tools (workload Desktop development with C++, ATL и Windows SDK) и Inno Setup 6. JDK 21 загружается из официального Oracle ZIP; перед установкой скрипт сверяет SHA-256 контрольную сумму. Android-лицензии принимаются в консоли.
 
 Скрипт использует официальные источники и проверяет SHA-256 загружаемых архивов Flutter и Android tools. Он не записывает GitHub token, школьные пароли или другие секреты в исходники. Если URL backend не задан, клиент соберётся в офлайн-режиме. Пароли, серверные токены и Firebase service-account ключи не нужны для клиентской сборки и не должны встраиваться в APK/EXE.
 
@@ -37,7 +37,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force; $p = Join-Path $env:TEMP 'setu
 
 Android Emulator и LLDB для сборки не нужны, если приложение запускается на физическом телефоне. NDK и CMake нужны нативной зависимости `llm_llamacpp`. Если используешь `setup_and_build.ps1`, он проверит эти компоненты и установит отсутствующие; существующий Android SDK по `ANDROID_SDK_ROOT`, `ANDROID_HOME` или стандартному пути Android Studio будет переиспользован.
 
-В Android Studio открой **File → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** и выбери установленный **Oracle JDK 27**. Не выбирай встроенный JBR Android Studio, если там другая версия Java. Для терминала выставь `JAVA_HOME` на ту же папку JDK 27. Gradle 9.9.0 запускается на JDK 27; Java/Kotlin bytecode приложения остаётся на target 21.
+В Android Studio открой **File → Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** и выбери установленный **Oracle JDK 21**. Не выбирай встроенный JBR Android Studio, если там другая версия Java. Для терминала выставь `JAVA_HOME` на ту же папку JDK 21. Gradle 9.9.0 запускается на JDK 21; Java/Kotlin bytecode приложения остаётся на target 21.
 
 **Важно:** Android Studio 2026 — это IDE и менеджер Android SDK. Для Windows EXE отдельно нужен **Visual Studio 2026** или **Build Tools 2026** с workload **Desktop development with C++**, MSVC x64/x86, CMake tools, Windows SDK и ATL.
 
@@ -140,7 +140,7 @@ http://127.0.0.1:43827/oauth/callback
 
 ### Одна команда для локальной сборки обоих форматов
 
-Если Actions пока заблокирован биллингом, можно собрать клиент локально. Нужны Flutter 3.47.9, Python 3.12+, Android SDK + JDK 27, Visual Studio 2026/Build Tools с workload **Desktop development with C++** (включая ATL и Windows SDK) и Inno Setup 6. Gradle запускается на JDK 27, Android bytecode остаётся на target 21. Выполни PowerShell из корня репозитория:
+Если Actions пока заблокирован биллингом, можно собрать клиент локально. Нужны Flutter 3.47.9, Python 3.12+, Android SDK + JDK 21, Visual Studio 2026/Build Tools с workload **Desktop development with C++** (включая ATL и Windows SDK) и Inno Setup 6. Gradle запускается на JDK 21, Android bytecode остаётся на target 21. Выполни PowerShell из корня репозитория:
 
 ```powershell
 # Необязательно: задать реальный публичный HTTPS адрес API для новой сборки.
@@ -156,7 +156,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 Установи:
 
 - Flutter stable **3.47.9** и Dart из того же SDK;
-- JDK 27 и Android SDK с принятыми лицензиями; Gradle Wrapper использует Gradle 9.9.0;
+- JDK 21 и Android SDK с принятыми лицензиями; Gradle Wrapper использует Gradle 9.9.0;
 - Visual Studio 2026 или Build Tools 2026 с workload **Desktop development with C++**, включая ATL для `flutter_secure_storage_windows`;
 - Inno Setup 6 для сборки установщика.
 
