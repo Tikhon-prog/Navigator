@@ -39,6 +39,15 @@ class SchoolAccountService {
     }
   }
 
+  Future<void> _clearScheduledDopReminders() async {
+    try {
+      await LocalNotificationService().cancelDopReminders();
+    } catch (_) {
+      // Authentication and sign-out must still succeed when notifications
+      // are denied or the platform plugin is unavailable.
+    }
+  }
+
   @visibleForTesting
   static String? resolveDevicePlatform({
     bool? isWeb,
@@ -188,6 +197,7 @@ class SchoolAccountService {
     await _writeToken(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(user));
+    await _clearScheduledDopReminders();
     await _clearScheduledTaskReminders(
       profileId: (user['id'] ?? user['username'] ?? '').toString(),
     );
@@ -275,6 +285,7 @@ class SchoolAccountService {
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     final userData = payload['user'];
+    await _clearScheduledDopReminders();
     await _clearScheduledTaskReminders(
       profileId: userData is Map
           ? (userData['id'] ?? userData['username'] ?? '').toString()
@@ -283,7 +294,8 @@ class SchoolAccountService {
     if (userData is Map && userData['id'] != null) {
       final preferenceKey = 'dop_reminders_enabled_${userData['id']}';
       final savedPreference = prefs.getBool(preferenceKey);
-      final reminderPreference = savedPreference ?? (prefs.getBool('dop_reminders_enabled') ?? false);
+      // Never inherit the previous account's global reminder toggle.
+      final reminderPreference = savedPreference ?? false;
       await prefs.setBool(preferenceKey, reminderPreference);
       await prefs.setBool('dop_reminders_enabled', reminderPreference);
     }
@@ -514,13 +526,12 @@ class SchoolAccountService {
         final user = jsonDecode(rawUser);
         if (user is Map && user['id'] != null) {
           currentUserId = user['id'].toString().trim();
-          await prefs.setBool('dop_reminders_enabled_${currentUserId}', prefs.getBool('dop_reminders_enabled') ?? false);
         }
       } catch (_) {}
     }
     await prefs.setBool('dop_reminders_enabled', false);
     await _clearScheduledTaskReminders(profileId: currentUserId);
-    try { await LocalNotificationService().cancelDopReminders(); } catch (_) {}
+    await _clearScheduledDopReminders();
     String? deviceToken;
     try {
       deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
