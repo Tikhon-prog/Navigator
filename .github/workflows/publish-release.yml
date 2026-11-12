@@ -1,4 +1,4 @@
-name: Поколение — ручная сборка APK 0.2.0
+name: Поколение — ручная release-сборка APK
 
 on:
   workflow_dispatch:
@@ -51,19 +51,33 @@ jobs:
       - name: Analyze Flutter project
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+      - name: Read application version
+        id: app-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n "s/^version: *['\" ]*\([^'\" ]*\).*/\1/p" pubspec.yaml | head -n1)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build release APK
-        run: flutter build apk --release --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
+        run: flutter build apk --release --target-platform android-arm64,android-x64 --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
 
       - name: Prepare named APK and SHA-256 checksum
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Pokolenie-0.2.0+2.apk
-          sha256sum dist/Pokolenie-0.2.0+2.apk > dist/Pokolenie-0.2.0+2.apk.sha256
+          apk_name="Pokolenie-${APP_VERSION}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/${apk_name}"
+          (cd dist && sha256sum "${apk_name}" > "${apk_name}.sha256")
 
       - name: Upload release APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: pokolenie-0.2.0+2-apk
+          name: pokolenie-${{ steps.app-version.outputs.version }}-apk
           path: dist/*
           if-no-files-found: error
           retention-days: 7
