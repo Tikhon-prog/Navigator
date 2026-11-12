@@ -37,7 +37,7 @@ if errorlevel 1 exit /b 1
 
 echo.
 echo [4/5] Building release APK...
-call flutter build apk --release
+call flutter build apk --release --target-platform android-arm64,android-x64
 if errorlevel 1 exit /b 1
 
 set "APK_PATH=build\app\outputs\flutter-apk\app-release.apk"
