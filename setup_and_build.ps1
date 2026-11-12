@@ -381,7 +381,7 @@ function Install-InnoSetup {
 function Install-Jdk21Portable {
     $existing = Find-Jdk21Home
     if ($existing) {
-        Write-Host ("Using existing Temurin Java 21: " + $existing) -ForegroundColor DarkGray
+        Write-Host ("Using existing compatible Java 21: " + $existing) -ForegroundColor DarkGray
         return
     }
 
@@ -406,7 +406,7 @@ function Install-Jdk21Portable {
     $checksumText = Get-Content -LiteralPath $checksumPath -Raw
     $checksumMatch = [regex]::Match($checksumText, '(?i)\b[0-9a-f]{64}\b')
     if (-not $checksumMatch.Success) {
-        throw 'Oracle JDK checksum file did not contain a SHA-256 value; refusing to install.'
+        throw 'Eclipse Temurin checksum file did not contain a SHA-256 value; refusing to install.'
     }
 
     Invoke-WebRequest -UseBasicParsing -Uri $baseUrl -OutFile $zipPath
@@ -414,7 +414,7 @@ function Install-Jdk21Portable {
     $expectedSha = $checksumMatch.Value.ToLowerInvariant()
     if ($actualSha -ne $expectedSha) {
         Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-        throw 'Oracle JDK ZIP checksum mismatch; refusing to install. Check network filtering or retry the official download.'
+        throw 'Eclipse Temurin ZIP checksum mismatch; refusing to install. Check network filtering or retry the official download.'
     }
 
     Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
