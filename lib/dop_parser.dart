@@ -236,9 +236,6 @@ class DopSubgroup {
         'teacher': teacher,
         'schedule': schedule.map((e) => e.toJson()).toList(),
         'supplies': supplies,
-        'selection_name': selectionName,
-        'selection_value': selectionValue,
-        'preselected': preselected,
       };
 }
 
