@@ -59,7 +59,7 @@ class NavigatorStudentProvider {
     var validSchoolSession = false;
     if (hasSchoolSession) {
       try {
-        final account = jsonDecode(rawSchoolUser ?? '');
+        final account = jsonDecode(rawSchoolUser);
         final identity = account is Map
             ? (account['id'] ?? '').toString().trim()
             : '';
