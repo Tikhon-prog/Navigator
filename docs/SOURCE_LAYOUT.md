@@ -1,4 +1,4 @@
-# Структура исходников — версия 0.2.0
+# Структура исходников — версия 0.2.1+5
 
 ## Flutter-клиент
 - `lib/main.dart` — главный интерфейс, локальное расписание, каталог помещений и маршруты.
@@ -9,6 +9,9 @@
 - `lib/school_account_service.dart`, `lib/school_portal_page.dart` — серверная учётная запись и школьный портал.
 - `lib/online_data_service.dart`, `lib/api_security.dart` — безопасная конфигурация клиентского API.
 - `lib/local_notification_service.dart` — локальные напоминания.
+- `lib/schedule_time.dart` — нормализация и сортировка времени расписания.
+- `lib/student_tasks_page.dart` — локальные задания и напоминания, изолированные по школьным аккаунтам.
+- `lib/local_ai_chat_page.dart` — локальный ИИ и on-device GGUF runtime.
 
 ## Данные и карты
 - `assets/data/` — каталог помещений, места, координаты дверей и локальное расписание.
