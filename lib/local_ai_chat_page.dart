@@ -932,7 +932,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         messages: messages,
         tools: _buildTools(),
         options: const LLMChatOptions(toolAttempts: 4),
-      )) {
+      ).timeout(const Duration(minutes: 3))) {
         final message = chunk.message;
         final rawContent = message?.rawContent;
         if (rawContent != null && rawContent.isNotEmpty) {
