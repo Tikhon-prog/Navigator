@@ -59,6 +59,40 @@ class DataSourceAdapterTests(unittest.TestCase):
                 load_configured_sheet("Classes")
             self.assertEqual(raised.exception.status_code, 503)
 
+    def test_remote_data_api_url_rejects_embedded_credentials_and_query(self):
+        for url in (
+            "https://user:password@data.example.org",
+            "https://data.example.org/api?token=secret",
+            "https://data.example.org/api#fragment",
+        ):
+            with self.subTest(url=url), patch.dict(os.environ, {
+                "NAVIGATOR_DATA_SOURCE": "http",
+                "NAVIGATOR_DATA_API_URL": url,
+                "NAVIGATOR_DATA_API_TOKEN": "test-token",
+            }), patch("backend.data_sources.requests.get") as get:
+                with self.assertRaises(HTTPException) as raised:
+                    load_configured_sheet("Classes")
+                self.assertEqual(raised.exception.status_code, 503)
+                get.assert_not_called()
+
+    def test_remote_data_api_redirect_is_not_followed(self):
+        from unittest.mock import Mock
+
+        response = Mock()
+        response.status_code = 302
+        with patch.dict(os.environ, {
+            "NAVIGATOR_DATA_SOURCE": "http",
+            "NAVIGATOR_DATA_API_URL": "https://data.example.org",
+            "NAVIGATOR_DATA_API_TOKEN": "test-token",
+        }), patch("backend.data_sources.requests.get", return_value=response) as get:
+            with self.assertRaises(HTTPException) as raised:
+                load_configured_sheet("Classes")
+            self.assertEqual(raised.exception.status_code, 502)
+            self.assertIs(
+                get.call_args.kwargs["allow_redirects"],
+                False,
+            )
+
     def test_remote_http_source_requires_https(self):
         with patch.dict(os.environ, {
             "NAVIGATOR_DATA_SOURCE": "http",
