@@ -95,6 +95,20 @@ void main() {
     );
   });
 
+  test('corrupt deadlines are skipped instead of becoming tomorrow tasks', () async {
+    final valid = buildTask(id: 'valid').toJson();
+    final invalid = buildTask(id: 'invalid').toJson()
+      ..['due_at'] = 'not-a-date';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      StudentTaskStore.storageKey,
+      jsonEncode([valid, invalid]),
+    );
+
+    final loaded = await StudentTaskStore.load();
+    expect(loaded.map((task) => task.id), ['valid']);
+  });
+
   test('school accounts have isolated tasks and reminder preferences', () async {
     final prefs = await SharedPreferences.getInstance();
 
