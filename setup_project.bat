@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 echo === Настройка проекта «Поколение» ===
@@ -11,14 +12,16 @@ if errorlevel 1 (
 )
 if not exist android\gradle\wrapper\gradle-wrapper.jar (
   echo Android Gradle wrapper is missing. Flutter will restore the Android project files.
-  flutter create --project-name navigator .
+  call flutter create --project-name navigator .
   if errorlevel 1 (
     echo flutter create failed.
     pause
     exit /b 1
   )
 )
-flutter pub get
+call flutter pub get
 if errorlevel 1 exit /b 1
-flutter analyze
+call flutter analyze
+if errorlevel 1 exit /b 1
 endlocal
+exit /b 0

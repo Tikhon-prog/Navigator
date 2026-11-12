@@ -1292,6 +1292,16 @@ class _PokolenieAppState extends State<PokolenieApp>{
         indicatorColor: colors.primary.withValues(alpha: dark ? .24 : .13),
         labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w500)),
       ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _PokoleniePageTransitionsBuilder(),
+          TargetPlatform.iOS: _PokoleniePageTransitionsBuilder(),
+          TargetPlatform.linux: _PokoleniePageTransitionsBuilder(),
+          TargetPlatform.macOS: _PokoleniePageTransitionsBuilder(),
+          TargetPlatform.windows: _PokoleniePageTransitionsBuilder(),
+          TargetPlatform.fuchsia: _PokoleniePageTransitionsBuilder(),
+        },
+      ),
       snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
     );
   }
@@ -2176,18 +2186,93 @@ class _AppShellState extends State<AppShell>{
               ),
               VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
             ],
-            Expanded(child: IndexedStack(index: index, children: pages)),
+            Expanded(child: _AnimatedIndexedStack(index: index, children: pages)),
           ]);
         },
       ),
       bottomNavigationBar: MediaQuery.sizeOf(context).width < 900
-          ? NavigationBar(selectedIndex: index, onDestinationSelected: go, destinations: destinations)
+          ? NavigationBar(animationDuration: const Duration(milliseconds: 320), selectedIndex: index, onDestinationSelected: go, destinations: destinations)
           : null,
     );
   }
 
   Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),(8,Icons.assignment_rounded,'Домашние задания','Сроки, контрольные и проекты')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 8) { _openStudentTasks(); } else { go(x.$1); } }))]))])));}
 }
+class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _PokoleniePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    Route<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    final slide = Tween<Offset>(
+      begin: const Offset(0.035, 0),
+      end: Offset.zero,
+    ).animate(curved);
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(position: slide, child: child),
+    );
+  }
+}
+
+/// Keeps tab state alive while cross-fading and gently sliding between screens.
+class _AnimatedIndexedStack extends StatelessWidget {
+  const _AnimatedIndexedStack({
+    required this.index,
+    required this.children,
+  });
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration = reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 280);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (var i = 0; i < children.length; i++)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: i != index,
+              child: ExcludeSemantics(
+                excluding: i != index,
+                child: AnimatedOpacity(
+                  opacity: i == index ? 1 : 0,
+                  duration: duration,
+                  curve: Curves.easeInOutCubic,
+                  child: AnimatedSlide(
+                    offset: i == index || reduceMotion ? Offset.zero : const Offset(.018, 0),
+                    duration: duration,
+                    curve: Curves.easeOutCubic,
+                    child: TickerMode(
+                      enabled: i == index,
+                      child: children[i],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class HomePage extends StatelessWidget {
   final String userName;
   final AppThemeType theme;
@@ -2204,22 +2289,6 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         leading: IconButton(onPressed: onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Поколение'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(30)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.offline_bolt_rounded, size: 16, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 6),
-                  const Text('Офлайн', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ),
-          ),
-        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -2276,20 +2345,6 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 14),
               UpcomingStudentTaskPreview(onOpen: onTasks),
               const SizedBox(height: 24),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Container(width: 46, height: 46, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)), child: Icon(Icons.offline_pin_rounded, color: Theme.of(context).colorScheme.primary, size: 25)),
-                    const SizedBox(width: 14),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Работает и без интернета', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-                      const SizedBox(height: 5),
-                      Text('Карта и встроенное расписание доступны офлайн. Для обновления ДОПов требуется доступ к школьному intranet.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4, fontSize: 13)),
-                    ])),
-                  ]),
-                ),
-              ),
             ],
           ),
         ),
@@ -3620,7 +3675,7 @@ class SettingsPage extends StatelessWidget {
       Card(child: ListTile(leading: Icon(Icons.admin_panel_settings_rounded, color: c.primary), title: const Text('Кабинет школы'), subtitle: const Text('Сотрудникам — управление по роли; ученикам — школьные оповещения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openSchoolCabinet(context))),
       Card(child: ListTile(leading: Icon(Icons.cloud_sync_rounded, color: c.primary), title: const Text('Настройки подключения'), subtitle: const Text('Адрес API, включение онлайн-режима и проверка соединения'), trailing: const Icon(Icons.chevron_right_rounded), onTap: () => _openAdmin(context))),
       const SizedBox(height: 18), const Text('Приложение', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Приложение школы «Поколение»'), onTap: () => showAboutDialog(context: context, applicationName: 'Поколение', applicationLegalese: 'Приложение школы «Поколение»')), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
+      Card(child: Column(children: [ListTile(leading: Icon(Icons.info_outline_rounded, color: c.primary), title: const Text('О приложении'), subtitle: const Text('Приложение школы «Поколение»'), onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutPage()))), const Divider(height: 1), ListTile(leading: Icon(Icons.restore_rounded, color: c.primary), title: const Text('Сбросить тему'), onTap: () => onThemeChanged(AppThemeType.turquoise))])),
     ]))));
   }
 
@@ -3670,3 +3725,176 @@ class _EditValueDialogState extends State<_EditValueDialog> {
 }
 
 class _ThemeTile extends StatelessWidget { final String title; final String description; final List<Color> colors; final bool selected; final VoidCallback onTap; const _ThemeTile({required this.title, required this.description, required this.colors, required this.selected, required this.onTap}); @override Widget build(BuildContext context) => Card(margin: const EdgeInsets.only(bottom: 10), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(20), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [Container(width: 58, height: 58, decoration: BoxDecoration(gradient: LinearGradient(colors: colors), borderRadius: BorderRadius.circular(16))), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(description, style: const TextStyle(fontSize: 12))])), Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: selected ? colors.first : null)])))); }
+
+// Informational screen intentionally replaces Flutter's generated About dialog:
+// this keeps the app's UI focused and avoids an unnecessary system license page.
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final gradient = [scheme.primary, scheme.secondary];
+    return Scaffold(
+      appBar: AppBar(title: const Text('О приложении')),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+              children: [
+                Center(
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gradient,
+                      ),
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: .2),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.school_rounded,
+                      color: Colors.white,
+                      size: 44,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Поколение',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.7,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Приложение создано для учеников и учителей школы «Поколение».',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.5,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Всё важное для школьного дня',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '«Поколение» помогает ориентироваться в здании школы, '
+                          'следить за расписанием и дополнительными занятиями, '
+                          'получать объявления и оповещения, вести заметки и '
+                          'планировать учебные задачи.',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            height: 1.55,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _AboutFeature(
+                  icon: Icons.map_rounded,
+                  title: 'Навигация по школе',
+                  description: 'Карты этажей, поиск помещений и построение маршрутов.',
+                ),
+                _AboutFeature(
+                  icon: Icons.calendar_month_rounded,
+                  title: 'Учебный день',
+                  description: 'Расписание, дополнительные занятия и домашние задания.',
+                ),
+                _AboutFeature(
+                  icon: Icons.notifications_active_rounded,
+                  title: 'Школьная жизнь',
+                  description: 'Объявления, оповещения и личные заметки.',
+                ),
+                _AboutFeature(
+                  icon: Icons.auto_awesome_rounded,
+                  title: 'Локальный ИИ-помощник',
+                  description: 'Помогает работать с возможностями приложения прямо на устройстве.',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Для школьного сообщества «Поколение».',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AboutFeature extends StatelessWidget {
+  const _AboutFeature({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: .11),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(icon, color: scheme.primary),
+          ),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(description),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

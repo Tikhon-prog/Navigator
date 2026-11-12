@@ -1,11 +1,30 @@
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
 import 'package:path_provider/path_provider.dart';
+
+
+final class _AndroidDlInfo extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> dli_fname;
+  external ffi.Pointer<ffi.Void> dli_fbase;
+  external ffi.Pointer<ffi.Char> dli_sname;
+  external ffi.Pointer<ffi.Void> dli_saddr;
+}
+
+typedef _DladdrNative = ffi.Int Function(
+  ffi.Pointer<ffi.Void>,
+  ffi.Pointer<_AndroidDlInfo>,
+);
+typedef _DladdrDart = int Function(
+  ffi.Pointer<ffi.Void>,
+  ffi.Pointer<_AndroidDlInfo>,
+);
 
 typedef _LocalAiActionHandler = Future<String> Function(
   String action,
@@ -71,6 +90,173 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   static LlamaCppChatRepository? _sharedChatRepository;
   static String? _sharedModelPath;
   static Future<void>? _sharedLoadFuture;
+  static Future<void>? _androidBackendsFuture;
+  static bool _androidBackendsReady = false;
+
+  /// llm_llamacpp 0.7.0 uses ggml_backend_load_all() on Android. That
+  /// discovery path can be blocked by Android's filesystem sandbox, leaving
+  /// llama.cpp with zero registered backends. Register CPU backends directly
+  /// from the extracted native-library directory before the package loads a model.
+  static Future<void> _ensureAndroidLlamaBackends() async {
+    if (!Platform.isAndroid || _androidBackendsReady) return;
+    final pending = _androidBackendsFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+
+    final initialization = _initializeAndroidLlamaBackends();
+    _androidBackendsFuture = initialization;
+    try {
+      await initialization;
+      _androidBackendsReady = true;
+    } catch (_) {
+      _androidBackendsFuture = null;
+      rethrow;
+    }
+  }
+
+  static Future<void> _initializeAndroidLlamaBackends() async {
+    // Load core dependencies in the same order used by llm_llamacpp's loader.
+    for (final name in ['libggml-base.so', 'libggml.so', 'libomp.so']) {
+      try {
+        ffi.DynamicLibrary.open(name);
+      } catch (error) {
+        debugPrint('[Поколение AI] Не удалось предварительно загрузить $name: $error');
+      }
+    }
+
+    final llama = ffi.DynamicLibrary.open('libllama.so');
+    final libc = ffi.DynamicLibrary.open('libc.so');
+    final dladdr = libc.lookupFunction<_DladdrNative, _DladdrDart>('dladdr');
+    final symbol = llama.lookup<ffi.Void>('llama_backend_init');
+    final info = calloc<_AndroidDlInfo>();
+
+    late final String libraryPath;
+    try {
+      final result = dladdr(symbol, info);
+      if (result == 0 || info.ref.dli_fname.address == 0) {
+        throw StateError('Не удалось определить каталог нативных библиотек Android.');
+      }
+      libraryPath = info.ref.dli_fname.cast<Utf8>().toDartString();
+    } finally {
+      calloc.free(info);
+    }
+
+    // If Android maps .so files directly from the APK, ggml cannot enumerate
+    // the backend directory. The app manifest/build settings enable extraction.
+    if (libraryPath.contains('.apk!')) {
+      throw StateError(
+        'Нативные библиотеки модели не извлечены из APK. Пересобери приложение с extractNativeLibs.',
+      );
+    }
+
+    final separator = libraryPath.lastIndexOf('/');
+    if (separator <= 0) {
+      throw StateError('Некорректный путь к libllama.so: $libraryPath');
+    }
+    final nativeDirectory = Directory(libraryPath.substring(0, separator));
+    if (!nativeDirectory.existsSync()) {
+      throw StateError('Каталог нативных библиотек не найден: ${nativeDirectory.path}');
+    }
+
+    final cpuBackends = nativeDirectory
+        .listSync(followLinks: true)
+        .whereType<File>()
+        .where((file) {
+          final name = file.uri.pathSegments.last;
+          return name.startsWith('libggml-cpu-') && name.endsWith('.so');
+        })
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+
+    int registeredBackendCount() {
+      try {
+        return llama.lookupFunction<ffi.Size Function(), int Function()>(
+          'ggml_backend_reg_count',
+        )();
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    var registered = registeredBackendCount();
+    if (registered == 0) {
+      // Prefer llama.cpp's Android-safe path-based discovery.
+      try {
+        final loadAllFromPath = llama.lookupFunction<
+            ffi.Void Function(ffi.Pointer<ffi.Char>),
+            void Function(ffi.Pointer<ffi.Char>)>(
+          'ggml_backend_load_all_from_path',
+        );
+        final pathPointer = nativeDirectory.path.toNativeUtf8();
+        try {
+          loadAllFromPath(pathPointer.cast<ffi.Char>());
+        } finally {
+          calloc.free(pathPointer);
+        }
+      } catch (error) {
+        debugPrint('[Поколение AI] Автозагрузка CPU-бэкенда не сработала: $error');
+      }
+      registered = registeredBackendCount();
+    }
+
+    var manuallyLoaded = 0;
+    if (registered == 0 && cpuBackends.isNotEmpty) {
+      final loadBackend = llama.lookupFunction<
+          ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>),
+          ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>)>(
+        'ggml_backend_load',
+      );
+
+      for (final file in cpuBackends) {
+        // Preload the library first so its dependencies are visible to dlopen.
+        try {
+          ffi.DynamicLibrary.open(file.path);
+        } catch (error) {
+          debugPrint('[Поколение AI] Пропущен CPU-бэкенд ${file.path}: $error');
+          continue;
+        }
+
+        final pathPointer = file.path.toNativeUtf8();
+        try {
+          final handle = loadBackend(pathPointer.cast<ffi.Char>());
+          if (handle.address != 0) manuallyLoaded++;
+        } finally {
+          calloc.free(pathPointer);
+        }
+      }
+      registered = registeredBackendCount();
+    }
+
+    if (registered == 0 && manuallyLoaded == 0) {
+      throw StateError(
+        'Не найден ни один рабочий CPU-бэкенд llama.cpp. '
+        'Проверь состав Android APK и наличие libggml-cpu-*.so.',
+      );
+    }
+
+    debugPrint(
+      '[Поколение AI] Android CPU-бэкенды готовы: '
+      '$registered зарегистрировано, $manuallyLoaded загружено вручную.',
+    );
+  }
+
+  static String _friendlyModelError(Object error) {
+    final details = error.toString().toLowerCase();
+    if (details.contains('out of memory') ||
+        details.contains('not enough memory') ||
+        details.contains('allocation failed')) {
+      return 'Устройству не хватило памяти для запуска модели. Закрой лишние приложения и попробуй ещё раз.';
+    }
+    if (details.contains('no backends are loaded') ||
+        details.contains('backend') ||
+        details.contains('ggml') ||
+        details.contains('dynamiclibraryopen')) {
+      return 'Не удалось запустить вычислительный модуль ИИ. Обнови приложение и повтори запрос.';
+    }
+    return 'Не удалось запустить локальную модель. Попробуй повторить запрос.';
+  }
 
   static const _modelFileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
   // Pin the model revision so the checksum always matches the downloaded file.
@@ -84,7 +270,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
-Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания.
+Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания. Для удаления ДОПа или задания приложение обязательно запросит отдельное подтверждение пользователя.
 Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, ДОПы, задания, избранное и настройки только через инструменты приложения.
 ''';
 
@@ -92,7 +278,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   final _scroll = ScrollController();
   final List<_ChatLine> _lines = [
     _ChatLine(false,
-        'Привет! Я локальный ИИ-помощник. Поиск кабинета по встроенной карте работает офлайн. Для свободного диалога сначала нужно скачать небольшую модель (~491 МБ); после этого интернет не потребуется.')
+        'Привет! Я локальный ИИ-помощник школы «Поколение». Помогу с навигацией, расписанием и школьными делами.')
   ];
   final List<LLMMessage> _history = [
     LLMMessage(role: LLMRole.system, content: _systemPrompt),
@@ -260,8 +446,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           );
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
-          'Сервер модели вернул HTTP ${response.statusCode}.',
-          response.uri,
+          'Сервер модели вернул HTTP ${response.statusCode} для $_modelUrl.',
         );
       }
 
@@ -359,6 +544,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         });
       }
     } catch (error) {
+      debugPrint('[Поколение AI] Ошибка загрузки модели: $error');
       try {
         await writer?.close();
       } catch (_) {}
@@ -369,7 +555,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       } catch (_) {}
       if (mounted) {
         setState(() {
-          _statusError = 'Не удалось скачать модель: $error';
+          _statusError = 'Не удалось скачать модель. Проверь подключение и повтори загрузку.';
         });
       }
     } finally {
@@ -409,6 +595,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       await load;
       _modelRepository = _sharedModelRepository;
       _chatRepository = _sharedChatRepository;
+      if (mounted) setState(() => _statusError = null);
     } finally {
       if (identical(_sharedLoadFuture, load)) _sharedLoadFuture = null;
       if (mounted) setState(() => _loadingModel = false);
@@ -423,6 +610,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     oldChat?.dispose();
     oldRepository?.dispose();
 
+    if (Platform.isAndroid) {
+      await _ensureAndroidLlamaBackends();
+    }
     final repository = LlamaCppRepository();
     try {
       final model = await repository.loadModel(modelPath);
@@ -442,10 +632,59 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
   }
 
+  Future<bool> _confirmDestructiveAction(
+    String action,
+    Map<String, dynamic> args,
+  ) async {
+    if (!mounted) return false;
+
+    final isSupplement = action == 'delete_supplement';
+    final subject = (args[isSupplement ? 'title' : 'id'] ?? '')
+        .toString()
+        .trim();
+    if (subject.isEmpty) return false;
+
+    final description = isSupplement
+        ? 'Удалить локальное дополнительное занятие «$subject»?'
+        : 'Удалить задание с ID $subject с этого устройства?';
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Подтвердить удаление'),
+            content: Text(
+              '$description\n\nЭто действие нельзя автоматически отменить.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Не удалять'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                ),
+                child: const Text('Удалить'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   Future<String> _runAction(String name, Map<String, dynamic> args) async {
     final handler = widget.actionHandler;
     if (handler == null) {
       return 'Действия приложения пока не подключены в этой сборке.';
+    }
+    if (name == 'delete_supplement' || name == 'delete_student_task') {
+      final approved = await _confirmDestructiveAction(name, args);
+      if (!approved) {
+        return 'Пользователь отменил удаление. Не повторяй это действие без нового прямого запроса.';
+      }
     }
     final result = await handler(name, args);
     final mapPrefix = '__OPEN_MAP__:';
@@ -880,8 +1119,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         options: const LLMChatOptions(toolAttempts: 4),
       )) {
         final message = chunk.message;
-        if (message?.rawContent.isNotEmpty == true) {
-          rawAssistantTurn = message!.rawContent;
+        final rawContent = message?.rawContent;
+        if (rawContent != null && rawContent.isNotEmpty) {
+          rawAssistantTurn = rawContent;
         }
         final part = message?.content ?? '';
         if (part.isNotEmpty && mounted) {
@@ -916,8 +1156,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         Navigator.of(context).pop();
       }
     } catch (error) {
+      debugPrint('[Поколение AI] Ошибка локальной модели: $error');
       answerLine.text =
-          'Не удалось запустить модель на этом устройстве. Поиск кабинетов офлайн остаётся доступен.';
+          'Сейчас не получилось запустить ИИ-помощника. Поиск кабинетов и навигация остаются доступны.';
       _history.add(LLMMessage(
         role: LLMRole.assistant,
         content: answerLine.text,
@@ -925,7 +1166,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       _trimConversationHistory();
       if (mounted) {
         setState(() {
-          _statusError = 'Локальная модель не запустилась: $error';
+          _statusError = _friendlyModelError(error);
         });
       }
     } finally {
@@ -993,7 +1234,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                     const Text('Модель Qwen2.5 0.5B · Q4_K_M',
                         style: TextStyle(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 5),
-                    const Text('Около 491 МБ. Модель не входит в APK, чтобы не раздувать установщик. После однократной загрузки чат работает без интернета. На слабых устройствах ответы могут генерироваться медленно.'),
+                    const Text('Размер модели — около 491 МБ. Она загружается один раз. На слабых устройствах ответы могут генерироваться медленно.'),
                     const SizedBox(height: 10),
                     if (_checkingModel && !_downloading) ...[
                       const LinearProgressIndicator(),
@@ -1018,29 +1259,51 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                   ],
                 ),
               )
-            else
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: colors.primaryContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
+            else if (_loadingModel)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.offline_bolt_rounded),
-                    const SizedBox(width: 8),
-                    const Expanded(child: Text('Модель сохранена на устройстве · интернет не нужен')),
-                    if (_loadingModel)
-                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Запускаю локальную модель…'),
                   ],
                 ),
               ),
             if (_statusError != null && _modelPath != null)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                child: Text(_statusError!, style: TextStyle(color: colors.error)),
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: colors.errorContainer,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: colors.onErrorContainer),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _statusError!,
+                          style: TextStyle(
+                            color: colors.onErrorContainer,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             SizedBox(
               height: 44,
@@ -1094,17 +1357,30 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                   itemCount: _lines.length,
                   itemBuilder: (context, index) {
                     final line = _lines[index];
-                    return Align(
-                      alignment: line.fromUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .86),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                        decoration: BoxDecoration(
-                          color: line.fromUser ? colors.primaryContainer : colors.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(18),
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey('chat-${identityHashCode(line)}'),
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      tween: Tween(begin: 0, end: 1),
+                      builder: (context, value, child) => Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, (1 - value) * 9),
+                          child: child,
                         ),
-                        child: SelectableText(line.text.isEmpty && _busy ? 'Думаю…' : line.text),
+                      ),
+                      child: Align(
+                        alignment: line.fromUser ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .86),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                          decoration: BoxDecoration(
+                            color: line.fromUser ? colors.primaryContainer : colors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: SelectableText(line.text.isEmpty && _busy ? 'Думаю…' : line.text),
+                        ),
                       ),
                     );
                   },

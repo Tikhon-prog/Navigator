@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8fa">
+  <meta name="description" content="Поколение — школьный помощник: расписание, навигация, дополнительные занятия и ИИ.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Поколение">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="assets/app.css">
+  <title>Поколение</title>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержимому</a>
+  <div class="app">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Поколение — главная">
+        <span class="brand-icon" aria-hidden="true">П</span>
+        <span>Поколение</span>
+      </a>
+      <button id="install" class="install-button" type="button" hidden>Установить</button>
+    </header>
+
+    <main id="main">
+      <section class="screen" id="screen-home" data-screen="home">
+        <div class="home-heading">
+          <p class="eyebrow" id="today">ТВОЙ ШКОЛЬНЫЙ ДЕНЬ</p>
+          <h1>Всё важное — рядом.</h1>
+        </div>
+
+        <button class="schedule-card" type="button" data-go="schedule">
+          <span class="card-icon" aria-hidden="true">▦</span>
+          <span class="schedule-copy">
+            <span class="card-kicker">СЕГОДНЯ</span>
+            <strong>Расписание</strong>
+            <span class="muted">Пока не подключено</span>
+          </span>
+          <span class="card-arrow" aria-hidden="true">→</span>
+        </button>
+
+        <div class="section-heading">
+          <h2>Быстрый доступ</h2>
+        </div>
+        <div class="shortcut-list">
+          <button class="shortcut" type="button" data-go="map">
+            <span class="shortcut-icon map-icon" aria-hidden="true">⌖</span>
+            <span><strong>Навигация</strong><small>Кабинеты и этажи</small></span>
+            <span class="card-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="shortcut" type="button" data-go="extras">
+            <span class="shortcut-icon extras-icon" aria-hidden="true">✳</span>
+            <span><strong>Дополнительные занятия</strong><small>Кружки и секции</small></span>
+            <span class="card-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="shortcut" type="button" data-go="ai">
+            <span class="shortcut-icon ai-icon" aria-hidden="true">✦</span>
+            <span><strong>ИИ-помощник</strong><small>Школьные подсказки</small></span>
+            <span class="card-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-schedule" data-screen="schedule" hidden>
+        <div class="page-heading">
+          <p class="eyebrow">ТВОЙ УЧЕБНЫЙ ДЕНЬ</p>
+          <h1>Расписание</h1>
+        </div>
+        <article class="empty-state">
+          <span class="empty-icon" aria-hidden="true">▦</span>
+          <h2>Расписание появится здесь</h2>
+          <p>Уроки, кабинеты и время до звонка будут доступны после подключения школьных данных.</p>
+        </article>
+      </section>
+
+      <section class="screen" id="screen-map" data-screen="map" hidden>
+        <div class="page-heading">
+          <p class="eyebrow">ОРИЕНТИРУЙСЯ В ШКОЛЕ</p>
+          <h1>Навигация</h1>
+        </div>
+        <article class="empty-state">
+          <span class="empty-icon map-empty-icon" aria-hidden="true">⌖</span>
+          <h2>Карта школы появится здесь</h2>
+          <p>Добавим реальные планы этажей и проверенные маршруты.</p>
+        </article>
+      </section>
+
+      <section class="screen" id="screen-extras" data-screen="extras" hidden>
+        <div class="page-heading">
+          <p class="eyebrow">КРУЖКИ И СЕКЦИИ</p>
+          <h1>Допы</h1>
+        </div>
+        <article class="empty-state">
+          <span class="empty-icon extras-empty-icon" aria-hidden="true">✳</span>
+          <h2>Твои занятия будут здесь</h2>
+          <p>Время, кабинет и напоминания о дополнительных занятиях.</p>
+        </article>
+      </section>
+
+      <section class="screen" id="screen-ai" data-screen="ai" hidden>
+        <div class="page-heading">
+          <p class="eyebrow">ТВОЙ ЦИФРОВОЙ ПОМОЩНИК</p>
+          <h1>ИИ-помощник</h1>
+        </div>
+        <article class="empty-state">
+          <span class="empty-icon ai-empty-icon" aria-hidden="true">✦</span>
+          <h2>ИИ пока не подключён</h2>
+          <p>Подготовим отдельную версию помощника для iPhone.</p>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Разделы приложения">
+      <button class="nav-item" type="button" data-tab="home">
+        <span aria-hidden="true">⌂</span><small>Главная</small>
+      </button>
+      <button class="nav-item" type="button" data-tab="schedule">
+        <span aria-hidden="true">▦</span><small>Уроки</small>
+      </button>
+      <button class="nav-item" type="button" data-tab="map">
+        <span aria-hidden="true">⌖</span><small>Карта</small>
+      </button>
+      <button class="nav-item" type="button" data-tab="extras">
+        <span aria-hidden="true">✳</span><small>Допы</small>
+      </button>
+      <button class="nav-item" type="button" data-tab="ai">
+        <span aria-hidden="true">✦</span><small>ИИ</small>
+      </button>
+    </nav>
+  </div>
+
+  <dialog id="install-dialog" aria-labelledby="install-title">
+    <button class="dialog-close" id="close-dialog" type="button" aria-label="Закрыть">×</button>
+    <p class="eyebrow">УСТАНОВКА НА IPHONE</p>
+    <h2 id="install-title">Добавь «Поколение» на экран Домой</h2>
+    <ol class="install-steps">
+      <li><strong>Открой сайт в Safari</strong></li>
+      <li><strong>Нажми «Поделиться»</strong></li>
+      <li><strong>Выбери «На экран Домой» и нажми «Добавить»</strong></li>
+    </ol>
+    <button class="dialog-done" id="done-dialog" type="button">Понятно</button>
+  </dialog>
+
+  <script>
+    if ("serviceWorker" in navigator && window.isSecureContext) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("./service-worker.js").catch(function (error) {
+          console.warn("PWA offline shell was not registered:", error);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

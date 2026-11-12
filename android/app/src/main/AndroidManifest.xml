@@ -9,6 +9,7 @@
         android:name="${applicationName}"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
+        android:extractNativeLibs="true"
 >
         <activity
             android:name="net.openid.appauth.RedirectUriReceiverActivity"

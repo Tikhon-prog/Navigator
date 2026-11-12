@@ -8,9 +8,11 @@
 |---|---|
 | [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md) | Полное техническое руководство по проекту |
 | [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md) | Настройка Windows и сборка APK/Windows |
+| [DOCKER_DEVELOPMENT.md](DOCKER_DEVELOPMENT.md) | Единое Docker-окружение Flutter/Dart, Android SDK и Python |
 | [SERVER_INTEGRATION.md](SERVER_INTEGRATION.md) | Развёртывание сервера, OIDC, переменные окружения и API |
 | [SERVER_FEATURES.md](SERVER_FEATURES.md) | Подробные заметки о серверных функциях |
 | [SECURITY.md](SECURITY.md) | Модель безопасности и production-чек-лист |
+| [PROJECT_AUDIT_2026-11-11.md](PROJECT_AUDIT_2026-11-11.md) | Глубокая ревизия кода, выявленные риски и статус проверок |
 | [ROUTING_AUDIT.md](ROUTING_AUDIT.md) | Аудит геометрии и ограничений маршрутизации |
 | [CHANGELOG.md](CHANGELOG.md) | История изменений |
 | [SOURCE_LAYOUT.md](SOURCE_LAYOUT.md) | Карта исходников |

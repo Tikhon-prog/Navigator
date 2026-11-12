@@ -1,10 +1,14 @@
 # «Поколение» — школьное приложение
 
-**Версия исходников: `0.2.0+2`** · Flutter / Dart · Android и Windows; в репозитории также есть iOS-конфигурация и CI workflows.
+**Версия приложения: `0.2.1` (build `3`)** · Flutter / Dart · Android и Windows; в репозитории также есть iOS-конфигурация и CI workflows.
 
 «Поколение» — школьное приложение с офлайн-картами этажей, поиском и категориями помещений, избранными кабинетами, построением маршрутов, расписанием, дополнительными занятиями, домашними заданиями и локальным ИИ-помощником. Серверные возможности для школьных аккаунтов подключаются отдельно.
 
+Для iPhone подготовлена отдельная мобильная PWA-оболочка в каталоге `website/` (Safari → «Поделиться» → «На экран Домой»). Она не заменяет Flutter Web в каталоге `web/`; подключение школьных данных и API пока не настроено. Инструкция: [`website/README.md`](website/README.md).
+
 ## Быстрый старт
+
+Для единого окружения Flutter/Dart, Python и Android SDK без установки этих инструментов на каждый ноутбук см. [разработку в Docker](docs/DOCKER_DEVELOPMENT.md). Запуск: `scripts/dev-container.ps1` в Windows PowerShell или `bash scripts/dev-container.sh` в Linux. Docker-контейнер собирает Android APK; Windows EXE по-прежнему требует нативной Windows-среды с MSVC.
 
 Подробное и единое техническое руководство: **[docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**. В нём описаны структура исходников, локальная сборка, сервер, конфигурация, API, роли, SSO, уведомления, тесты и требования к выпуску.
 
@@ -43,8 +47,9 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 | `lib/dop_parser.dart`, `lib/supplements_page.dart` | Дополнительные занятия |
 | `lib/announcements_page.dart`, `lib/notes_page.dart` | Объявления и заметки |
 | `lib/student_tasks_page.dart` | Локальные задания, дедлайны и напоминания |
-| `assets/maps/`, `assets/data/` | Планировки, точки и граф навигации, локальные данные расписания |
+| `assets/maps/`, `assets/data/` | Офлайн-карты, точки, граф навигации и локальный снимок расписания; исходные PDF/PNG/XLSX не входят в APK/EXE |
 | `backend/` | FastAPI API, SQLite, роли, SSO, синхронизация и уведомления |
+| `website/` | Отдельная PWA-веб-версия для iPhone; самостоятельный интерфейс HTML/CSS/JS |
 | `test/`, `backend/tests/` | Тесты Flutter и сервера |
 | `docs/` | Единое руководство и вспомогательные документы |
 

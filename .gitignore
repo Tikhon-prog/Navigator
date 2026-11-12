@@ -38,3 +38,12 @@ replay_pid*
 secrets/
 service-account*.json
 firebase-service-account*.json
+
+# Local build distributions and test coverage
+/dist/
+/coverage/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
