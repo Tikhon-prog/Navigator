@@ -498,17 +498,37 @@ class SchoolScheduleCatalog {
     final seen = <String>{};
     final mathSlots = <int, List<String>>{};
     final groupsBySlot = <String, Set<int>>{};
+    final lunchEndByDay = <int, int>{};
 
-    // Build the slot/group index once. This replaces a full scan of all rows
-    // for every lesson, reducing group selection from O(n²) to O(n).
+    int? lessonStartMinutes(String value) {
+      final match = RegExp(r'^\\s*(\\d{1,2}):(\\d{2})').firstMatch(value);
+      if (match == null) return null;
+      return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+    }
+
+    int? lessonEndMinutes(String value) {
+      final match = RegExp(r'-\\s*(\\d{1,2}):(\\d{2})').firstMatch(value);
+      if (match == null) return null;
+      return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+    }
+
+    // Build the slot/group index and each day's lunch end once. This keeps
+    // subgroup selection linear and lets us identify genuinely shared
+    // afternoon lessons in the 8В timetable.
     for (final row in all) {
       final rowSubject = baseSubject('${row['subject'] ?? ''}');
       if (rowSubject.isEmpty) continue;
       final rowDay = int.tryParse('${row['day']}') ?? 1;
-      final rowTime = canonicalLessonTimeKey('${row['time'] ?? ''}');
+      final rawTime = '${row['time'] ?? ''}';
+      final rowTime = canonicalLessonTimeKey(rawTime);
       final rowGroup = int.tryParse('${row['group']}') ?? 1;
       final slotKey = '$rowDay|$rowTime|$rowSubject';
       (groupsBySlot[slotKey] ??= <int>{}).add(rowGroup);
+
+      if (rowSubject.toLowerCase() == 'обед') {
+        final lunchEnd = lessonEndMinutes(rawTime);
+        if (lunchEnd != null) lunchEndByDay[rowDay] = lunchEnd;
+      }
 
       if (isMathSubject(rowSubject)) {
         final slots = mathSlots.putIfAbsent(rowDay, () => <String>[]);
@@ -524,19 +544,33 @@ class SchoolScheduleCatalog {
       final subject = baseSubject(rawSubject);
       if (subject.isEmpty) continue;
       final group = int.tryParse('${e['group']}') ?? 1;
-      if (group > 0 && wholeClassGroup != null) {
-        // Group 0 is a merged timetable cell visible to both 8В subgroups.
-        if (group != wholeClassGroup) continue;
-      } else if (group > 0) {
-        final wanted = selected[subject] ?? 1;
-        final day = int.tryParse('${e['day']}') ?? 1;
-        final time = '${e['time'] ?? ''}'.trim();
-        final slotKey = '$day|${canonicalLessonTimeKey(time)}|$subject';
-        final slotGroups = groupsBySlot[slotKey] ?? const <int>{};
-        if (slotGroups.length > 1 && group != wanted) continue;
-      }
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
+      var displayGroup = group;
+
+      if (group > 0) {
+        final slotKey = '$day|${canonicalLessonTimeKey(time)}|$subject';
+        final slotGroups = groupsBySlot[slotKey] ?? const <int>{};
+
+        if (wholeClassGroup != null) {
+          final lunchEnd = lunchEndByDay[day];
+          final startsAfterLunch =
+              lunchEnd != null &&
+              (lessonStartMinutes(time) ?? -1) >= lunchEnd;
+          final isSharedAfternoonLesson =
+              slotGroups.length == 1 && startsAfterLunch;
+
+          // Keep real parallel lessons tied to the selected subgroup. A lone
+          // group-labelled lesson after lunch (e.g. Algorithmization) is
+          // common to the whole class, so include it for both 8В subgroups.
+          if (group != wholeClassGroup && !isSharedAfternoonLesson) continue;
+          if (isSharedAfternoonLesson) displayGroup = 0;
+        } else {
+          final wanted = selected[subject] ?? 1;
+          if (slotGroups.length > 1 && group != wanted) continue;
+        }
+      }
+
       var displaySubject = subject;
       if (isMathSubject(subject)) {
         final slots = mathSlots[day] ?? const <String>[];
@@ -557,7 +591,7 @@ class SchoolScheduleCatalog {
         id: '${className}_${day}_${time}_${displaySubject}_${group}'.replaceAll(
           RegExp(r'[^A-Za-zА-Яа-яЁё0-9_-]'), '_'),
         day: day, time: time, subject: displaySubject, room: room,
-        teacher: teacher, group: group,
+        teacher: teacher, group: displayGroup,
       ));
     }
     result.sort((a, b) => a.day != b.day
