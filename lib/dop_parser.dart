@@ -336,45 +336,62 @@ class DopParser {
       );
     }
 
-    final session = _DopSession();
-    try {
-      final firstPage = await session.get(baseUri);
-      final csrf = _inputValue(firstPage.body, 'csrf_token');
-      if (csrf.isEmpty) {
-        throw const DopParserException(
-          'Не найден csrf_token на стартовой странице intranet.',
-        );
+    DopParserException? lastError;
+    // The school page expects one of these exact residence values. "auto" is
+    // an app-only sentinel and must never be sent to the intranet.
+    for (final residence in const ['day', 'campus']) {
+      final session = _DopSession();
+      try {
+        final firstPage = await session.get(baseUri);
+        final csrf = _inputValue(firstPage.body, 'csrf_token');
+        if (csrf.isEmpty) {
+          throw const DopParserException(
+            'Не найден csrf_token на стартовой странице intranet.',
+          );
+        }
+        final catalogPage = await session.post(firstPage.uri, {
+          'csrf_token': csrf,
+          'last_name': student.lastName,
+          'first_name': student.firstName,
+          'class_number': student.classNumber,
+          'class_letter': student.classLetter,
+          'profile': student.profile,
+          'residence_type': residence,
+        });
+        final programs = _parseCatalog(catalogPage.body);
+        if (programs.isNotEmpty) {
+          final form = DopSelectionFormParser.parse(
+            catalogPage.body,
+            catalogPage.uri,
+          );
+          final catalogStudent = DopStudent(
+            lastName: student.lastName,
+            firstName: student.firstName,
+            classNumber: student.classNumber,
+            classLetter: student.classLetter,
+            profile: student.profile,
+            residenceType: residence,
+          );
+          return DopCatalogSession._(
+            student: catalogStudent,
+            programs: programs,
+            session: session,
+            parser: this,
+            form: form,
+          );
+        }
+        session.close();
+      } catch (error) {
+        session.close();
+        lastError = error is DopParserException
+            ? error
+            : DopParserException(error.toString());
       }
-      final catalogPage = await session.post(firstPage.uri, {
-        'csrf_token': csrf,
-        'last_name': student.lastName,
-        'first_name': student.firstName,
-        'class_number': student.classNumber,
-        'class_letter': student.classLetter,
-        'profile': student.profile,
-        'residence_type': student.residenceType,
-      });
-      final programs = _parseCatalog(catalogPage.body);
-      if (programs.isEmpty) {
-        throw const DopParserException(
+    }
+    throw lastError ??
+        const DopParserException(
           'Intranet не вернул каталог ДОПов. Проверь профиль и доступность сайта.',
         );
-      }
-      final form = DopSelectionFormParser.parse(
-        catalogPage.body,
-        catalogPage.uri,
-      );
-      return DopCatalogSession._(
-        student: student,
-        programs: programs,
-        session: session,
-        parser: this,
-        form: form,
-      );
-    } catch (_) {
-      session.close();
-      rethrow;
-    }
   }
 
   /// Exposed for deterministic fixture tests; production uses [openCatalog].
@@ -898,9 +915,13 @@ class DopProfileCatalogParser {
       ).allMatches(body);
       for (final option in options) {
         final optionAttributes = option.group(1) ?? '';
+        final hasValue = RegExp(
+          r'\bvalue\s*=',
+          caseSensitive: false,
+        ).hasMatch(optionAttributes);
         final rawValue = parser._attr(optionAttributes, 'value');
         final label = parser._clean(option.group(2) ?? '');
-        final value = rawValue.isNotEmpty ? rawValue : label;
+        final value = hasValue ? rawValue : label;
         if (value.trim().isEmpty ||
             RegExp(r'\bdisabled\b', caseSensitive: false)
                 .hasMatch(optionAttributes)) {
