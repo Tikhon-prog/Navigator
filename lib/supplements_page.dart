@@ -905,7 +905,9 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
             child: const Text('Отмена'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: profilesLoading
+                ? null
+                : () {
               final grade10 = _isGrade10;
               final validProfile =
                   !grade10 || selectedProfile.trim().isNotEmpty;
