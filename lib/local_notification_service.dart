@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+import 'schedule_time.dart';
 
 /// Надёжный локальный планировщик уведомлений «Поколение».
 /// Расписание школы хранится в локальном времени школы (Москва/Краснодар).
@@ -401,7 +402,7 @@ class LocalNotificationService {
       final dayEntries = entries
           .where((e) => e.day == weekday && e.time.contains(':'))
           .toList()
-        ..sort((a, b) => a.time.compareTo(b.time));
+        ..sort((a, b) => compareLessonTimes(a.time, b.time));
 
       for (final e in dayEntries) {
         // Встроенное расписание хранит время как «08:30 - 09:10».
