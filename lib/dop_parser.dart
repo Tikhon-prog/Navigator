@@ -3,6 +3,18 @@ import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Cookie-bearing intranet requests may follow redirects only to the same HTTPS
+/// origin. This prevents a hostile redirect from receiving the parser's session
+/// cookies or form data.
+bool allowsSchoolIntranetRedirect(Uri origin, Uri target) {
+  return origin.scheme.toLowerCase() == 'https' &&
+      target.scheme.toLowerCase() == 'https' &&
+      origin.host.toLowerCase() == target.host.toLowerCase() &&
+      origin.port == target.port &&
+      origin.userInfo.isEmpty &&
+      target.userInfo.isEmpty;
+}
+
 class DopStudent {
   static const List<String> grade10Profiles = [
     'Агротехнологический',
@@ -272,7 +284,7 @@ class DopParser {
     }
 
     for (final residence in const ['day', 'campus']) {
-      final session = _DopSession();
+      final session = _DopSession(baseUri);
       try {
         final candidate = DopStudent(lastName:student.lastName,firstName:student.firstName,classNumber:student.classNumber,classLetter:student.classLetter,profile:student.profile,residenceType:residence);
         final firstPage = await session.get(baseUri);
@@ -738,6 +750,9 @@ class DopProgram {
 }
 
 class _DopSession {
+  _DopSession(this._allowedOrigin);
+
+  final Uri _allowedOrigin;
   final HttpClient _client = HttpClient();
   final Map<String, String> _cookies = {};
 
@@ -760,6 +775,12 @@ class _DopSession {
     var currentData = data;
 
     for (var i = 0; i < 6; i++) {
+      if (!allowsSchoolIntranetRedirect(_allowedOrigin, currentUri)) {
+        throw const DopParserException(
+          'Перенаправление за пределы школьного интранета заблокировано.',
+        );
+      }
+
       final request = await _client
           .openUrl(currentMethod, currentUri)
           .timeout(const Duration(seconds: 20));
