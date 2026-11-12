@@ -150,6 +150,26 @@ void main() {
     expect(
       hasLesson(
         day: 4,
+        time: '10:20 - 11:00',
+        group: 1,
+        subject: 'Информатика',
+        room: '312',
+      ),
+      isTrue,
+    );
+    expect(
+      hasLesson(
+        day: 4,
+        time: '11:20 - 12:00',
+        group: 1,
+        subject: 'Информатика',
+        room: '226',
+      ),
+      isTrue,
+    );
+    expect(
+      hasLesson(
+        day: 4,
         time: '14:40 - 15:20',
         group: 2,
         subject: 'Алгоритмизация и программирование',
