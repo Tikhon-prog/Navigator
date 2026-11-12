@@ -359,11 +359,6 @@ class _SupplementsPageState extends State<SupplementsPage> {
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Дополнительные занятия'),
         actions: [
-          IconButton(
-            tooltip: 'Найти новые ДОПы',
-            onPressed: _openDopCatalog,
-            icon: const Icon(Icons.explore_outlined),
-          ),
           IconButton(tooltip: 'Профиль ученика', onPressed: _editStudent, icon: const Icon(Icons.person_rounded)),
           IconButton(
             tooltip: syncing ? 'Обновление…' : 'Обновить с intranet',
@@ -457,6 +452,37 @@ class _SupplementsPageState extends State<SupplementsPage> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: ListTile(
+                          leading: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withValues(alpha: .12),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              Icons.explore_rounded,
+                              color: scheme.primary,
+                            ),
+                          ),
+                          title: const Text(
+                            'Каталог новых ДОПов',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            'Посмотри программы, направления и свободные группы',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: _openDopCatalog,
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       Card(
                         child: SwitchListTile.adaptive(
