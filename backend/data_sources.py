@@ -42,18 +42,32 @@ def load_configured_sheet(sheet_name: str) -> list[dict[str, Any]]:
     if source == "http":
         base_url = os.getenv("NAVIGATOR_DATA_API_URL", "").strip().rstrip("/")
         token = os.getenv("NAVIGATOR_DATA_API_TOKEN", "").strip()
-        parsed = urlsplit(base_url)
+        try:
+            parsed = urlsplit(base_url)
+        except ValueError:
+            raise HTTPException(status_code=503, detail="NAVIGATOR_DATA_API_URL is invalid")
         is_local_http = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
         if parsed.scheme != "https" and not is_local_http:
             raise HTTPException(status_code=503, detail="Data API URL must use HTTPS")
         if not parsed.hostname:
             raise HTTPException(status_code=503, detail="NAVIGATOR_DATA_API_URL is not configured")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise HTTPException(
+                status_code=503,
+                detail="Data API URL must not contain credentials, query parameters or fragments",
+            )
         try:
             response = requests.get(
                 f"{base_url}/{sheet_name}",
-                headers={"Authorization": f"Bearer {token}"} if token else {},
+                headers={
+                    "Accept": "application/json",
+                    **({"Authorization": f"Bearer {token}"} if token else {}),
+                },
                 timeout=10,
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                raise ValueError("Redirects are not allowed for configured data APIs")
             response.raise_for_status()
             payload = response.json()
             rows = payload.get("data") if isinstance(payload, dict) else payload
