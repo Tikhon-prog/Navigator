@@ -100,11 +100,16 @@ class _SupplementsPageState extends State<SupplementsPage> {
     final prefs = await SharedPreferences.getInstance();
     final rawSchoolUser = prefs.getString('school_user_v1');
     var currentSchoolUserId = '';
-    if (rawSchoolUser != null) {
+    final hasSchoolSession =
+        rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty;
+    if (hasSchoolSession) {
       try {
-        final account = jsonDecode(rawSchoolUser);
-        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
-      } catch (_) {}
+        final account = jsonDecode(rawSchoolUser!);
+        final id = account is Map ? (account['id'] ?? '').toString().trim() : '';
+        currentSchoolUserId = id.isNotEmpty ? id : 'invalid-school-session';
+      } catch (_) {
+        currentSchoolUserId = 'invalid-school-session';
+      }
     }
     final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
     final raw = prefs.getString(storageKey);
@@ -122,7 +127,12 @@ class _SupplementsPageState extends State<SupplementsPage> {
     }
     student = await const NavigatorStudentProvider().load();
     lastSync = prefs.getString('dop_last_sync') ?? '';
-    remindersEnabled = prefs.getBool('dop_reminders_enabled') ?? false;
+    final remindersKey = studentProfilePreferenceKey(
+      'dop_reminders_enabled',
+      userId: currentSchoolUserId,
+    );
+    remindersEnabled = prefs.getBool(remindersKey) ??
+        (!hasSchoolSession ? (prefs.getBool('dop_reminders_enabled') ?? false) : false);
     final cachedSchoolUserId = prefs.getString('school_supplements_user_id_v1_$currentSchoolUserId') ?? '';
     if (currentSchoolUserId.isNotEmpty && cachedSchoolUserId.isNotEmpty &&
         cachedSchoolUserId != currentSchoolUserId) {
@@ -204,7 +214,27 @@ class _SupplementsPageState extends State<SupplementsPage> {
 
   Future<void> _setReminders(bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('dop_reminders_enabled', value);
+    final rawSchoolUser = prefs.getString('school_user_v1');
+    var currentSchoolUserId = '';
+    final hasSchoolSession =
+        rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty;
+    if (hasSchoolSession) {
+      try {
+        final account = jsonDecode(rawSchoolUser!);
+        final id = account is Map ? (account['id'] ?? '').toString().trim() : '';
+        currentSchoolUserId = id.isNotEmpty ? id : 'invalid-school-session';
+      } catch (_) {
+        currentSchoolUserId = 'invalid-school-session';
+      }
+    }
+    final remindersKey = studentProfilePreferenceKey(
+      'dop_reminders_enabled',
+      userId: currentSchoolUserId,
+    );
+    await prefs.setBool(remindersKey, value);
+    if (!hasSchoolSession) {
+      await prefs.setBool('dop_reminders_enabled', value);
+    }
     if (mounted) setState(() => remindersEnabled = value);
     try {
       await _refreshDopReminders(clearWhenDisabled: !value);
