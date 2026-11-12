@@ -2999,6 +2999,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
     try { await SchoolScheduleCatalog.refreshOnline(); } catch (_) {}
     classId = p.getString('student_class_name') ?? '';
+    var needsEightVGroupSelection = false;
     final groups = <String,int>{};
     if (classId.isNotEmpty) {
       for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) {
@@ -3014,7 +3015,7 @@ class _SchedulePageState extends State<SchedulePage> {
               storedWholeClassGroup == 2
           ? storedWholeClassGroup
           : (classId.trim() == '8В' ? 1 : null);
-      final needsEightVGroupSelection = classId.trim() == '8В' &&
+      needsEightVGroupSelection = classId.trim() == '8В' &&
           storedWholeClassGroup != 1 &&
           storedWholeClassGroup != 2;
       final mathNames = <int, List<String>>{};
