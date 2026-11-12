@@ -21,6 +21,24 @@ class SchoolAccountService {
   static const _refreshKey = 'school_refresh_token_v1';
   static const _expiresKey = 'school_access_expires_at_v1';
 
+  Future<void> _clearScheduledTaskReminders({String? profileId}) async {
+    final identity = (profileId ?? '').trim();
+    try {
+      await LocalNotificationService().scheduleUpcomingStudentTasks(
+        scopeKey: identity.isEmpty ? 'local' : identity,
+        entries: const <({
+          String id,
+          DateTime dueAt,
+          String title,
+          String subject,
+        })>[],
+      );
+    } catch (_) {
+      // Authentication must not fail because local notification permissions
+      // or a platform notification plugin are unavailable.
+    }
+  }
+
   @visibleForTesting
   static String? resolveDevicePlatform({
     bool? isWeb,
@@ -170,6 +188,9 @@ class SchoolAccountService {
     await _writeToken(_refreshKey, payload['refresh_token']?.toString() ?? '');
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(user));
+    await _clearScheduledTaskReminders(
+      profileId: (user['id'] ?? user['username'] ?? '').toString(),
+    );
     await prefs.remove('student_class_id');
     await prefs.remove('student_class_name');
     await prefs.setString('school_api_base_url_v1', baseUrl.trim());
@@ -254,6 +275,11 @@ class SchoolAccountService {
     await prefs.setInt(_expiresKey, DateTime.now().millisecondsSinceEpoch ~/ 1000 + ((payload['expires_in'] as num?)?.toInt() ?? 28800));
     await prefs.setString(_userKey, jsonEncode(payload['user'] ?? {}));
     final userData = payload['user'];
+    await _clearScheduledTaskReminders(
+      profileId: userData is Map
+          ? (userData['id'] ?? userData['username'] ?? '').toString()
+          : 'invalid-school-session',
+    );
     if (userData is Map && userData['id'] != null) {
       final preferenceKey = 'dop_reminders_enabled_${userData['id']}';
       final savedPreference = prefs.getBool(preferenceKey);
@@ -493,6 +519,7 @@ class SchoolAccountService {
       } catch (_) {}
     }
     await prefs.setBool('dop_reminders_enabled', false);
+    await _clearScheduledTaskReminders(profileId: currentUserId);
     try { await LocalNotificationService().cancelDopReminders(); } catch (_) {}
     String? deviceToken;
     try {
