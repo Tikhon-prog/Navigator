@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:navigator/student_tasks_page.dart';
@@ -92,6 +93,32 @@ void main() {
       loaded.map((task) => task.id).toList(),
       ['tomorrow-normal', 'later-urgent'],
     );
+  });
+
+  test('school accounts have isolated tasks and reminder preferences', () async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('school_user_v1', jsonEncode({'id': 'student-a'}));
+    await prefs.setBool('${StudentTaskStore.remindersKey}_student-a', false);
+    await StudentTaskStore.upsert(buildTask(id: 'account-a', title: 'Задание ученика A'));
+
+    await prefs.setString('school_user_v1', jsonEncode({'id': 'student-b'}));
+    await prefs.setBool('${StudentTaskStore.remindersKey}_student-b', true);
+    expect(await StudentTaskStore.load(), isEmpty);
+    expect(await StudentTaskStore.remindersEnabled(), isTrue);
+    await StudentTaskStore.upsert(buildTask(id: 'account-b', title: 'Задание ученика B'));
+
+    await prefs.setString('school_user_v1', jsonEncode({'id': 'student-a'}));
+    expect((await StudentTaskStore.load()).map((task) => task.id), ['account-a']);
+    expect(await StudentTaskStore.remindersEnabled(), isFalse);
+
+    await prefs.setString('school_user_v1', jsonEncode({'id': 'student-b'}));
+    expect((await StudentTaskStore.load()).map((task) => task.id), ['account-b']);
+    expect(await StudentTaskStore.remindersEnabled(), isTrue);
+
+    await prefs.remove('school_user_v1');
+    expect(await StudentTaskStore.load(), isEmpty);
+    expect(await StudentTaskStore.remindersEnabled(), isFalse);
   });
 
   test('missing task updates return false', () async {
