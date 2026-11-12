@@ -70,6 +70,42 @@ void main() {
     expect(account.can(AdminPermissions.manageSync), isFalse);
   });
 
+  test('lockout cannot be bypassed by changing login letter case', () async {
+    final repository = AdminRepository();
+    final account = await repository.createFirstAdmin(
+      'CaseSensitiveOwner',
+      'a-long-unique-password-42',
+    );
+    expect(account, isNotNull);
+
+    for (var attempt = 0; attempt < 5; attempt++) {
+      expect(
+        await repository.authenticate('casesensitiveowner', 'wrong-password'),
+        isNull,
+      );
+    }
+
+    // The correct password with a different casing must remain blocked.
+    expect(
+      await repository.authenticate('CASESENSITIVEOWNER', 'a-long-unique-password-42'),
+      isNull,
+    );
+  });
+
+  test('corrupt admin storage does not permanently disable first-run setup', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('navigator_admins_v2', '{broken-json');
+    final repository = AdminRepository();
+
+    expect(await repository.hasConfiguredAccounts(), isFalse);
+    final account = await repository.createFirstAdmin(
+      'recovered-owner',
+      'a-long-unique-password-42',
+    );
+    expect(account, isNotNull);
+    expect((await repository.list()).single.login, 'recovered-owner');
+  });
+
   test('empty storage has no default admin account', () async {
     expect(await AdminRepository().list(), isEmpty);
   });
