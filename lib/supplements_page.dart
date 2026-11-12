@@ -62,7 +62,12 @@ class Supplement {
 
 class SupplementsPage extends StatefulWidget {
   final VoidCallback onMenu;
-  const SupplementsPage({super.key, required this.onMenu});
+  final bool embedded;
+  const SupplementsPage({
+    super.key,
+    required this.onMenu,
+    this.embedded = false,
+  });
 
   @override
   State<SupplementsPage> createState() => _SupplementsPageState();
@@ -343,7 +348,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
     final width = MediaQuery.sizeOf(context).width;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.embedded
+          ? null
+          : AppBar(
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Дополнительные занятия'),
         actions: [
@@ -369,6 +376,33 @@ class _SupplementsPageState extends State<SupplementsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (widget.embedded) ...[
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Wrap(
+                            spacing: 4,
+                            children: [
+                              IconButton(
+                                tooltip: syncing ? 'Обновление…' : 'Обновить с intranet',
+                                onPressed: syncing ? null : _syncFromIntranet,
+                                icon: syncing
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.sync_rounded),
+                              ),
+                              IconButton(
+                                tooltip: 'Добавить занятие',
+                                onPressed: _add,
+                                icon: const Icon(Icons.add_rounded),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       Container(
                         padding: const EdgeInsets.all(17),
                         decoration: BoxDecoration(

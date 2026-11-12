@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'ai_navigation_intent.dart';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -834,6 +836,49 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     await _catalogLoadFuture;
     if (!mounted) return;
 
+    final catalogLocations = [
+      ..._rooms,
+      ..._places,
+    ].map((row) => (
+          id: (row['id'] ?? row['number'] ?? '').toString().trim(),
+          name: (row['name'] ?? '').toString().trim(),
+        )).where((location) => location.id.isNotEmpty).toList();
+    final routeIntent = AiNavigationIntent.parse(
+      text,
+      locations: catalogLocations,
+    );
+    if (routeIntent != null && widget.onOpenSchoolRoute != null) {
+      final matchingNames = catalogLocations
+          .where((location) => location.id == routeIntent.destinationId)
+          .map((location) => location.name)
+          .where((name) => name.isNotEmpty)
+          .toList();
+      final destinationName = matchingNames.isEmpty ? null : matchingNames.first;
+      setState(() {
+        _lines.add(_ChatLine(
+          false,
+          destinationName == null
+              ? 'Нашёл точку ' + routeIntent.destinationId + '. Открываю проверенный маршрут по школьной карте.'
+              : 'Нашёл ' + destinationName + '. Открываю проверенный маршрут по школьной карте.',
+        ));
+      });
+      _scrollToBottom();
+      try {
+        await widget.onOpenSchoolRoute!(
+          routeIntent.destinationId,
+          routeIntent.startLocationId,
+        );
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _lines.add(_ChatLine(false, 'Не удалось открыть маршрут: ' + error.toString()));
+          });
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+      return;
+    }
     final lowerQuery = text.toLowerCase();
     final asksForRoute = lowerQuery.contains('маршрут') ||
         lowerQuery.contains('пролож') ||
@@ -876,6 +921,18 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     if (offlineAnswer != null) {
       setState(() {
         _lines.add(_ChatLine(false, offlineAnswer));
+        _busy = false;
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    if (_modelPath == null && asksForRoute) {
+      setState(() {
+        _lines.add(_ChatLine(
+          false,
+          'Я не смог однозначно определить точку назначения по встроенному каталогу. Напиши точный номер кабинета или название места, например «Как пройти в кабинет 215?» или «Маршрут от 214 до 215».',
+        ));
         _busy = false;
       });
       _scrollToBottom();
