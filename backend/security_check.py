@@ -17,8 +17,10 @@ TOKEN_PATTERNS = [
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+    # Yandex OAuth tokens begin with y0_, y1_, y2_, or y3_.
+    re.compile(r"\by[0-3]_[A-Za-z0-9_-]{24,}\b"),
     re.compile(
-        r"(?im)\b(?:NAVIGATOR_TOKEN_SECRET|NAVIGATOR_DATA_API_TOKEN|CLIENT_SECRET|API_SECRET)\b"
+        r"(?im)\b(?:NAVIGATOR_TOKEN_SECRET|NAVIGATOR_DATA_API_TOKEN|YANDEX_OAUTH_TOKEN|YANDEX_TOKEN|YANDEX_CLIENT_SECRET|CLIENT_SECRET|API_SECRET)\b"
         r"\s*[:=]\s*['\"]?[A-Za-z0-9._-]{24,}"
     ),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
