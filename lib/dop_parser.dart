@@ -175,6 +175,32 @@ class DopScheduleItem {
       };
 }
 
+/// Compares DOP schedules as multisets, consuming each matched item once.
+/// This avoids treating duplicate lesson slots as multiple matches for one row.
+bool dopSchedulesEqual(
+  List<DopScheduleItem> left,
+  List<DopScheduleItem> right,
+) {
+  if (left.length != right.length) return false;
+  final unmatched = List<DopScheduleItem>.of(right);
+  for (final item in left) {
+    final index = unmatched.indexWhere((candidate) =>
+        item.day == candidate.day &&
+        item.start == candidate.start &&
+        item.end == candidate.end &&
+        _normalizeDopRoom(item.room) == _normalizeDopRoom(candidate.room));
+    if (index < 0) return false;
+    unmatched.removeAt(index);
+  }
+  return unmatched.isEmpty;
+}
+
+String _normalizeDopRoom(String value) => value
+    .toLowerCase()
+    .replaceAll(RegExp(r'^\s*кабинет\s*'), '')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
 class DopSubgroup {
   final int programId;
   final int subgroupId;
@@ -459,14 +485,19 @@ class DopParser {
           )
           .trim();
 
-      result.add(
-        DopScheduleItem(
-          day: _dayNumber(match.group(1) ?? ''),
-          start: int.tryParse(match.group(2) ?? '') ?? 0,
-          end: int.tryParse(match.group(3) ?? '') ?? 0,
-          room: room,
-        ),
-      );
+      final day = _dayNumber(match.group(1) ?? '');
+      final start = int.tryParse(match.group(2) ?? '') ?? 0;
+      final end = int.tryParse(match.group(3) ?? '') ?? 0;
+      // The intranet stores lesson numbers, not clock minutes.
+      if (day < 1 || day > 6 || start < 1 || end < start || end > 20) {
+        continue;
+      }
+      result.add(DopScheduleItem(
+        day: day,
+        start: start,
+        end: end,
+        room: room,
+      ));
     }
 
     return result;
@@ -498,16 +529,23 @@ class DopParser {
 
       if (decoded is! List) return const [];
 
-      return decoded.whereType<Map>().map((raw) {
+      final result = <DopScheduleItem>[];
+      for (final raw in decoded.whereType<Map>()) {
         final map = Map<String, dynamic>.from(raw);
-
-        return DopScheduleItem(
-          day: _toInt(map['day']),
-          start: _toInt(map['start']),
-          end: _toInt(map['end']),
+        final day = _toInt(map['day']);
+        final start = _toInt(map['start']);
+        final end = _toInt(map['end']);
+        if (day < 1 || day > 6 || start < 1 || end < start || end > 20) {
+          continue;
+        }
+        result.add(DopScheduleItem(
+          day: day,
+          start: start,
+          end: end,
           room: (map['room'] ?? '').toString().trim(),
-        );
-      }).toList();
+        ));
+      }
+      return result;
     } catch (_) {
       return const [];
     }
@@ -578,23 +616,7 @@ class DopParser {
   bool _sameSchedule(
     List<DopScheduleItem> a,
     List<DopScheduleItem> b,
-  ) {
-    if (a.length != b.length) return false;
-
-    for (final x in a) {
-      final found = b.any(
-        (y) =>
-            x.day == y.day &&
-            x.start == y.start &&
-            x.end == y.end &&
-            _normalizeRoom(x.room) == _normalizeRoom(y.room),
-      );
-
-      if (!found) return false;
-    }
-
-    return true;
-  }
+  ) => dopSchedulesEqual(a, b);
 
   String _attr(String tag, String name) {
     final match = RegExp(
