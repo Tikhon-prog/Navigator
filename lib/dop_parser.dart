@@ -53,16 +53,25 @@ class NavigatorStudentProvider {
   Future<DopStudent?> load() async {
     final prefs = await SharedPreferences.getInstance();
     String? schoolUserId;
-    var hasSchoolSession = false;
     final rawSchoolUser = prefs.getString('school_user_v1');
-    if (rawSchoolUser != null) {
+    final hasSchoolSession =
+        rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty;
+    var validSchoolSession = false;
+    if (hasSchoolSession) {
       try {
-        final account = jsonDecode(rawSchoolUser);
-        if (account is Map && account['id'] != null) {
-          schoolUserId = account['id'].toString();
-          hasSchoolSession = true;
+        final account = jsonDecode(rawSchoolUser!);
+        final identity = account is Map
+            ? (account['id'] ?? '').toString().trim()
+            : '';
+        if (identity.isNotEmpty) {
+          schoolUserId = identity;
+          validSchoolSession = true;
         }
-      } catch (_) {}
+      } catch (_) {
+        // Do not expose the anonymous/local profile if the persisted school
+        // session is malformed or missing a stable account identifier.
+      }
+      schoolUserId ??= 'invalid-school-session';
     }
 
     String first(List<String> keys) {
@@ -89,7 +98,7 @@ class NavigatorStudentProvider {
     // These two legacy keys are rewritten from the active SSO account on every
     // successful login and removed on sign-out, so they are safe session scope
     // fallbacks when a user has not manually completed the DOP profile yet.
-    if (classId.isEmpty && hasSchoolSession) {
+    if (classId.isEmpty && validSchoolSession) {
       classId = (prefs.getString('student_class_name') ??
           prefs.getString('student_class_id') ?? '').trim();
     }
@@ -250,6 +259,13 @@ class DopParserException implements Exception {
 class DopParser {
   static final Uri baseUri =
       Uri.parse('https://intranet.pokolenie.school/');
+
+  /// Only the configured school intranet origin may receive the session cookies.
+  static bool isTrustedUri(Uri uri) =>
+      uri.scheme == baseUri.scheme &&
+      uri.host.toLowerCase() == baseUri.host.toLowerCase() &&
+      uri.port == baseUri.port &&
+      uri.userInfo.isEmpty;
 
   final NavigatorStudentProvider studentProvider;
 
@@ -526,20 +542,34 @@ class DopParser {
   ) {
     if (program.subgroups.isEmpty) return null;
 
-    if (choice.teacher.isNotEmpty) {
-      for (final subgroup in program.subgroups) {
-        if (subgroup.teacher.trim() == choice.teacher.trim()) {
-          return subgroup;
-        }
-      }
+    final teacher = choice.teacher.trim();
+    final teacherMatches = teacher.isEmpty
+        ? <DopSubgroup>[]
+        : program.subgroups
+            .where((item) => item.teacher.trim() == teacher)
+            .toList();
+
+    final scheduleMatches = choice.schedule.isEmpty
+        ? <DopSubgroup>[]
+        : program.subgroups
+            .where((item) => _sameSchedule(item.schedule, choice.schedule))
+            .toList();
+
+    // If both pieces of evidence exist, require both to match. A common
+    // teacher may supervise several parallel subgroups with different rooms.
+    if (teacher.isNotEmpty && choice.schedule.isNotEmpty) {
+      final exactMatches = teacherMatches
+          .where((item) => _sameSchedule(item.schedule, choice.schedule))
+          .toList();
+      return exactMatches.length == 1 ? exactMatches.single : null;
+    }
+
+    if (teacher.isNotEmpty) {
+      return teacherMatches.length == 1 ? teacherMatches.single : null;
     }
 
     if (choice.schedule.isNotEmpty) {
-      for (final subgroup in program.subgroups) {
-        if (_sameSchedule(subgroup.schedule, choice.schedule)) {
-          return subgroup;
-        }
-      }
+      return scheduleMatches.length == 1 ? scheduleMatches.single : null;
     }
 
     return null;
@@ -760,6 +790,11 @@ class _DopSession {
     var currentData = data;
 
     for (var i = 0; i < 6; i++) {
+      if (!DopParser.isTrustedUri(currentUri)) {
+        throw const DopParserException(
+          'Школьный intranet перенаправил запрос на недоверенный адрес. Cookies не отправлены.',
+        );
+      }
       final request = await _client
           .openUrl(currentMethod, currentUri)
           .timeout(const Duration(seconds: 20));
