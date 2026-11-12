@@ -48,6 +48,18 @@ app.add_middleware(
 )
 
 
+def _lesson_number_sort_value(item: dict[str, Any]) -> int:
+    """Return a stable integer ordering even when a source sends text labels."""
+    raw = item.get("lesson_number")
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        import re
+
+        match = re.search(r"\d+", str(raw or ""))
+        return int(match.group(0)) if match else 0
+
+
 def read_sheet(sheet_name: str) -> list[dict[str, Any]]:
     """Read an approved school-data collection from the configured source."""
     if sheet_name not in INTERNAL_READ_SHEETS:
@@ -117,7 +129,7 @@ def get_schedule(
         schedule = [item for item in schedule if str(item.get("weekday")) == str(weekday)]
     schedule.sort(key=lambda item: (
         str(item.get("weekday") or ""),
-        int(item.get("lesson_number") or 0),
+        _lesson_number_sort_value(item),
     ))
     return {"data": schedule}
 
@@ -131,7 +143,7 @@ def get_class_schedule(class_id: str, weekday: int) -> dict[str, Any]:
         if str(item.get("class_id")) == class_id
         and str(item.get("weekday")) == str(weekday)
     ]
-    result.sort(key=lambda item: int(item.get("lesson_number") or 0))
+    result.sort(key=_lesson_number_sort_value)
     return {"class_id": class_id, "weekday": weekday, "data": result}
 
 
