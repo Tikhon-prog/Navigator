@@ -58,7 +58,7 @@ Write-Host '===============================================' -ForegroundColor Cy
 Invoke-FlutterChecked -FlutterArguments @('pub', 'get')
 Invoke-FlutterChecked -FlutterArguments @('test')
 Invoke-FlutterChecked -FlutterArguments @('analyze', '--no-fatal-infos', '--no-fatal-warnings')
-Invoke-FlutterChecked -FlutterArguments @('build', 'apk', '--debug', $ApiDefine)
+Invoke-FlutterChecked -FlutterArguments @('build', 'apk', '--debug', '--target-platform', 'android-arm64,android-x64', $ApiDefine)
 
 $Dist = Join-Path $Root 'dist\test'
 $AndroidOut = Join-Path $Dist 'android'
