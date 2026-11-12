@@ -483,6 +483,7 @@ class SchoolScheduleCatalog {
     String className,
     Map<String, int> selected, {
     Map<int, List<String>> mathNamesByDay = const {},
+    int? wholeClassGroup,
   }) {
     final all = variants(className);
     final result = <ScheduleEntry>[];
@@ -503,15 +504,22 @@ class SchoolScheduleCatalog {
       final subject = baseSubject(rawSubject);
       if (subject.isEmpty) continue;
       final group = int.tryParse('${e['group']}') ?? 1;
-      final wanted = selected[subject] ?? 1;
-      final slotGroups = all
-          .where((x) =>
-              '${x['day']}' == '${e['day']}' &&
-              '${x['time']}' == '${e['time']}' &&
-              baseSubject('${x['subject'] ?? ''}') == subject)
-          .map((x) => int.tryParse('${x['group']}') ?? 1)
-          .toSet();
-      if (slotGroups.length > 1 && group != wanted) continue;
+      // Group 0 means the source timetable cell spans both class subgroups.
+      // For 8В, a single global group is needed because some parallel cells
+      // contain different subjects, or are populated for only one subgroup.
+      if (group > 0 && wholeClassGroup != null) {
+        if (group != wholeClassGroup) continue;
+      } else if (group > 0) {
+        final wanted = selected[subject] ?? 1;
+        final slotGroups = all
+            .where((x) =>
+                '${x['day']}' == '${e['day']}' &&
+                '${x['time']}' == '${e['time']}' &&
+                baseSubject('${x['subject'] ?? ''}') == subject)
+            .map((x) => int.tryParse('${x['group']}') ?? 1)
+            .toSet();
+        if (slotGroups.length > 1 && group != wanted) continue;
+      }
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
       var displaySubject = subject;
@@ -580,13 +588,91 @@ String _studentScopedPreferenceKey(SharedPreferences prefs, String key) {
 
 Future<void> showStudentGroupSelection(BuildContext context, String className) async {
   await SchoolScheduleCatalog.load();
-  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
-  if (subjects.isEmpty || !context.mounted) return;
-  final prefs = await SharedPreferences.getInstance();
-  final values = <String, int>{for (final s in subjects) s: prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_group_${className}_$s')) ?? 1};
   if (!context.mounted) return;
-  await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
+  final prefs = await SharedPreferences.getInstance();
+  if (className.trim() == '8В') {
+    final key = _studentScopedPreferenceKey(prefs, 'student_class_group_8В');
+    final savedGroup = prefs.getInt(key);
+    final selected = await showDialog<int>(
+      context: context,
+      barrierDismissible: savedGroup != null,
+      builder: (_) => _StudentClassGroupDialog(
+        initialGroup: savedGroup ?? 1,
+        requiredChoice: savedGroup == null,
+      ),
+    );
+    if (selected != null) await prefs.setInt(key, selected);
+    return;
+  }
+  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
+  if (subjects.isEmpty) return;
+  final values = <String, int>{
+    for (final subject in subjects)
+      subject: prefs.getInt(
+            _studentScopedPreferenceKey(prefs, 'student_group_${className}_$subject'),
+          ) ??
+          1,
+  };
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _StudentGroupsDialog(
+      className: className,
+      subjects: subjects,
+      values: values,
+    ),
+  );
 }
+class _StudentClassGroupDialog extends StatefulWidget {
+  final int initialGroup;
+  final bool requiredChoice;
+
+  const _StudentClassGroupDialog({
+    required this.initialGroup,
+    this.requiredChoice = false,
+  });
+
+  @override
+  State<_StudentClassGroupDialog> createState() => _StudentClassGroupDialogState();
+}
+
+class _StudentClassGroupDialogState extends State<_StudentClassGroupDialog> {
+  late int selected = widget.initialGroup;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Твоя подгруппа 8В'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<int>(
+              value: 1,
+              groupValue: selected,
+              title: const Text('8В/1'),
+              onChanged: (value) => setState(() => selected = value ?? selected),
+            ),
+            RadioListTile<int>(
+              value: 2,
+              groupValue: selected,
+              title: const Text('8В/2'),
+              onChanged: (value) => setState(() => selected = value ?? selected),
+            ),
+          ],
+        ),
+        actions: [
+          if (!widget.requiredChoice)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, selected),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      );
+}
+
 class _StudentGroupsDialog extends StatefulWidget {
   final String className; final List<String> subjects; final Map<String, int> values;
   const _StudentGroupsDialog({required this.className, required this.subjects, required this.values});
@@ -2912,9 +2998,15 @@ class _SchedulePageState extends State<SchedulePage> {
     classId = p.getString('student_class_name') ?? '';
     final groups = <String,int>{};
     if (classId.isNotEmpty) {
-      for (final s in SchoolScheduleCatalog.splitSubjects(classId)) {
-        groups[s] = p.getInt(_studentScopedPreferenceKey(p, 'student_group_${classId}_$s')) ?? 1;
+      for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) {
+        groups[subject] = p.getInt(
+              _studentScopedPreferenceKey(p, 'student_group_${classId}_$subject'),
+            ) ??
+            1;
       }
+      final wholeClassGroup = classId.trim() == '8В'
+          ? (p.getInt(_studentScopedPreferenceKey(p, 'student_class_group_8В')) ?? 1)
+          : null;
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
@@ -2923,7 +3015,12 @@ class _SchedulePageState extends State<SchedulePage> {
         }
         mathNames[d] = dayNames;
       }
-      entries = SchoolScheduleCatalog.buildPersonal(classId, groups, mathNamesByDay: mathNames);
+      entries = SchoolScheduleCatalog.buildPersonal(
+        classId,
+        groups,
+        mathNamesByDay: mathNames,
+        wholeClassGroup: wholeClassGroup,
+      );
     } else { entries = []; }
     if (mounted) setState(() => loading = false);
     try { await LocalNotificationService().scheduleUpcomingLessons(entries: entries.map((e) => (id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList()); } catch (_) {}
