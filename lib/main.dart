@@ -1904,6 +1904,28 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
+  int? _dayNumber(Object? raw) {
+    if (raw is num) {
+      final value = raw.toInt();
+      return value >= 1 && value <= 6 ? value : null;
+    }
+    final value = (raw ?? '').toString().trim().toLowerCase();
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric >= 1 && numeric <= 6 ? numeric : null;
+    const aliases = <String, int>{
+      'пн': 1, 'понедельник': 1,
+      'вт': 2, 'вторник': 2,
+      'ср': 3, 'среда': 3,
+      'чт': 4, 'четверг': 4,
+      'пт': 5, 'пятница': 5,
+      'сб': 6, 'суббота': 6,
+    };
+    for (final entry in aliases.entries) {
+      if (value == entry.key || value.startsWith(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
   String _currentSchoolUserId(SharedPreferences prefs) {
     final raw = prefs.getString('school_user_v1');
     if (raw == null) return '';
