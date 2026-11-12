@@ -56,7 +56,7 @@ void main() {
       expect(hasParallelDuplicate(groupOne), isFalse);
       expect(hasParallelDuplicate(groupTwo), isFalse);
     });
-    test('8В chooses one whole-class subgroup and keeps merged lessons for both', () {
+    test('8В keeps parallel lessons by subgroup and shares lone afternoon lessons', () {
       final groupOne = SchoolScheduleCatalog.buildPersonal(
         '8В',
         const {},
@@ -135,26 +135,25 @@ void main() {
         isFalse,
       );
 
-      // A lesson present only in the 8В/2 column stays hidden from 8В/1.
-      expect(
-        hasLesson(
-          groupOne,
-          day: 4,
-          time: '14:40 - 15:20',
-          subject: 'Алгоритмизация и программирование',
-        ),
-        isFalse,
-      );
-      expect(
-        hasLesson(
-          groupTwo,
-          day: 4,
-          time: '14:40 - 15:20',
-          subject: 'Алгоритмизация и программирование',
-          room: '130',
-        ),
-        isTrue,
-      );
+      // A lone subgroup-labelled lesson after lunch is shared by both
+      // 8В subgroups instead of disappearing from 8В/1.
+      for (final entries in [groupOne, groupTwo]) {
+        expect(
+          hasLesson(
+            entries,
+            day: 4,
+            time: '14:40 - 15:20',
+            subject: 'Алгоритмизация и программирование',
+            room: '130',
+          ),
+          isTrue,
+        );
+        final algorithmization = entries.singleWhere((entry) =>
+            entry.day == 4 &&
+            entry.time == '14:40 - 15:20' &&
+            entry.subject.contains('Алгоритмизация и программирование'));
+        expect(algorithmization.group, 0);
+      }
 
       expect(
         hasLesson(
