@@ -742,7 +742,6 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
         "mentor": "mentors",
         "teacher": "teachers",
     }.get(actor["role"])
-    recipient_audiences = ("all", "students", "mentors", "teachers", "class")
     with _db() as db:
         if actor["role"] == "admin":
             rows = db.execute(
