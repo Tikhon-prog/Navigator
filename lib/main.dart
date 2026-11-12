@@ -498,6 +498,7 @@ class SchoolScheduleCatalog {
     final seen = <String>{};
     final mathSlots = <int, List<String>>{};
     final groupsBySlot = <String, Set<int>>{};
+    final groupsByTimeSlot = <String, Set<int>>{};
     final lunchEndByDay = <int, int>{};
 
     int? lessonStartMinutes(String value) {
@@ -524,6 +525,8 @@ class SchoolScheduleCatalog {
       final rowGroup = int.tryParse('${row['group']}') ?? 1;
       final slotKey = '$rowDay|$rowTime|$rowSubject';
       (groupsBySlot[slotKey] ??= <int>{}).add(rowGroup);
+      final timeSlotKey = '$rowDay|$rowTime';
+      (groupsByTimeSlot[timeSlotKey] ??= <int>{}).add(rowGroup);
 
       if (rowSubject.toLowerCase() == 'обед') {
         final lunchEnd = lessonEndMinutes(rawTime);
@@ -557,8 +560,11 @@ class SchoolScheduleCatalog {
           final startsAfterLunch =
               lunchEnd != null &&
               (lessonStartMinutes(time) ?? -1) >= lunchEnd;
+          final timeSlotKey = '$day|${canonicalLessonTimeKey(time)}';
+          final timeSlotGroups =
+              groupsByTimeSlot[timeSlotKey] ?? const <int>{};
           final isSharedAfternoonLesson =
-              slotGroups.length == 1 && startsAfterLunch;
+              timeSlotGroups.length == 1 && startsAfterLunch;
 
           // Keep real parallel lessons tied to the selected subgroup. A lone
           // group-labelled lesson after lunch (e.g. Algorithmization) is
