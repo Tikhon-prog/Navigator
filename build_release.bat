@@ -4,6 +4,12 @@ setlocal
 cd /d "%~dp0"
 
 echo === Поколение: signed release APK ===
+for /f "tokens=2 delims=: " %%V in ('findstr /b /c:"version:" pubspec.yaml') do set "APP_VERSION=%%V"
+if not defined APP_VERSION (
+    echo ERROR: Could not read version from pubspec.yaml.
+    exit /b 1
+)
+echo App version: %APP_VERSION%
 if exist android\key.properties if exist android\app\navigator-release.jks goto SIGNING_READY
 call setup_release_signing.bat
 if errorlevel 1 exit /b 1
@@ -27,7 +33,7 @@ call flutter analyze
 if errorlevel 1 exit /b 1
 
 if not exist build\symbols mkdir build\symbols
-call flutter build apk --release --obfuscate --split-debug-info=build\symbols
+call flutter build apk --release --target-platform android-arm64,android-x64 --obfuscate --split-debug-info=build\symbols
 if errorlevel 1 exit /b 1
 
 echo.
@@ -54,13 +60,13 @@ echo.
 echo Preparing named release files...
 if not exist "dist" mkdir "dist"
 if errorlevel 1 exit /b 1
-copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\Pokolenie-0.2.1+3.apk" >nul
+copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\Pokolenie-%APP_VERSION%.apk" >nul
 if errorlevel 1 exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+3.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+3.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+3.apk') -Encoding ascii"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-%APP_VERSION%.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-%APP_VERSION%.apk.sha256' -Value ($hash + '  Pokolenie-%APP_VERSION%.apk') -Encoding ascii"
 if errorlevel 1 exit /b 1
 echo.
 echo «Поколение» release APK подписан и проверен.
-echo File: %CD%\dist\Pokolenie-0.2.1+3.apk
-echo SHA-256: %CD%\dist\Pokolenie-0.2.1+3.apk.sha256
+echo File: %CD%\dist\Pokolenie-%APP_VERSION%.apk
+echo SHA-256: %CD%\dist\Pokolenie-%APP_VERSION%.apk.sha256
 endlocal
 exit /b 0
