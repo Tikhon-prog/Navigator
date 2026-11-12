@@ -108,6 +108,27 @@ void main() {
       ]);
       expect(form.submitName, 'apply');
       expect(form.submitValue, 'save');
+      expect(form.hasUnsupportedControls, isFalse);
+    });
+
+    test('keeps catalogue read-only when the form contains extra named controls', () {
+      const html = '''
+        <form method="post" action="choose_programs.php">
+          <input type="hidden" name="csrf_token" value="token-123">
+          <input type="checkbox" class="discipline-checkbox" name="groups[]" value="1">
+          <select name="study_period">
+            <option value="morning" selected>Утро</option>
+          </select>
+        </form>
+      ''';
+
+      final form = DopSelectionFormParser.parse(
+        html,
+        Uri.parse('https://intranet.pokolenie.school/catalog.php'),
+      );
+
+      expect(form, isNotNull);
+      expect(form!.hasUnsupportedControls, isTrue);
     });
 
     test('parses current_application.php into selected programs and schedule slots', () {
