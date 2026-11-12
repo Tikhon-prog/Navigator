@@ -1,0 +1,91 @@
+# ======================================================================
+# ChatGPT / OpenAI — website, desktop apps, Codex and API
+# Official source: https://help.openai.com/en/articles/9247338
+# Subdomains are matched automatically by zapret; exact hosts below are
+# retained where OpenAI documents them explicitly for easier auditing.
+# ======================================================================
+openai.com
+chatgpt.com
+api.openai.com
+auth.openai.com
+ct.sendgrid.net
+intercom.io
+intercomcdn.com
+oaistatic.com
+oaiusercontent.com
+oaistatsig.com
+android.chat.openai.com
+auth0.openai.com
+cdn.openaimerge.com
+cdn.platform.openai.com
+cdn.workos.com
+challenges.cloudflare.com
+chat.openai.com
+desktop.chat.openai.com
+forwarder.workos.com
+frontend-apps-multi-region.workos.com
+humb.apple.com
+images.workoscdn.com
+ios.chat.openai.com
+js.intercomcdn.com
+js.stripe.com
+o207216.ingest.sentry.io
+o33249.ingest.sentry.io
+rum.browser-intake-datadoghq.com
+setup.auth.openai.com
+setup.workos.com
+tcr9i.chat.openai.com
+workos.imgix.net
+ws.chatgpt.com
+
+# ======================================================================
+# Claude / Anthropic — Claude web, Desktop (Chat/Cowork/Code), API
+# Official sources:
+# https://code.claude.com/docs/en/desktop#network-access-requirements
+# https://code.claude.com/docs/en/network-config#network-access-requirements
+# Base domains cover Anthropic's documented dynamic subdomains too.
+# ======================================================================
+anthropic.com
+claude.ai
+claude.com
+claude.app
+claudeusercontent.com
+claudemcpcontent.com
+
+# Explicit Anthropic endpoints (already covered by parent domains above)
+api.anthropic.com
+a-api.anthropic.com
+a-cdn.anthropic.com
+s-cdn.anthropic.com
+assets-proxy.anthropic.com
+a.claude.ai
+assets.claude.ai
+downloads.claude.ai
+platform.claude.com
+sso.claude.com
+bridge.claudeusercontent.com
+mcp-proxy.anthropic.com
+
+# Optional Claude Code support — plugins, package installs and updates
+# These are shared third-party services, not Anthropic-only domains.
+# Include only if you use the corresponding Claude Code features.
+code.claude.com
+github.com
+raw.githubusercontent.com
+registry.npmjs.org
+storage.googleapis.com
+formulae.brew.sh
+
+# Optional Claude Code telemetry (may be disabled in Claude Code settings)
+http-intake.logs.us5.datadoghq.com
+browser-intake-us5-datadoghq.com
+
+# Optional Claude Artifacts resources — shared third-party CDNs
+# Needed only by artifacts that load these fonts or JavaScript libraries.
+fonts.googleapis.com
+fonts.gstatic.com
+cdnjs.cloudflare.com
+cdn.jsdelivr.net
+cdn.tailwindcss.com
+code.jquery.com
+unpkg.com
