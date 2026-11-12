@@ -66,6 +66,9 @@ class AdminAccount {
   final String role;
   final bool active;
   final List<String> permissions;
+  /// Distinguishes an untouched role default from an explicitly empty
+  /// permission set. An empty list must mean "no permissions", not "reset".
+  final bool permissionsConfigured;
 
   const AdminAccount({
     required this.id,
@@ -74,10 +77,12 @@ class AdminAccount {
     required this.role,
     this.active = true,
     this.permissions = const [],
+    this.permissionsConfigured = false,
   });
 
-  List<String> get effectivePermissions =>
-      permissions.isNotEmpty ? List.unmodifiable(permissions) : AdminPermissions.forRole(role);
+  List<String> get effectivePermissions => permissionsConfigured
+      ? List.unmodifiable(permissions)
+      : AdminPermissions.forRole(role);
 
   bool can(String permission) =>
       role == 'superadmin' || effectivePermissions.contains(permission);
@@ -88,6 +93,7 @@ class AdminAccount {
     String? role,
     bool? active,
     List<String>? permissions,
+    bool? permissionsConfigured,
   }) =>
       AdminAccount(
         id: id,
@@ -96,6 +102,8 @@ class AdminAccount {
         role: role ?? this.role,
         active: active ?? this.active,
         permissions: permissions ?? this.permissions,
+        permissionsConfigured: permissionsConfigured ??
+            (permissions != null ? true : this.permissionsConfigured),
       );
 
   Map<String, dynamic> toJson() => {
@@ -105,6 +113,7 @@ class AdminAccount {
         'role': role,
         'active': active,
         'permissions': effectivePermissions,
+        'permissions_configured': true,
       };
 
   factory AdminAccount.fromJson(Map<String, dynamic> json) {
@@ -119,6 +128,8 @@ class AdminAccount {
       role: '${json['role'] ?? 'admin'}',
       active: json['active'] != false,
       permissions: permissions,
+      permissionsConfigured:
+          json['permissions_configured'] == true || raw is List,
     );
   }
 }
