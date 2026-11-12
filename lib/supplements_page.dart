@@ -244,6 +244,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       'student_class_number': result.classNumber,
       'student_class_letter': result.classLetter,
       'student_class_name': result.className,
+      'student_profile': result.profile,
     }.entries) {
       await prefs.setString(
         studentProfilePreferenceKey(entry.key, userId: currentSchoolUserId),
@@ -674,21 +675,147 @@ class _SupplementEditorState extends State<_SupplementEditor> {
 class _DopStudentDialog extends StatefulWidget {
   final DopStudent? initial;
   const _DopStudentDialog({this.initial});
-  @override State<_DopStudentDialog> createState() => _DopStudentDialogState();
+  @override
+  State<_DopStudentDialog> createState() => _DopStudentDialogState();
 }
+
 class _DopStudentDialogState extends State<_DopStudentDialog> {
-  late final TextEditingController lastName, firstName, classNumber, classLetter;
-  @override void initState(){super.initState();final s=widget.initial;lastName=TextEditingController(text:s?.lastName??'');firstName=TextEditingController(text:s?.firstName??'');classNumber=TextEditingController(text:s?.classNumber??'');classLetter=TextEditingController(text:s?.classLetter??'');}
-  @override void dispose(){lastName.dispose();firstName.dispose();classNumber.dispose();classLetter.dispose();super.dispose();}
-  @override Widget build(BuildContext context)=>AlertDialog(
-    title: const Text('Профиль ученика для ДОПов'),
-    content: SizedBox(width:440,child:Column(mainAxisSize:MainAxisSize.min,children:[
-      TextField(controller:lastName,decoration:const InputDecoration(labelText:'Фамилия')),
-      TextField(controller:firstName,decoration:const InputDecoration(labelText:'Имя')),
-      Row(children:[Expanded(child:TextField(controller:classNumber,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Класс'))),const SizedBox(width:10),Expanded(child:TextField(controller:classLetter,decoration:const InputDecoration(labelText:'Буква')))]),
-      const SizedBox(height:10),
-      Text('Тип проживания Поколение определит автоматически.',style:TextStyle(fontSize:12,color:Theme.of(context).colorScheme.onSurfaceVariant)),
-    ])),
-    actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:(){if(lastName.text.trim().isEmpty||firstName.text.trim().isEmpty||classNumber.text.trim().isEmpty||classLetter.text.trim().isEmpty)return;Navigator.pop(context,DopStudent(lastName:lastName.text.trim(),firstName:firstName.text.trim(),classNumber:classNumber.text.trim(),classLetter:classLetter.text.trim().toUpperCase(),residenceType:'auto'));},child:const Text('Сохранить'))],
-  );
+  late final TextEditingController lastName;
+  late final TextEditingController firstName;
+  late final TextEditingController classNumber;
+  late final TextEditingController classLetter;
+  String selectedProfile = '';
+  bool profileError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final student = widget.initial;
+    lastName = TextEditingController(text: student?.lastName ?? '');
+    firstName = TextEditingController(text: student?.firstName ?? '');
+    classNumber = TextEditingController(text: student?.classNumber ?? '');
+    classLetter = TextEditingController(text: student?.classLetter ?? '');
+    if (DopStudent.grade10Profiles.contains(student?.profile)) {
+      selectedProfile = student!.profile;
+    }
+  }
+
+  @override
+  void dispose() {
+    lastName.dispose();
+    firstName.dispose();
+    classNumber.dispose();
+    classLetter.dispose();
+    super.dispose();
+  }
+
+  bool get _isGrade10 => classNumber.text.trim() == '10';
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Профиль ученика для ДОПов'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: lastName,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Фамилия'),
+                ),
+                TextField(
+                  controller: firstName,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Имя'),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: classNumber,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Класс'),
+                        onChanged: (_) => setState(() => profileError = false),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: classLetter,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(labelText: 'Буква'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isGrade10) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    initialValue: selectedProfile.isEmpty ? null : selectedProfile,
+                    decoration: InputDecoration(
+                      labelText: 'Направление обучения',
+                      helperText: 'Выбери свой профиль 10 класса',
+                      errorText: profileError ? 'Нужно выбрать направление' : null,
+                    ),
+                    items: DopStudent.grade10Profiles
+                        .map((profile) => DropdownMenuItem<String>(
+                              value: profile,
+                              child: Text(profile, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      selectedProfile = value ?? '';
+                      profileError = false;
+                    }),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Text(
+                  'Тип проживания Поколение определит автоматически.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final grade10 = _isGrade10;
+              final validProfile =
+                  !grade10 || DopStudent.grade10Profiles.contains(selectedProfile);
+              if (lastName.text.trim().isEmpty ||
+                  firstName.text.trim().isEmpty ||
+                  classNumber.text.trim().isEmpty ||
+                  classLetter.text.trim().isEmpty ||
+                  !validProfile) {
+                setState(() => profileError = grade10 && !validProfile);
+                return;
+              }
+              Navigator.pop(
+                context,
+                DopStudent(
+                  lastName: lastName.text.trim(),
+                  firstName: firstName.text.trim(),
+                  classNumber: classNumber.text.trim(),
+                  classLetter: classLetter.text.trim().toUpperCase(),
+                  profile: grade10 ? selectedProfile : '',
+                  residenceType: 'auto',
+                ),
+              );
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      );
 }
