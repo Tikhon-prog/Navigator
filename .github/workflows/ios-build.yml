@@ -1,90 +1,113 @@
-name: iOS build (unsigned)
+name: iPhone PWA validation
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - 'lib/**'
-      - 'assets/**'
-      - 'ios/**'
-      - 'pubspec.yaml'
+      - 'website/**'
       - '.github/workflows/ios-build.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'lib/**'
-      - 'assets/**'
-      - 'ios/**'
-      - 'pubspec.yaml'
+      - 'website/**'
       - '.github/workflows/ios-build.yml'
 
 permissions:
   contents: read
 
 jobs:
-  build-ios:
-    runs-on: macos-latest
-    timeout-minutes: 45
+  validate-pwa:
+    name: Validate and package the iPhone PWA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.47.9"
-          channel: stable
-          cache: true
-
-      - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Build unsigned iOS app
-        env:
-          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
+      - name: Validate PWA manifest, shell and local assets
         run: |
           set -euo pipefail
-          xcodebuild -resolvePackageDependencies \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner
-          DERIVED_DATA="$GITHUB_WORKSPACE/build/ios/DerivedData"
-          DART_DEFINE="$(printf 'POKOLENIE_API_BASE_URL=%s' "$POKOLENIE_API_BASE_URL" | base64 | tr -d '\n')"
-          xcodebuild \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            "DART_DEFINES=$DART_DEFINE" \
-            build
-          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Runner.app"
-          test -d "$APP_PATH"
-          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
-          test "$BUNDLE_ID" = "ru.pokolenie.navigator"
-          mkdir -p build/ios/iphoneos/ipa/Payload
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
-            build/ios/iphoneos/Pokolenie-iOS-unsigned.zip
-          ditto "$APP_PATH" build/ios/iphoneos/ipa/Payload/Runner.app
-          (cd build/ios/iphoneos/ipa && zip -qry ../Pokolenie-unsigned.ipa Payload)
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          import json
+          import re
 
-      - name: Verify unsigned iOS artifacts
+          root = Path("website")
+          required = [
+              "index.html",
+              "manifest.webmanifest",
+              "service-worker.js",
+              "assets/app.css",
+              "assets/app.js",
+              "assets/app-icon.svg",
+              "assets/apple-touch-icon.png",
+          ]
+          missing = [name for name in required if not (root / name).is_file()]
+          if missing:
+              raise SystemExit("Missing PWA files: " + ", ".join(missing))
+
+          manifest = json.loads((root / "manifest.webmanifest").read_text(encoding="utf-8"))
+          if manifest.get("display") != "standalone":
+              raise SystemExit("PWA manifest must use display=standalone")
+          if not manifest.get("name") or not manifest.get("short_name"):
+              raise SystemExit("PWA manifest must define name and short_name")
+          for icon in manifest.get("icons", []):
+              src = icon.get("src", "").strip()
+              if not src or not (root / src).is_file():
+                  raise SystemExit(f"Manifest icon is missing: {src!r}")
+
+          class LocalAssets(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.paths = []
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key not in {"src", "href"} or not value:
+                          continue
+                      parsed = urlsplit(value)
+                      if parsed.scheme or parsed.netloc or value.startswith(("#", "data:")):
+                          continue
+                      path = parsed.path
+                      if path:
+                          self.paths.append(path)
+
+          html = (root / "index.html").read_text(encoding="utf-8")
+          parser = LocalAssets()
+          parser.feed(html)
+          for asset in parser.paths:
+              if not (root / asset.lstrip("./")).is_file():
+                  raise SystemExit(f"HTML references a missing local asset: {asset}")
+
+          worker = (root / "service-worker.js").read_text(encoding="utf-8")
+          if 'navigator.serviceWorker.register("./service-worker.js")' not in html:
+              raise SystemExit("index.html does not register the PWA service worker")
+          if "CACHE_NAME" not in worker or "event.waitUntil" not in worker:
+              raise SystemExit("Service worker is missing cache install/activation logic")
+          if "Authorization" not in worker or "/api" not in worker:
+              raise SystemExit("Service worker must explicitly protect authenticated/API requests")
+
+          print("iPhone PWA validation passed.")
+          print(f"Validated {len(required)} required files and {len(parser.paths)} HTML asset references.")
+          PY
+
+      - name: Package static iPhone PWA
         run: |
           set -euo pipefail
-          test -s build/ios/iphoneos/Pokolenie-iOS-unsigned.zip
-          test -s build/ios/iphoneos/Pokolenie-unsigned.ipa
+          mkdir -p dist
+          (cd website && zip -qry ../dist/Pokolenie-iPhone-PWA.zip .)
+          test -s dist/Pokolenie-iPhone-PWA.zip
+          (cd dist && sha256sum Pokolenie-iPhone-PWA.zip > Pokolenie-iPhone-PWA.zip.sha256)
+          ls -lh dist
 
-      - name: Upload unsigned iOS app
+      - name: Upload iPhone PWA bundle
         uses: actions/upload-artifact@v7
         with:
-          name: pokolenie-ios-unsigned
+          name: pokolenie-iphone-pwa
           path: |
-            build/ios/iphoneos/Pokolenie-iOS-unsigned.zip
-            build/ios/iphoneos/Pokolenie-unsigned.ipa
+            dist/Pokolenie-iPhone-PWA.zip
+            dist/Pokolenie-iPhone-PWA.zip.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
