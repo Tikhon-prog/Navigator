@@ -49,6 +49,7 @@ void main() {
             <input
               class="discipline-checkbox"
               type="checkbox"
+              checked
               name="subgroups[]"
               value="301"
               data-subgroup-id="301"
@@ -83,6 +84,7 @@ void main() {
       expect(subgroup.supplies, 'Ноутбук');
       expect(subgroup.selectionName, 'subgroups[]');
       expect(subgroup.selectionValue, '301');
+      expect(subgroup.preselected, isTrue);
       expect(subgroup.schedule.single.day, 1);
       expect(subgroup.schedule.single.start, 3);
       expect(subgroup.schedule.single.end, 4);
