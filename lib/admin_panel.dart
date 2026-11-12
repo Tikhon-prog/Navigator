@@ -106,8 +106,12 @@ class AdminRepository {
   static const _auditKey = 'navigator_admin_audit_v1';
 
   Future<bool> hasConfiguredAccounts() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey(_key) || prefs.containsKey(_legacyKey);
+    final accounts = await list();
+    // A corrupt/empty preference must not permanently lock first-run setup.
+    return accounts.any((account) =>
+        account.id.trim().isNotEmpty &&
+        account.login.trim().isNotEmpty &&
+        account.passwordHash.trim().isNotEmpty);
   }
 
   Future<AdminAccount?> createFirstAdmin(String login, String password) async {
@@ -146,13 +150,18 @@ class AdminRepository {
 
   Future<AdminAccount?> authenticate(String login, String password) async {
     final prefs = await SharedPreferences.getInstance();
-    final lockUntil = prefs.getInt('$_lockKey.$login') ?? 0;
+    final normalizedLogin = login.trim().toLowerCase();
+    if (normalizedLogin.isEmpty) return null;
+    final lockKey = '$_lockKey.$normalizedLogin';
+    final lockUntil = prefs.getInt(lockKey) ?? 0;
     if (lockUntil > DateTime.now().millisecondsSinceEpoch) return null;
     final accounts = await list();
     for (final account in accounts) {
-      if (account.active && account.login == login && PasswordHasher.verify(password, account.passwordHash)) {
-        await prefs.remove('$_lockKey.$login');
-        await prefs.remove('$_lockKey.$login.failures');
+      if (account.active &&
+          account.login.trim().toLowerCase() == normalizedLogin &&
+          PasswordHasher.verify(password, account.passwordHash)) {
+        await prefs.remove(lockKey);
+        await prefs.remove('$lockKey.failures');
         // Upgrade the legacy unsalted SHA-256 hash after a successful login.
         if (!account.passwordHash.startsWith('v2\$')) {
           final upgraded = account.copyWith(passwordHash: PasswordHasher.secureDigest(password));
@@ -165,13 +174,12 @@ class AdminRepository {
         return account;
       }
     }
-    final key = '$_lockKey.$login';
-    final failures = (prefs.getInt('$key.failures') ?? 0) + 1;
+    final failures = (prefs.getInt('$lockKey.failures') ?? 0) + 1;
     if (failures >= 5) {
-      await prefs.setInt(key, DateTime.now().add(const Duration(minutes: 5)).millisecondsSinceEpoch);
-      await prefs.remove('$key.failures');
+      await prefs.setInt(lockKey, DateTime.now().add(const Duration(minutes: 5)).millisecondsSinceEpoch);
+      await prefs.remove('$lockKey.failures');
     } else {
-      await prefs.setInt('$key.failures', failures);
+      await prefs.setInt('$lockKey.failures', failures);
     }
     return null;
   }
