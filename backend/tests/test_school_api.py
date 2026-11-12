@@ -285,6 +285,21 @@ class SchoolApiTests(unittest.TestCase):
         self.assertIn("teacher-notice", [item["id"] for item in teacher_feed])
         self.assertNotIn("mentor-notice", [item["id"] for item in teacher_feed])
 
+    def test_admin_can_see_announcements_for_all_audiences(self):
+        with api._db() as db:
+            db.executemany(
+                "INSERT INTO announcements(id,title,body,severity,audience,class_id,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                [
+                    ("admin-mentor", "Mentors", "Mentor-only", "info", "mentors", None, "admin1", api._utc_now()),
+                    ("admin-teacher", "Teachers", "Teacher-only", "info", "teachers", None, "admin1", api._utc_now()),
+                    ("admin-class", "8B", "Class-only", "info", "class", "8B", "admin1", api._utc_now()),
+                ],
+            )
+        feed = api.list_announcements({"id": "admin1", "role": "admin", "class_id": None})["data"]
+        ids = {item["id"] for item in feed}
+        self.assertTrue({"admin-mentor", "admin-teacher", "admin-class"}.issubset(ids))
+
     def test_unrelated_class_announcements_do_not_hide_older_assigned_class_notice(self):
         with api._db() as db:
             db.execute(
