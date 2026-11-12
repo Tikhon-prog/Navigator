@@ -15,7 +15,7 @@ class AiNavigationIntent {
   });
 
   static String _normalize(String value) =>
-      value.toLowerCase().replaceAll('ё', 'е').replaceAll(RegExp(r'\\s+'), ' ').trim();
+      value.toLowerCase().replaceAll('ё', 'е').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static bool looksLikeRouteRequest(String value) {
     final query = _normalize(value);
@@ -56,7 +56,7 @@ class AiNavigationIntent {
     final candidates = <({int index, int length, String id})>[];
     final knownIds = known.map((location) => location.id.trim()).toSet();
 
-    final numericPattern = RegExp(r'(?<!\\d)(\\d{3}(?:\\.\\d+)?)(?!\\d)');
+    final numericPattern = RegExp(r'(?<!\d)(\d{3}(?:\.\d+)?)(?!\d)');
     for (final match in numericPattern.allMatches(query)) {
       final id = match.group(1);
       if (id != null && knownIds.contains(id)) {
@@ -109,8 +109,8 @@ class AiNavigationIntent {
     }
     if (unique.isEmpty) return null;
 
-    final explicitOrigin = RegExp(r'\\b(?:от|из)\\b').hasMatch(query) &&
-        RegExp(r'\\bдо\\b').hasMatch(query);
+    final explicitOrigin = RegExp(r'\b(?:от|из)\b').hasMatch(query) &&
+        RegExp(r'\bдо\b').hasMatch(query);
     if (explicitOrigin) {
       if (unique.length < 2) return null;
       final origin = unique.first;
