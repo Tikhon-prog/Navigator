@@ -20,6 +20,7 @@ class SchoolApiTests(unittest.TestCase):
         self.secret = patch.object(api, "TOKEN_SECRET", "test-secret-that-is-long-enough-for-hmac-signing")
         self.secret.start()
         api.init_db()
+        rbac_api._init()
         with api._db() as db:
             db.execute("INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
                        ("admin1", "admin", api._hash_password("correct horse battery"), "admin", "Admin", None, api._utc_now()))
