@@ -10,6 +10,7 @@ import 'local_ai_chat_page.dart';
 import 'student_tasks_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'bell_countdown.dart';
+import 'schedule_time.dart';
 import 'notes_page.dart';
 import 'admin_panel.dart';
 import 'announcements_page.dart';
@@ -233,7 +234,7 @@ class SchoolScheduleCatalog {
     final normalized = <String, dynamic>{};
     for (final entry in row.entries) {
       final key = entry.key.trim().toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9а-я]+'), '_')
+          .replaceAll(RegExp(r'[^a-z0-9а-яё]+'), '_')
           .replaceAll(RegExp(r'^_+|_+$'), '');
       normalized[key] = entry.value;
     }
@@ -298,8 +299,9 @@ class SchoolScheduleCatalog {
       final className = classLabel.isNotEmpty ? classLabel : (classNames[classRef] ?? classRef);
       final subject = _rowText(row, ['subject', 'subject_name', 'discipline', 'discipline_name', 'lesson', 'предмет', 'дисциплина']);
       final day = _rowDay(_rowText(row, ['day', 'weekday', 'day_of_week', 'день', 'день_недели']));
-      final time = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_урока', 'время_начала', 'время_начала_урока']);
-      if (className.isEmpty || subject.isEmpty || day == null || time.isEmpty) continue;
+      final rawTime = _rowText(row, ['time', 'lesson_time', 'time_slot', 'start_time', 'lesson_start', 'время', 'время_урока', 'время_начала', 'время_начала_урока']);
+      final time = normalizeLessonTime(rawTime);
+      if (className.isEmpty || subject.isEmpty || day == null || time == null) continue;
       final group = int.tryParse(_rowText(row, ['group', 'group_number', 'subgroup', 'подгруппа', 'группа'])) ?? 1;
       variantsByClass.putIfAbsent(className, () => <Map<String, dynamic>>[]).add({
         'day': day, 'time': time, 'subject': subject,
@@ -409,36 +411,43 @@ class SchoolScheduleCatalog {
     final result = <ScheduleEntry>[];
     final seen = <String>{};
     final mathSlots = <int, List<String>>{};
-    for (final e in all) {
-      final raw = baseSubject('${e['subject'] ?? ''}');
-      if (isMathSubject(raw)) {
-        final day = int.tryParse('${e['day']}') ?? 1;
-        final time = '${e['time'] ?? ''}';
-        final slots = mathSlots.putIfAbsent(day, () => <String>[]);
-        if (!slots.contains(time)) slots.add(time);
+    final groupsBySlot = <String, Set<int>>{};
+
+    // Build the slot/group index once. This replaces a full scan of all rows
+    // for every lesson, reducing group selection from O(n²) to O(n).
+    for (final row in all) {
+      final rowSubject = baseSubject('${row['subject'] ?? ''}');
+      if (rowSubject.isEmpty) continue;
+      final rowDay = int.tryParse('${row['day']}') ?? 1;
+      final rowTime = canonicalLessonTimeKey('${row['time'] ?? ''}');
+      final rowGroup = int.tryParse('${row['group']}') ?? 1;
+      final slotKey = '$rowDay|$rowTime|$rowSubject';
+      (groupsBySlot[slotKey] ??= <int>{}).add(rowGroup);
+
+      if (isMathSubject(rowSubject)) {
+        final slots = mathSlots.putIfAbsent(rowDay, () => <String>[]);
+        if (!slots.contains(rowTime)) slots.add(rowTime);
       }
     }
-    for (final slots in mathSlots.values) { slots.sort(); }
+    for (final slots in mathSlots.values) {
+      slots.sort(compareLessonTimes);
+    }
+
     for (final e in all) {
       final rawSubject = '${e['subject'] ?? ''}'.trim();
       final subject = baseSubject(rawSubject);
       if (subject.isEmpty) continue;
       final group = int.tryParse('${e['group']}') ?? 1;
       final wanted = selected[subject] ?? 1;
-      final slotGroups = all
-          .where((x) =>
-              '${x['day']}' == '${e['day']}' &&
-              '${x['time']}' == '${e['time']}' &&
-              baseSubject('${x['subject'] ?? ''}') == subject)
-          .map((x) => int.tryParse('${x['group']}') ?? 1)
-          .toSet();
-      if (slotGroups.length > 1 && group != wanted) continue;
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
+      final slotKey = '$day|${canonicalLessonTimeKey(time)}|$subject';
+      final slotGroups = groupsBySlot[slotKey] ?? const <int>{};
+      if (slotGroups.length > 1 && group != wanted) continue;
       var displaySubject = subject;
       if (isMathSubject(subject)) {
         final slots = mathSlots[day] ?? const <String>[];
-        final ordinal = slots.indexOf(time);
+        final ordinal = slots.indexOf(canonicalLessonTimeKey(time));
         final names = mathNamesByDay[day] ?? const <String>[];
         if (ordinal >= 0 && ordinal < names.length && names[ordinal].isNotEmpty) {
           displaySubject = names[ordinal];
@@ -460,7 +469,7 @@ class SchoolScheduleCatalog {
     }
     result.sort((a, b) => a.day != b.day
         ? a.day.compareTo(b.day)
-        : a.time.compareTo(b.time));
+        : compareLessonTimes(a.time, b.time));
     return result;
   }
 }
@@ -2798,28 +2807,64 @@ class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key, required this.onMenu, required this.onNotes});
   @override State<SchedulePage> createState() => _SchedulePageState();
 }
-class _SchedulePageState extends State<SchedulePage> {
+class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver {
   int day = DateTime.now().weekday > 6 ? 1 : DateTime.now().weekday;
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
-  @override void initState() {
+  bool _appResumed = true;
+
+  @override
+  void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     schoolLocalDataRevision.addListener(_reloadScheduleAfterAi);
     _load();
-    _clockTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) { if (mounted) setState(() => _now = DateTime.now()); },
-    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncClockTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+    if (_appResumed) _now = DateTime.now();
+    _syncClockTimer();
+  }
+
+  void _syncClockTimer() {
+    final shouldTick = mounted && _appResumed && TickerMode.of(context);
+    if (shouldTick && _clockTimer == null) {
+      _now = DateTime.now();
+      _clockTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) {
+          if (mounted && _appResumed && TickerMode.of(context)) {
+            setState(() => _now = DateTime.now());
+          } else {
+            _syncClockTimer();
+          }
+        },
+      );
+    } else if (!shouldTick && _clockTimer != null) {
+      _clockTimer?.cancel();
+      _clockTimer = null;
+    }
   }
   void _reloadScheduleAfterAi() {
     if (!mounted) return;
     setState(() => loading = true);
     _load();
   }
-  @override void dispose() {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     schoolLocalDataRevision.removeListener(_reloadScheduleAfterAi);
     _clockTimer?.cancel();
+    _clockTimer = null;
     super.dispose();
   }
   String? _breakCountdown(List<ScheduleEntry> dayEntries) => SchoolBellCountdown.describe(
@@ -2860,7 +2905,7 @@ class _SchedulePageState extends State<SchedulePage> {
     if (e.room.isEmpty) return;
     final destination = SchoolData.tryRoom(e.room);
     if (destination == null) return;
-    final sameDay = entries.where((x) => x.day == e.day).toList()..sort((a, b) => a.time.compareTo(b.time));
+    final sameDay = entries.where((x) => x.day == e.day).toList()..sort((a, b) => compareLessonTimes(a.time, b.time));
     final currentIndex = sameDay.indexWhere((x) => x.id == e.id);
     RoomInfo? previousRoom;
     if (currentIndex > 0) {
@@ -2879,7 +2924,7 @@ class _SchedulePageState extends State<SchedulePage> {
   }
   @override
   Widget build(BuildContext context) {
-    final list = entries.where((e) => e.day == day).toList()..sort((a, b) => a.time.compareTo(b.time));
+    final list = entries.where((e) => e.day == day).toList()..sort((a, b) => compareLessonTimes(a.time, b.time));
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
