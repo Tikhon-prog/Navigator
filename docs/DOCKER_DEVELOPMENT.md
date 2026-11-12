@@ -7,7 +7,7 @@ Docker-контейнер хранит одинаковые версии инс�
 Окружение закрепляет:
 
 - Flutter 3.47.9 и Dart 3.13.7;
-- Oracle JDK 27;
+- Eclipse Temurin JDK 21.0.13+9 (проверка SHA-256);
 - Android SDK command-line tools 19.0;
 - Android platform 36, build-tools 36.0.0 и NDK 28.2.13676358 (устанавливаются в persistent volume после принятия лицензий);
 - Python 3.12 с зависимостями из backend/requirements.txt.
