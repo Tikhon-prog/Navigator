@@ -100,8 +100,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
-Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания. Для удаления ДОПа или задания приложение обязательно запросит отдельное подтверждение пользователя.
-Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, ДОПы, задания, избранное и настройки только через инструменты приложения.
+Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания. ДОПы только отображай: не добавляй, не изменяй и не удаляй их.
+Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, задания, избранное и настройки только через инструменты приложения. Не изменяй ДОПы: они доступны только для просмотра.
 ''';
 
   final _input = TextEditingController();
@@ -495,7 +495,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     if (handler == null) {
       return 'Действия приложения пока не подключены в этой сборке.';
     }
-    if (name == 'delete_supplement' || name == 'delete_student_task') {
+    if (name == 'delete_student_task') {
       final approved = await _confirmDestructiveAction(name, args);
       if (!approved) {
         return 'Пользователь отменил удаление. Не повторяй это действие без нового прямого запроса.';
@@ -641,29 +641,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           handler: _runAction,
         ),
         _LocalAiTool(
-          name: 'add_supplement',
-          description:
-              'Добавить локальный кружок или дополнительное занятие в список ДОПов. Не выдумывай время и кабинет.',
-          parameters: [
-            LLMToolParam(name: 'title', type: 'string', description: 'Название занятия', isRequired: true),
-            LLMToolParam(name: 'day', type: 'string', description: 'День недели', isRequired: true),
-            LLMToolParam(name: 'start', type: 'string', description: 'Время начала HH:mm или пусто, если неизвестно', isRequired: true),
-            LLMToolParam(name: 'end', type: 'string', description: 'Время окончания HH:mm или пусто, если неизвестно', isRequired: true),
-            LLMToolParam(name: 'room', type: 'string', description: 'Кабинет или пусто', isRequired: true),
-            LLMToolParam(name: 'teacher', type: 'string', description: 'Преподаватель или пусто', isRequired: true),
-            LLMToolParam(name: 'description', type: 'string', description: 'Описание или пусто', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
-          name: 'delete_supplement',
-          description: 'Удалить локальный ДОП по его точному названию.',
-          parameters: [
-            LLMToolParam(name: 'title', type: 'string', description: 'Точное название занятия', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
           name: 'get_student_tasks',
           description: 'Прочитать домашние задания, контрольные и проекты ученика. Вызывай перед вопросами о дедлайнах и перед изменением существующего задания.',
           parameters: [
@@ -792,7 +769,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     ],
     'ДОПы': [
       'Покажи мои дополнительные занятия на неделю',
-      'Добавь программирование по средам в мои ДОПы',
+      'Во сколько начинается мой ближайший ДОП?',
       'Какие у меня ближайшие дополнительные занятия?',
     ],
     'Задания': [
