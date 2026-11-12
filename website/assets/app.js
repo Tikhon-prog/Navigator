@@ -32,9 +32,12 @@
     else if (link) activate(link.dataset.go, true);
   });
 
-  window.addEventListener("popstate", () => {
+  function syncScreenFromLocation() {
     activate(location.hash.slice(1) || "home", false);
-  });
+  }
+
+  window.addEventListener("popstate", syncScreenFromLocation);
+  window.addEventListener("hashchange", syncScreenFromLocation);
 
   const now = new Date();
   const today = document.getElementById("today");
