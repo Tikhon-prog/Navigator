@@ -29,7 +29,13 @@ def _is_secure_service_url(value: str) -> bool:
         # Accessing .port validates malformed/out-of-range ports as well.
         _ = parsed.port
         host = (parsed.hostname or "").lower()
-        if not host or parsed.username is not None or parsed.password is not None:
+        if (
+            not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
             return False
         if parsed.scheme.lower() == "https":
             return True
@@ -50,8 +56,14 @@ class SsoLinkBody(BaseModel):
 
 @lru_cache(maxsize=4)
 def _oidc_metadata(issuer: str) -> dict[str, Any]:
-    response = requests.get(issuer.rstrip("/") + "/.well-known/openid-configuration", timeout=5)
-    response.raise_for_status()
+    response = requests.get(
+        issuer.rstrip("/") + "/.well-known/openid-configuration",
+        timeout=5,
+        allow_redirects=False,
+        headers={"Accept": "application/json"},
+    )
+    if response.status_code != 200:
+        raise HTTPException(status_code=503, detail="OIDC discovery endpoint is unavailable")
     metadata = response.json()
     if str(metadata.get("issuer", "")) != issuer:
         raise HTTPException(status_code=503, detail="OIDC discovery issuer does not match configuration")
@@ -109,6 +121,7 @@ def _userinfo(access_token: str) -> dict[str, Any]:
             endpoint,
             headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
             timeout=8,
+            allow_redirects=False,
         )
         if response.status_code != 200:
             raise HTTPException(status_code=401, detail="School SSO token was rejected")
