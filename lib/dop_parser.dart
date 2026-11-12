@@ -31,8 +31,7 @@ class DopStudent {
 
   String get className => classNumber + classLetter;
   bool get requiresProfile => classNumber.trim() == '10';
-  bool get hasValidProfile =>
-      !requiresProfile || grade10Profiles.contains(profile.trim());
+  bool get hasValidProfile => !requiresProfile || profile.trim().isNotEmpty;
 }
 
 /// Keeps personally entered profile/supplement data isolated between school
@@ -210,6 +209,9 @@ class DopSubgroup {
   final String teacher;
   final List<DopScheduleItem> schedule;
   final String? supplies;
+  final String selectionName;
+  final String selectionValue;
+  final bool preselected;
 
   const DopSubgroup({
     required this.programId,
@@ -220,6 +222,9 @@ class DopSubgroup {
     required this.teacher,
     required this.schedule,
     required this.supplies,
+    this.selectionName = '',
+    this.selectionValue = '',
+    this.preselected = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -231,6 +236,9 @@ class DopSubgroup {
         'teacher': teacher,
         'schedule': schedule.map((e) => e.toJson()).toList(),
         'supplies': supplies,
+        'selection_name': selectionName,
+        'selection_value': selectionValue,
+        'preselected': preselected,
       };
 }
 
@@ -298,6 +306,76 @@ class DopParser {
   const DopParser({
     this.studentProvider = const NavigatorStudentProvider(),
   });
+
+  /// Reads the profile values from the intranet form. The built-in list is
+  /// retained as an offline fallback so profile editing remains available.
+  Future<List<String>> loadGrade10Profiles() async {
+    final session = _DopSession();
+    try {
+      final page = await session.get(baseUri);
+      final parsed = DopProfileCatalogParser.parse(page.body);
+      return parsed.isEmpty ? DopStudent.grade10Profiles : parsed;
+    } catch (_) {
+      return DopStudent.grade10Profiles;
+    } finally {
+      session.close();
+    }
+  }
+
+  /// Opens the live DOP catalogue and keeps its cookie session for submissions.
+  Future<DopCatalogSession> openCatalog() async {
+    final student = await studentProvider.load();
+    if (student == null) {
+      throw const DopParserException(
+        'Сначала заполни профиль ученика для загрузки каталога ДОПов.',
+      );
+    }
+    if (student.requiresProfile && !student.hasValidProfile) {
+      throw const DopParserException(
+        'Для 10 класса сначала выбери направление обучения в профиле ученика.',
+      );
+    }
+
+    final session = _DopSession();
+    try {
+      final firstPage = await session.get(baseUri);
+      final csrf = _inputValue(firstPage.body, 'csrf_token');
+      if (csrf.isEmpty) {
+        throw const DopParserException(
+          'Не найден csrf_token на стартовой странице intranet.',
+        );
+      }
+      final catalogPage = await session.post(firstPage.uri, {
+        'csrf_token': csrf,
+        'last_name': student.lastName,
+        'first_name': student.firstName,
+        'class_number': student.classNumber,
+        'class_letter': student.classLetter,
+        'profile': student.profile,
+        'residence_type': student.residenceType,
+      });
+      final programs = _parseCatalog(catalogPage.body);
+      if (programs.isEmpty) {
+        throw const DopParserException(
+          'Intranet не вернул каталог ДОПов. Проверь профиль и доступность сайта.',
+        );
+      }
+      final form = DopSelectionFormParser.parse(
+        catalogPage.body,
+        catalogPage.uri,
+      );
+      return DopCatalogSession._(
+        student: student,
+        programs: programs,
+        session: session,
+        parser: this,
+        form: form,
+      );
+    } catch (_) {
+      session.close();
+      rethrow;
+    }
+  }
 
   Future<DopParseResult> parse() async {
     final student = await studentProvider.load();
@@ -404,6 +482,12 @@ class DopParser {
         final schedule = _parseJsonSchedule(_decode(_attr(input, 'data-schedule')));
         final teacher = _teacherFromSubgroup(subgroupHtml);
         final supplies = _nullable(_textClass(subgroupHtml, 'supplies-inline-text'));
+        final selectionName = _attr(input, 'name');
+        final selectionValue = _attr(input, 'value');
+        final preselected = RegExp(
+          r'\\bchecked(?:\\s|=|>|$)',
+          caseSensitive: false,
+        ).hasMatch(input);
 
         subgroups.add(DopSubgroup(
           programId: inputProgramId,
@@ -414,6 +498,9 @@ class DopParser {
           teacher: teacher,
           schedule: schedule,
           supplies: supplies,
+          selectionName: selectionName,
+          selectionValue: selectionValue,
+          preselected: preselected,
         ));
       }
 
@@ -783,6 +870,217 @@ class DopProgram {
   });
 }
 
+
+/// Extracts the exact grade-10 profile options offered by the live intranet.
+class DopProfileCatalogParser {
+  static List<String> parse(String html) {
+    final parser = const DopParser();
+    final values = <String>[];
+    final selects = RegExp(
+      r'<select\b([^>]*)>([\s\S]*?)</select>',
+      caseSensitive: false,
+    ).allMatches(html);
+
+    for (final select in selects) {
+      final attributes = select.group(1) ?? '';
+      final name = parser._attr(attributes, 'name').toLowerCase();
+      final id = parser._attr(attributes, 'id').toLowerCase();
+      if (name != 'profile' && id != 'profile' && name != 'study_profile') {
+        continue;
+      }
+      final body = select.group(2) ?? '';
+      final options = RegExp(
+        r'<option\b([^>]*)>([\s\S]*?)</option>',
+        caseSensitive: false,
+      ).allMatches(body);
+      for (final option in options) {
+        final optionAttributes = option.group(1) ?? '';
+        final rawValue = parser._attr(optionAttributes, 'value');
+        final label = parser._clean(option.group(2) ?? '');
+        final value = rawValue.isNotEmpty ? rawValue : label;
+        if (value.trim().isEmpty ||
+            RegExp(r'\bdisabled\b', caseSensitive: false)
+                .hasMatch(optionAttributes)) {
+          continue;
+        }
+        if (!values.contains(value.trim())) values.add(value.trim());
+      }
+      if (values.isNotEmpty) break;
+    }
+    return List<String>.unmodifiable(values);
+  }
+}
+
+/// Finds the actual form that owns the catalogue checkboxes. It preserves all
+/// hidden fields and the repeated checkbox names required by PHP forms.
+class DopSelectionFormParser {
+  static _DopSelectionForm? parse(String html, Uri pageUri) {
+    final parser = const DopParser();
+    final forms = RegExp(
+      r'<form\b([^>]*)>([\s\S]*?)</form>',
+      caseSensitive: false,
+    ).allMatches(html);
+
+    for (final form in forms) {
+      final attributes = form.group(1) ?? '';
+      final body = form.group(2) ?? '';
+      if (!body.contains('discipline-checkbox')) continue;
+
+      final action = parser._attr(attributes, 'action');
+      final target = action.isEmpty ? pageUri : pageUri.resolve(action);
+      if (!DopParser.isTrustedUri(target)) continue;
+
+      final method = parser._attr(attributes, 'method').toUpperCase();
+      final hidden = <MapEntry<String, String>>[];
+      String submitName = '';
+      String submitValue = '';
+
+      for (final inputMatch in RegExp(
+        r'<input\b[^>]*>',
+        caseSensitive: false,
+      ).allMatches(body)) {
+        final tag = inputMatch.group(0) ?? '';
+        final type = parser._attr(tag, 'type').toLowerCase();
+        final name = parser._attr(tag, 'name');
+        final value = parser._attr(tag, 'value');
+        if (type == 'hidden' && name.isNotEmpty) {
+          hidden.add(MapEntry(name, value));
+        } else if ((type == 'submit' || type == 'image') &&
+            name.isNotEmpty &&
+            submitName.isEmpty) {
+          submitName = name;
+          submitValue = value;
+        }
+      }
+
+      if (submitName.isEmpty) {
+        final button = RegExp(
+          r'<button\b([^>]*)>',
+          caseSensitive: false,
+        ).firstMatch(body);
+        if (button != null) {
+          final buttonAttributes = button.group(1) ?? '';
+          final type = parser._attr(buttonAttributes, 'type').toLowerCase();
+          final name = parser._attr(buttonAttributes, 'name');
+          if ((type.isEmpty || type == 'submit') && name.isNotEmpty) {
+            submitName = name;
+            submitValue = parser._attr(buttonAttributes, 'value');
+          }
+        }
+      }
+
+      return _DopSelectionForm(
+        action: target,
+        method: method.isEmpty ? 'GET' : method,
+        hiddenFields: List<MapEntry<String, String>>.unmodifiable(hidden),
+        submitName: submitName,
+        submitValue: submitValue,
+      );
+    }
+    return null;
+  }
+}
+
+class _DopSelectionForm {
+  final Uri action;
+  final String method;
+  final List<MapEntry<String, String>> hiddenFields;
+  final String submitName;
+  final String submitValue;
+
+  const _DopSelectionForm({
+    required this.action,
+    required this.method,
+    required this.hiddenFields,
+    required this.submitName,
+    required this.submitValue,
+  });
+}
+
+/// A live catalogue and its authenticated intranet cookie session.
+class DopCatalogSession {
+  final DopStudent student;
+  final List<DopProgram> programs;
+  final _DopSession _session;
+  final DopParser _parser;
+  final _DopSelectionForm? _form;
+  bool _closed = false;
+
+  DopCatalogSession._({
+    required this.student,
+    required this.programs,
+    required _DopSession session,
+    required DopParser parser,
+    required _DopSelectionForm? form,
+  })  : _session = session,
+        _parser = parser,
+        _form = form;
+
+  bool get canSubmit =>
+      !_closed &&
+      _form != null &&
+      _form.method == 'POST' &&
+      programs.any((program) => program.subgroups.any((group) =>
+          group.selectionName.trim().isNotEmpty &&
+          group.selectionValue.trim().isNotEmpty));
+
+  /// Submits only real name/value pairs parsed from the school's form.
+  /// No guessed endpoint, checkbox name, or subgroup ID is ever sent.
+  Future<String> submit(List<DopSubgroup> selections) async {
+    if (_closed) {
+      throw const DopParserException('Сеанс каталога уже закрыт. Обнови каталог.');
+    }
+    if (selections.isEmpty) {
+      throw const DopParserException('Сначала выбери хотя бы одну группу.');
+    }
+    final form = _form;
+    if (form == null || form.method != 'POST') {
+      throw const DopParserException(
+        'На странице каталога не найдена поддерживаемая форма отправки. '
+        'Просмотр доступен, но записывать через приложение пока небезопасно.',
+      );
+    }
+
+    final fields = <MapEntry<String, String>>[
+      ...form.hiddenFields,
+    ];
+    final unique = <String>{};
+    for (final group in selections) {
+      if (group.selectionName.trim().isEmpty ||
+          group.selectionValue.trim().isEmpty) {
+        throw const DopParserException(
+          'У выбранной группы не найдены точные параметры checkbox. '
+          'Сайт не будет получать выдуманные значения.',
+        );
+      }
+      final key = group.selectionName + '\u0000' + group.selectionValue;
+      if (unique.add(key)) {
+        fields.add(MapEntry(group.selectionName, group.selectionValue));
+      }
+    }
+    if (form.submitName.isNotEmpty) {
+      fields.add(MapEntry(form.submitName, form.submitValue));
+    }
+
+    final response = await _session.postEntries(form.action, fields);
+    final error = _parser._textClass(response.body, 'alert-danger');
+    if (error.isNotEmpty) {
+      throw DopParserException('Intranet отклонил выбор: ' + error);
+    }
+    final success = _parser._textClass(response.body, 'alert-success');
+    if (success.isNotEmpty) return success;
+    final notice = _parser._textClass(response.body, 'alert');
+    if (notice.isNotEmpty) return notice;
+    return 'Ответ intranet получен. Проверь статус выбранных занятий в разделе «Мои ДОПы».';
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _session.close();
+  }
+}
+
 class _DopSession {
   final HttpClient _client = HttpClient();
   final Map<String, String> _cookies = {};
@@ -796,10 +1094,17 @@ class _DopSession {
   ) =>
       _request('POST', uri, data: data);
 
+  Future<_DopResponse> postEntries(
+    Uri uri,
+    List<MapEntry<String, String>> fields,
+  ) =>
+      _request('POST', uri, formFields: fields);
+
   Future<_DopResponse> _request(
     String method,
     Uri uri, {
     Map<String, String> data = const {},
+    List<MapEntry<String, String>>? formFields,
   }) async {
     var currentUri = uri;
     var currentMethod = method;
@@ -842,8 +1147,9 @@ class _DopSession {
           charset: 'utf-8',
         );
 
+        final fields = formFields ?? currentData.entries.toList();
         request.write(
-          currentData.entries
+          fields
               .map(
                 (e) =>
                     '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
@@ -885,6 +1191,7 @@ class _DopSession {
             response.statusCode == 303) {
           currentMethod = 'GET';
           currentData = const {};
+          formFields = null;
         }
 
         currentUri = currentUri.resolve(location);
