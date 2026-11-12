@@ -902,7 +902,11 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
                     items: availableProfiles
                         .map((profile) => DropdownMenuItem<String>(
                               value: profile,
-                              child: Text(profile, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              child: Text(
+                                DopStudent.grade10ProfileLabel(profile),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ))
                         .toList(),
                     onChanged: profilesLoading

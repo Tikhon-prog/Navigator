@@ -4,14 +4,25 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DopStudent {
+  /// Exact option values and visible labels from the intranet profile select.
   static const List<String> grade10Profiles = [
-    'Агротехнологический',
-    'Естественно-научный (медико-биологический)',
-    'Естественно-научный (физико-химический)',
-    'Технологический (инженерно-математический)',
-    'Технологический (информационно-технологический)',
-    'Гуманитарный',
+    'инженерно-математический',
+    'медико-биологический',
+    'агротехнологический',
+    'информационно-технологический',
+    'социально-гуманитарный',
   ];
+
+  static const Map<String, String> grade10ProfileLabels = {
+    'инженерно-математический': 'Инженерно-математический',
+    'медико-биологический': 'Медико-биологический',
+    'агротехнологический': 'Агротехнологический',
+    'информационно-технологический': 'Информационно-технологический',
+    'социально-гуманитарный': 'Социально-гуманитарный',
+  };
+
+  static String grade10ProfileLabel(String value) =>
+      grade10ProfileLabels[value] ?? value;
 
   final String lastName;
   final String firstName;
@@ -212,6 +223,7 @@ class DopSubgroup {
   final String selectionName;
   final String selectionValue;
   final bool preselected;
+  final bool selectionDisabled;
 
   const DopSubgroup({
     required this.programId,
@@ -225,6 +237,7 @@ class DopSubgroup {
     this.selectionName = '',
     this.selectionValue = '',
     this.preselected = false,
+    this.selectionDisabled = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -336,7 +349,7 @@ class DopParser {
     DopParserException? lastError;
     // The school page expects one of these exact residence values. "auto" is
     // an app-only sentinel and must never be sent to the intranet.
-    for (final residence in const ['day', 'campus']) {
+    for (final residence in const ['day', 'boarding']) {
       final session = _DopSession();
       try {
         final firstPage = await session.get(baseUri);
@@ -375,6 +388,7 @@ class DopParser {
             session: session,
             parser: this,
             form: form,
+            maxHours: form?.maxHours ?? 10,
           );
         }
         session.close();
@@ -412,7 +426,7 @@ class DopParser {
       );
     }
 
-    for (final residence in const ['day', 'campus']) {
+    for (final residence in const ['day', 'boarding']) {
       final session = _DopSession();
       try {
         final candidate = DopStudent(lastName:student.lastName,firstName:student.firstName,classNumber:student.classNumber,classLetter:student.classLetter,profile:student.profile,residenceType:residence);
@@ -509,6 +523,8 @@ class DopParser {
           r'(?:^|\s)checked(?:\s|=|>)',
           caseSensitive: false,
         ).hasMatch(input);
+        final selectionDisabled = _hasAttribute(input, 'disabled') ||
+            _attr(input, 'aria-disabled').toLowerCase() == 'true';
 
         subgroups.add(DopSubgroup(
           programId: inputProgramId,
@@ -522,6 +538,7 @@ class DopParser {
           selectionName: selectionName,
           selectionValue: selectionValue,
           preselected: preselected,
+          selectionDisabled: selectionDisabled,
         ));
       }
 
@@ -739,6 +756,12 @@ class DopParser {
     final value = match?.group(1) ?? match?.group(2) ?? match?.group(3) ?? '';
     return _decode(value).trim();
   }
+
+  bool _hasAttribute(String tag, String name) => RegExp(
+        r'(?:^|\s)' + RegExp.escape(name) + r'(?:\s*=|\s|/?>)',
+        caseSensitive: false,
+      ).hasMatch(tag);
+
   String _textTag(String html, String tag) {
     return _clean(
       RegExp(
@@ -978,6 +1001,10 @@ class DopSelectionFormParser {
       if (!DopParser.isTrustedUri(target)) continue;
 
       final method = parser._attr(attributes, 'method').toUpperCase();
+      final formClasses =
+          parser._attr(attributes, 'class').split(RegExp(r'\s+'));
+      var selectionLocked = formClasses.contains('selection-locked') ||
+          parser._attr(attributes, 'aria-disabled').toLowerCase() == 'true';
       final hidden = <MapEntry<String, String>>[];
       var hasUnsupportedControls = false;
       String submitName = '';
@@ -993,11 +1020,15 @@ class DopSelectionFormParser {
         final value = parser._attr(tag, 'value');
         if (type == 'hidden' && name.isNotEmpty) {
           hidden.add(MapEntry(name, value));
-        } else if ((type == 'submit' || type == 'image') &&
-            name.isNotEmpty &&
-            submitName.isEmpty) {
-          submitName = name;
-          submitValue = value;
+        } else if (type == 'submit' || type == 'image') {
+          if (parser._hasAttribute(tag, 'disabled') ||
+              parser._attr(tag, 'aria-disabled').toLowerCase() == 'true') {
+            selectionLocked = true;
+          }
+          if (name.isNotEmpty && submitName.isEmpty) {
+            submitName = name;
+            submitValue = value;
+          }
         } else if (type == 'checkbox') {
           final classes = parser._attr(tag, 'class').split(RegExp(r'\s+'));
           if (name.isNotEmpty && !classes.contains('discipline-checkbox')) {
@@ -1015,21 +1046,32 @@ class DopSelectionFormParser {
         hasUnsupportedControls = true;
       }
 
-      if (submitName.isEmpty) {
-        final button = RegExp(
-          r'<button\b([^>]*)>',
-          caseSensitive: false,
-        ).firstMatch(body);
-        if (button != null) {
-          final buttonAttributes = button.group(1) ?? '';
-          final type = parser._attr(buttonAttributes, 'type').toLowerCase();
-          final name = parser._attr(buttonAttributes, 'name');
-          if ((type.isEmpty || type == 'submit') && name.isNotEmpty) {
-            submitName = name;
-            submitValue = parser._attr(buttonAttributes, 'value');
-          }
+      for (final button in RegExp(
+        r'<button\b[^>]*>',
+        caseSensitive: false,
+      ).allMatches(body)) {
+        final buttonAttributes = button.group(0) ?? '';
+        final type = parser._attr(buttonAttributes, 'type').toLowerCase();
+        if (type.isNotEmpty && type != 'submit') continue;
+        if (parser._hasAttribute(buttonAttributes, 'disabled') ||
+            parser._attr(buttonAttributes, 'aria-disabled').toLowerCase() ==
+                'true') {
+          selectionLocked = true;
+        }
+        final name = parser._attr(buttonAttributes, 'name');
+        if (name.isNotEmpty && submitName.isEmpty) {
+          submitName = name;
+          submitValue = parser._attr(buttonAttributes, 'value');
         }
       }
+
+      final selectionBar = RegExp(
+        r'<[^>]*\bid\s*=\s*(?:"selection-bar"|\x27selection-bar\x27)[^>]*>',
+        caseSensitive: false,
+      ).firstMatch(html)?.group(0) ?? '';
+      final parsedMaxHours =
+          double.tryParse(parser._attr(selectionBar, 'data-max-hours')) ?? 10;
+      final maxHours = parsedMaxHours > 0 ? parsedMaxHours : 10.0;
 
       return DopSelectionFormInfo(
         action: target,
@@ -1038,6 +1080,8 @@ class DopSelectionFormParser {
         submitName: submitName,
         submitValue: submitValue,
         hasUnsupportedControls: hasUnsupportedControls,
+        selectionLocked: selectionLocked,
+        maxHours: maxHours,
       );
     }
     return null;
@@ -1051,6 +1095,8 @@ class DopSelectionFormInfo {
   final String submitName;
   final String submitValue;
   final bool hasUnsupportedControls;
+  final bool selectionLocked;
+  final double maxHours;
 
   const DopSelectionFormInfo({
     required this.action,
@@ -1059,6 +1105,8 @@ class DopSelectionFormInfo {
     required this.submitName,
     required this.submitValue,
     this.hasUnsupportedControls = false,
+    this.selectionLocked = false,
+    this.maxHours = 10,
   });
 }
 
@@ -1069,6 +1117,7 @@ class DopCatalogSession {
   final _DopSession _session;
   final DopParser _parser;
   final DopSelectionFormInfo? _form;
+  final double maxHours;
   bool _closed = false;
 
   DopCatalogSession._({
@@ -1077,16 +1126,21 @@ class DopCatalogSession {
     required _DopSession session,
     required DopParser parser,
     required DopSelectionFormInfo? form,
+    required this.maxHours,
   })  : _session = session,
         _parser = parser,
         _form = form;
+
+  bool get selectionLocked => _form?.selectionLocked ?? false;
 
   bool get canSubmit =>
       !_closed &&
       _form != null &&
       _form.method == 'POST' &&
       !_form.hasUnsupportedControls &&
+      !_form.selectionLocked &&
       programs.any((program) => program.subgroups.any((group) =>
+          !group.selectionDisabled &&
           group.selectionName.trim().isNotEmpty &&
           group.selectionValue.trim().isNotEmpty));
 
@@ -1102,10 +1156,13 @@ class DopCatalogSession {
     final form = _form;
     if (form == null ||
         form.method != 'POST' ||
-        form.hasUnsupportedControls) {
-      throw const DopParserException(
-        'На странице каталога не найдена поддерживаемая форма отправки. '
-        'Просмотр доступен, но записывать через приложение пока небезопасно.',
+        form.hasUnsupportedControls ||
+        form.selectionLocked) {
+      throw DopParserException(
+        form?.selectionLocked == true
+            ? 'Школа временно закрыла приём заявок на ДОПы. Каталог доступен только для просмотра.'
+            : 'На странице каталога не найдена поддерживаемая форма отправки. '
+                'Просмотр доступен, но записывать через приложение пока небезопасно.',
       );
     }
 
@@ -1113,7 +1170,20 @@ class DopCatalogSession {
       ...form.hiddenFields,
     ];
     final unique = <String>{};
+    final selectedPrograms = <int>{};
+    var totalLimitHours = 0;
     for (final group in selections) {
+      if (group.selectionDisabled) {
+        throw const DopParserException(
+          'Школа отключила выбор этой подгруппы. Обнови каталог.',
+        );
+      }
+      if (!selectedPrograms.add(group.programId)) {
+        throw const DopParserException(
+          'Можно выбрать только одну подгруппу каждой программы.',
+        );
+      }
+      totalLimitHours += group.limitHours;
       if (group.selectionName.trim().isEmpty ||
           group.selectionValue.trim().isEmpty) {
         throw const DopParserException(
@@ -1124,6 +1194,35 @@ class DopCatalogSession {
       final key = group.selectionName + '\u0000' + group.selectionValue;
       if (unique.add(key)) {
         fields.add(MapEntry(group.selectionName, group.selectionValue));
+      }
+    }
+    if (totalLimitHours > maxHours + 0.0001) {
+      throw DopParserException(
+        'Нагрузка, учитываемая школой, составит ' +
+            totalLimitHours.toString() +
+            ' ч/нед. Допустимый предел — ' +
+            maxHours.toStringAsFixed(0) +
+            ' ч/нед.',
+      );
+    }
+    for (var i = 0; i < selections.length; i++) {
+      for (var j = i + 1; j < selections.length; j++) {
+        if (selections[i].programId == selections[j].programId) continue;
+        for (final first in selections[i].schedule) {
+          for (final second in selections[j].schedule) {
+            if (first.day == second.day &&
+                first.start <= second.end &&
+                second.start <= first.end) {
+              throw DopParserException(
+                'Расписание «' +
+                    selections[i].name +
+                    '» пересекается с «' +
+                    selections[j].name +
+                    '».',
+              );
+            }
+          }
+        }
       }
     }
     if (form.submitName.isNotEmpty) {

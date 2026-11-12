@@ -12,7 +12,7 @@ class _FixedStudentProvider extends NavigatorStudentProvider {
 
 void main() {
   group('DOP student study profile', () {
-    test('10th grade requires one of the six school profiles', () {
+    test('10th grade requires a profile value accepted by the intranet', () {
       final student = DopStudent(
         lastName: 'Иванов',
         firstName: 'Иван',
@@ -20,7 +20,17 @@ void main() {
         classLetter: 'А',
       );
 
-      expect(DopStudent.grade10Profiles, hasLength(6));
+      expect(DopStudent.grade10Profiles, [
+        'инженерно-математический',
+        'медико-биологический',
+        'агротехнологический',
+        'информационно-технологический',
+        'социально-гуманитарный',
+      ]);
+      expect(
+        DopStudent.grade10ProfileLabel('информационно-технологический'),
+        'Информационно-технологический',
+      );
       expect(student.requiresProfile, isTrue);
       expect(student.hasValidProfile, isFalse);
 

@@ -70,7 +70,8 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
           ..addAll(
             loaded.programs
                 .expand((program) => program.subgroups)
-                .where((group) => group.preselected)
+                .where((group) =>
+                    group.preselected && !group.selectionDisabled)
                 .map(_key),
           );
         _loading = false;
@@ -124,6 +125,79 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
   }
 
   int get _selectedCount => _selected.length;
+
+  bool _schedulesConflict(
+    List<DopScheduleItem> first,
+    List<DopScheduleItem> second,
+  ) {
+    for (final a in first) {
+      for (final b in second) {
+        if (a.day == b.day && a.start <= b.end && b.start <= a.end) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  void _changeGroup(DopSubgroup group, bool? checked) {
+    final catalog = _catalog;
+    if (catalog == null || !catalog.canSubmit) return;
+
+    if (checked != true) {
+      setState(() => _selected.remove(_key(group)));
+      return;
+    }
+
+    // A programme may expose parallel alternatives, but only one subgroup
+    // from the same programme can be selected.
+    final existing = _selectedGroups
+        .where((item) => item.programId != group.programId)
+        .toList();
+
+    for (final other in existing) {
+      if (_schedulesConflict(group.schedule, other.schedule)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '«' + group.name + '» пересекается по времени с «' +
+                  other.name + '».',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    final totalLimitHours = existing.fold<int>(
+          0,
+          (sum, item) => sum + item.limitHours,
+        ) +
+        group.limitHours;
+    if (totalLimitHours > catalog.maxHours + 0.0001) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Лимит — ' +
+                catalog.maxHours.toStringAsFixed(0) +
+                ' ч/нед. С этим выбором получится ' +
+                totalLimitHours.toString() +
+                ' ч/нед.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      for (final alternative in catalog.programs
+          .expand((program) => program.subgroups)
+          .where((item) => item.programId == group.programId)) {
+        _selected.remove(_key(alternative));
+      }
+      _selected.add(_key(group));
+    });
+  }
 
   List<DopSubgroup> get _selectedGroups {
     final programs = _catalog?.programs ?? const <DopProgram>[];
@@ -297,7 +371,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
                   ),
                 if (program.hours > 0)
                   _CatalogBadge(
-                    label: program.hours.toString() + ' ч.',
+                    label: program.hours.toString() + ' ч/нед.',
                     color: scheme.tertiary,
                   ),
                 _CatalogBadge(
@@ -341,6 +415,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
             else
               ...groups.map((group) {
                 final selectable = canSubmit &&
+                    !group.selectionDisabled &&
                     group.selectionName.trim().isNotEmpty &&
                     group.selectionValue.trim().isNotEmpty;
                 final checked = _selected.contains(_key(group));
@@ -354,9 +429,9 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
                   if (group.hours > 0)
                     'Нагрузка: ' +
                         group.hours.toString() +
-                        ' / ' +
+                        ' ч/нед. (в лимит: ' +
                         group.limitHours.toString() +
-                        ' ч.',
+                        ' ч/нед.)',
                 ].join('\n');
 
                 return Container(
@@ -373,15 +448,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
                   child: CheckboxListTile(
                     value: checked,
                     onChanged: selectable
-                        ? (value) {
-                            setState(() {
-                              if (value == true) {
-                                _selected.add(_key(group));
-                              } else {
-                                _selected.remove(_key(group));
-                              }
-                            });
-                          }
+                        ? (value) => _changeGroup(group, value)
                         : null,
                     controlAffinity: ListTileControlAffinity.leading,
                     contentPadding: const EdgeInsets.symmetric(
@@ -398,7 +465,12 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
                         selectable
                             ? details
                             : details +
-                                '\nЗапись через форму сайта пока недоступна для этой группы.',
+                                '\n' +
+                                (_catalog?.selectionLocked == true
+                                    ? 'Приём заявок сейчас закрыт школой.'
+                                    : group.selectionDisabled
+                                        ? 'Выбор этой группы отключён на стороне сайта.'
+                                        : 'Запись через форму сайта пока недоступна для этой группы.'),
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.35,
@@ -601,7 +673,9 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                           child: Text(
-                            'Каталог доступен для просмотра. Форма записи не найдена или не поддерживает безопасную отправку.',
+                            _catalog?.selectionLocked == true
+                                ? 'Приём заявок на ДОПы сейчас закрыт школой. Каталог доступен для просмотра.'
+                                : 'Каталог доступен для просмотра. Форма записи не найдена или не поддерживает безопасную отправку.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: scheme.onSurfaceVariant,
