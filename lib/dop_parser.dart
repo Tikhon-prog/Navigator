@@ -769,15 +769,24 @@ class DopParser {
   }
 
   String _teacherFromSubgroup(String html) {
-    final container = _textClass(
-      html,
-      'program-subgroup-teacher',
-    );
+    final rawMatch = RegExp(
+      r'''<([A-Za-z][A-Za-z0-9-]*)\b[^>]*class\s*=\s*(?:"[^"]*\bprogram-subgroup-teacher\b[^"]*"|'[^']*\bprogram-subgroup-teacher\b[^']*')[^>]*>([\s\S]*?)</\1>''',
+      caseSensitive: false,
+    ).firstMatch(html);
+    final raw = rawMatch?.group(2) ?? '';
+    final teacher = _textTag(raw, 'b');
+    if (teacher.isNotEmpty) return teacher;
 
-    final teacher = _textTag(container, 'b');
-    return teacher.isNotEmpty ? teacher : container;
+    return _clean(raw)
+        .replaceFirst(
+          RegExp(
+            r'^(?:педагог|учитель|преподаватель)\s*[:—-]?\s*',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
   }
-
   String _clean(String value) {
     var v = _decode(value);
     v = v.replaceAll(
