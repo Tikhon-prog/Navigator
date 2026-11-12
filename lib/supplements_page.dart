@@ -259,8 +259,13 @@ class _SupplementsPageState extends State<SupplementsPage> {
     if (syncing) return;
     setState(() => syncing = true);
     try {
-      if (student == null) await _editStudent();
-      if (student == null) throw const DopParserException('Заполни профиль ученика.');
+      if (student == null ||
+          (student!.requiresProfile && !student!.hasValidProfile)) {
+        await _editStudent();
+      }
+      if (student == null) {
+        throw const DopParserException('Заполни профиль ученика.');
+      }
       final result = await const DopParser().parse();
       final imported = <Supplement>[];
       for (final d in result.application.disciplines) {
