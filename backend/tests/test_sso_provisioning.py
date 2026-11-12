@@ -46,7 +46,25 @@ class SsoProvisioningTests(unittest.TestCase):
         self.assertFalse(sso_api._is_secure_service_url("http://localhost:not-a-port"))
         self.assertFalse(sso_api._is_secure_service_url("https://idp.school.example:99999"))
         self.assertFalse(sso_api._is_secure_service_url("http://10.0.0.1"))
+        self.assertFalse(sso_api._is_secure_service_url("https://idp.school.example/path?token=value"))
+        self.assertFalse(sso_api._is_secure_service_url("https://idp.school.example/path#fragment"))
+        self.assertFalse(sso_api._is_secure_service_url("https://user:password@idp.school.example"))
         self.assertFalse(sso_api._is_secure_service_url("https://"))
+
+    def test_userinfo_bearer_token_is_not_forwarded_through_redirects(self):
+        from unittest.mock import Mock
+        from fastapi import HTTPException
+
+        response = Mock()
+        response.status_code = 302
+        with patch.dict(os.environ, {
+            "NAVIGATOR_OIDC_ISSUER": "https://idp.school.example",
+            "NAVIGATOR_OIDC_USERINFO_URL": "https://idp.school.example/userinfo",
+        }), patch("backend.sso_api.requests.get", return_value=response) as get:
+            with self.assertRaises(HTTPException) as raised:
+                sso_api._userinfo("a-valid-looking-access-token-value")
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertIs(get.call_args.kwargs["allow_redirects"], False)
 
     def test_public_config_exposes_configured_desktop_loopback_redirect(self):
         env = {
