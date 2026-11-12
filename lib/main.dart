@@ -2813,6 +2813,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
   bool _appResumed = true;
+  bool _tickerEnabled = true;
 
   @override
   void initState() {
@@ -2825,6 +2826,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _tickerEnabled = TickerMode.of(context);
     _syncClockTimer();
   }
 
@@ -2836,13 +2838,13 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
   }
 
   void _syncClockTimer() {
-    final shouldTick = mounted && _appResumed && TickerMode.of(context);
+    final shouldTick = mounted && _appResumed && _tickerEnabled;
     if (shouldTick && _clockTimer == null) {
       _now = DateTime.now();
       _clockTimer = Timer.periodic(
         const Duration(seconds: 1),
         (_) {
-          if (mounted && _appResumed && TickerMode.of(context)) {
+          if (mounted && _appResumed && _tickerEnabled) {
             setState(() => _now = DateTime.now());
           } else {
             _syncClockTimer();
