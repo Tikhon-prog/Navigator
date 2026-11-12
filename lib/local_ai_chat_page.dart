@@ -448,20 +448,13 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   }
 
   Future<bool> _confirmDestructiveAction(
-    String action,
     Map<String, dynamic> args,
   ) async {
     if (!mounted) return false;
 
-    final isSupplement = action == 'delete_supplement';
-    final subject = (args[isSupplement ? 'title' : 'id'] ?? '')
-        .toString()
-        .trim();
+    final subject = (args['id'] ?? '').toString().trim();
     if (subject.isEmpty) return false;
-
-    final description = isSupplement
-        ? 'Удалить локальное дополнительное занятие «$subject»?'
-        : 'Удалить задание с ID $subject с этого устройства?';
+    final description = 'Удалить задание с ID $subject с этого устройства?';
 
     return await showDialog<bool>(
           context: context,
@@ -496,7 +489,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       return 'Действия приложения пока не подключены в этой сборке.';
     }
     if (name == 'delete_student_task') {
-      final approved = await _confirmDestructiveAction(name, args);
+      final approved = await _confirmDestructiveAction(args);
       if (!approved) {
         return 'Пользователь отменил удаление. Не повторяй это действие без нового прямого запроса.';
       }

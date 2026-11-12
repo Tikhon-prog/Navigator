@@ -276,7 +276,9 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
   }
 
   Widget _planSection(MentorMentee mentee, {required bool dop, required ColorScheme scheme}) {
-    final items = dop ? mentee.supplements : mentee.lessons;
+    final allItems = dop ? mentee.supplements : mentee.lessons;
+    final items = allItems.where((entry) => mentee.selectedDays.contains(entry.day)).toList();
+    final hiddenCount = allItems.length - items.length;
     final sectionTitle = dop ? 'ДОПы' : 'Уроки';
     return Card(
       margin: const EdgeInsets.only(top: 8),
@@ -293,6 +295,14 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
               icon: const Icon(Icons.add_circle_outline_rounded),
             ),
           ]),
+          if (hiddenCount > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Text(
+                'Скрыто записей на невыбранных днях: $hiddenCount.',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+            ),
           if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
