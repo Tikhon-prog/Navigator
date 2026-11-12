@@ -592,7 +592,10 @@ Future<void> showStudentGroupSelection(BuildContext context, String className) a
   final prefs = await SharedPreferences.getInstance();
   if (className.trim() == '8В') {
     final key = _studentScopedPreferenceKey(prefs, 'student_class_group_8В');
-    final savedGroup = prefs.getInt(key);
+    final storedGroup = prefs.getInt(key);
+    final savedGroup = storedGroup == 1 || storedGroup == 2
+        ? storedGroup
+        : null;
     final selected = await showDialog<int>(
       context: context,
       barrierDismissible: savedGroup != null,
@@ -3004,9 +3007,16 @@ class _SchedulePageState extends State<SchedulePage> {
             ) ??
             1;
       }
-      final wholeClassGroup = classId.trim() == '8В'
-          ? (p.getInt(_studentScopedPreferenceKey(p, 'student_class_group_8В')) ?? 1)
+      final storedWholeClassGroup = classId.trim() == '8В'
+          ? p.getInt(_studentScopedPreferenceKey(p, 'student_class_group_8В'))
           : null;
+      final wholeClassGroup = storedWholeClassGroup == 1 ||
+              storedWholeClassGroup == 2
+          ? storedWholeClassGroup
+          : (classId.trim() == '8В' ? 1 : null);
+      final needsEightVGroupSelection = classId.trim() == '8В' &&
+          storedWholeClassGroup != 1 &&
+          storedWholeClassGroup != 2;
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
@@ -3024,7 +3034,15 @@ class _SchedulePageState extends State<SchedulePage> {
     } else { entries = []; }
     if (mounted) setState(() => loading = false);
     try { await LocalNotificationService().scheduleUpcomingLessons(entries: entries.map((e) => (id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList()); } catch (_) {}
-    if (classId.isEmpty && mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
+    if (classId.isEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
+    } else if (needsEightVGroupSelection && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await showStudentGroupSelection(context, classId);
+        await _load();
+      });
+    }
   }
   Future<void> _chooseClass({bool required = false}) async {
     final selected = await showDialog<String>(context: context, barrierDismissible: !required, builder: (_) => _StudentClassDialog(requiredChoice: required));
