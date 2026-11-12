@@ -3076,7 +3076,16 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
           if (classId.isNotEmpty) ...[
-            IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
+            IconButton(
+              tooltip: classId.trim() == '8В'
+                  ? 'Выбрать подгруппу 8В'
+                  : 'Группы по предметам',
+              onPressed: () async {
+                await showStudentGroupSelection(context, classId);
+                await _load();
+              },
+              icon: const Icon(Icons.groups_rounded),
+            ),
             IconButton(tooltip: 'Раздельная математика по дням', onPressed: () async { await showDialog<void>(context: context, builder: (_) => _MathByDayDialog(className: classId)); await _load(); }, icon: const Icon(Icons.functions_rounded)),
           ],
           const SizedBox(width: 4),
