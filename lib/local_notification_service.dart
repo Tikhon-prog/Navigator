@@ -107,7 +107,9 @@ class LocalNotificationService {
   Future<void> cancelAll() => plugin.cancelAll();
 
   Future<void> cancelDopReminders() async {
-    if (!_initialized) return;
+    // OS-scheduled reminders survive process restarts; initialize the plugin
+    // before querying pending requests so sign-out can cancel them on cold start.
+    await initialize();
     await _cancelNotificationRange(2000, 2999);
   }
 
