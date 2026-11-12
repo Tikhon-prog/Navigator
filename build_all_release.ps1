@@ -53,7 +53,7 @@ if (-not $versionLine) { throw 'Could not find version in pubspec.yaml.' }
 $AppVersion = ($versionLine -split ':', 2)[1].Trim().Trim("'").Trim('"')
 if (-not $AppVersion) { throw 'Application version in pubspec.yaml is empty.' }
 if ($AppVersion -notmatch '^\d+\.\d+\.\d+\+\d+$') {
-    throw 'Set both app version and monotonically increasing build number in pubspec.yaml, for example 0.2.1+3.'
+    throw 'Set both app version and monotonically increasing build number in pubspec.yaml, for example 0.2.1+7.'
 }
 $apiBase = [Environment]::GetEnvironmentVariable('POKOLENIE_API_BASE_URL')
 if ([string]::IsNullOrWhiteSpace($apiBase)) {
