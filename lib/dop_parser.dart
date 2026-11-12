@@ -397,6 +397,10 @@ class DopParser {
   /// Exposed for deterministic fixture tests; production uses [openCatalog].
   List<DopProgram> parseCatalogHtml(String html) => _parseCatalog(html);
 
+  /// Parses the student's current_application.php page independently.
+  List<DopCurrentApplicationItem> parseCurrentApplicationHtml(String html) =>
+      _parseCurrentApplication(html);
+
   Future<DopParseResult> parse() async {
     final student = await studentProvider.load();
 
@@ -543,8 +547,8 @@ class DopParser {
   ///   span.hours-badge
   ///   b внутри .program-subgroup-teacher
   ///   span внутри .program-subgroup-schedule
-  List<_DopCurrentChoice> _parseCurrentApplication(String html) {
-    final result = <_DopCurrentChoice>[];
+  List<DopCurrentApplicationItem> _parseCurrentApplication(String html) {
+    final result = <DopCurrentApplicationItem>[];
     final cards = RegExp(
       r'<article\b([^>]*)>([\s\S]*?)</article>',
       caseSensitive: false,
@@ -563,7 +567,7 @@ class DopParser {
       final teacher = _teacherFromSubgroup(body);
       final scheduleText = _textClass(body, 'program-subgroup-schedule');
 
-      result.add(_DopCurrentChoice(
+      result.add(DopCurrentApplicationItem(
         name: name,
         hours: hours,
         teacher: teacher,
@@ -683,7 +687,7 @@ class DopParser {
 
   DopSubgroup? _findBestSubgroup(
     DopProgram program,
-    _DopCurrentChoice choice,
+    DopCurrentApplicationItem choice,
   ) {
     if (program.subgroups.isEmpty) return null;
 
@@ -856,13 +860,13 @@ class DopParser {
 
 }
 
-class _DopCurrentChoice {
+class DopCurrentApplicationItem {
   final String name;
   final int hours;
   final String teacher;
   final List<DopScheduleItem> schedule;
 
-  const _DopCurrentChoice({
+  const DopCurrentApplicationItem({
     required this.name,
     required this.hours,
     required this.teacher,
