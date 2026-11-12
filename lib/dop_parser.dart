@@ -909,7 +909,10 @@ class DopProfileCatalogParser {
       final attributes = select.group(1) ?? '';
       final name = parser._attr(attributes, 'name').toLowerCase();
       final id = parser._attr(attributes, 'id').toLowerCase();
-      if (name != 'profile' && id != 'profile' && name != 'study_profile') {
+      if (name != 'profile' &&
+          id != 'profile' &&
+          name != 'study_profile' &&
+          id != 'study_profile') {
         continue;
       }
       final body = select.group(2) ?? '';
