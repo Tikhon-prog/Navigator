@@ -86,7 +86,7 @@ jobs:
               raise SystemExit("index.html does not register the PWA service worker")
           if "CACHE_NAME" not in worker or "event.waitUntil" not in worker:
               raise SystemExit("Service worker is missing cache install/activation logic")
-          if "Authorization" not in worker or "/api" not in worker:
+          if "Authorization" not in worker or 'indexOf("api")' not in worker:
               raise SystemExit("Service worker must explicitly protect authenticated/API requests")
 
           print("iPhone PWA validation passed.")
