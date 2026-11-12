@@ -30,15 +30,43 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
       - name: Build iOS without signing
-        run: flutter build ios --release --no-codesign --dart-define=POKOLENIE_API_BASE_URL="${{ vars.POKOLENIE_API_BASE_URL }}"
-      - name: Package unsigned app and IPA container
+        env:
+          POKOLENIE_API_BASE_URL: ${{ vars.POKOLENIE_API_BASE_URL }}
         run: |
-          cd build/ios/iphoneos
-          ditto -c -k --sequesterRsrc --keepParent Runner.app Pokolenie-iOS-unsigned.zip
-          mkdir -p ipa/Payload
-          ditto Runner.app ipa/Payload/Runner.app
-          cd ipa
-          zip -qry ../Pokolenie-unsigned.ipa Payload
+          set -euo pipefail
+          # Flutter's CLI reports a missing Development Team even after the
+          # Xcode build has produced an unsigned device target. Invoke Xcode
+          # directly and explicitly disable signing so this CI job needs no
+          # Apple Developer certificate or provisioning profile.
+          xcodebuild -resolvePackageDependencies \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner
+          DERIVED_DATA="$GITHUB_WORKSPACE/build/ios/DerivedData"
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphoneos/Runner.app"
+          test -d "$APP_PATH"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          test "$BUNDLE_ID" = "ru.pokolenie.navigator"
+          mkdir -p build/ios/iphoneos
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" build/ios/iphoneos/Pokolenie-iOS-unsigned.zip
+          mkdir -p build/ios/iphoneos/ipa/Payload
+          ditto "$APP_PATH" build/ios/iphoneos/ipa/Payload/Runner.app
+          (cd build/ios/iphoneos/ipa && zip -qry ../Pokolenie-unsigned.ipa Payload)
+      - name: Verify unsigned iOS artifacts
+        run: |
+          set -euo pipefail
+          test -s build/ios/iphoneos/Pokolenie-iOS-unsigned.zip
+          test -s build/ios/iphoneos/Pokolenie-unsigned.ipa
       - name: Upload unsigned iOS app
         uses: actions/upload-artifact@v4
         with:
