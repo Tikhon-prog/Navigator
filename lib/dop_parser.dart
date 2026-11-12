@@ -509,7 +509,7 @@ class DopParser {
         final selectionName = _attr(input, 'name');
         final selectionValue = _attr(input, 'value');
         final preselected = RegExp(
-          r'\\bchecked(?:\\s|=|>|$)',
+          r'(?:^|\s)checked(?:\s|=|>)',
           caseSensitive: false,
         ).hasMatch(input);
 
@@ -927,7 +927,16 @@ class DopProfileCatalogParser {
         final label = parser._clean(option.group(2) ?? '');
         final value = hasValue ? rawValue : label;
         final isPlaceholder = RegExp(
-          r'^(?:выберите|выбрать|не выбрано|select\b|—|-)
+          r'^(?:выберите|выбрать|не выбрано|select\b|—|-)$',
+          caseSensitive: false,
+        ).hasMatch(label.trim());
+        if (value.trim().isEmpty ||
+            rawValue.trim() == '0' ||
+            isPlaceholder ||
+            RegExp(
+              r'(?:^|\s)disabled(?:\s|=|$)',
+              caseSensitive: false,
+            ).hasMatch(optionAttributes)) {
           continue;
         }
         if (!values.contains(value.trim())) values.add(value.trim());
