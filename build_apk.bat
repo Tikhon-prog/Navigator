@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ================================================
-echo   Поколение 0.2.1+6 — сборка Android APK
+echo   Поколение 0.2.1+7 — сборка Android APK
 echo ================================================
 echo.
 
@@ -15,9 +15,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-findstr /b /c:"version: 0.2.1+6" pubspec.yaml >nul
+findstr /b /c:"version: 0.2.1+7" pubspec.yaml >nul
 if errorlevel 1 (
-    echo ERROR: pubspec.yaml is not set to version 0.2.1+6.
+    echo ERROR: pubspec.yaml is not set to version 0.2.1+7.
     exit /b 1
 )
 
@@ -50,14 +50,14 @@ echo.
 echo [5/5] Preparing named release files...
 if not exist "dist" mkdir "dist"
 if errorlevel 1 exit /b 1
-copy /y "%APK_PATH%" "dist\Pokolenie-0.2.1+6.apk" >nul
+copy /y "%APK_PATH%" "dist\Pokolenie-0.2.1+7.apk" >nul
 if errorlevel 1 exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+6.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+6.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+6.apk') -Encoding ascii"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+7.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+7.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+7.apk') -Encoding ascii"
 if errorlevel 1 exit /b 1
-for %%F in ("dist\Pokolenie-0.2.1+6.apk") do echo APK size: %%~zF bytes
-echo APK: %CD%\dist\Pokolenie-0.2.1+6.apk
-echo SHA-256: %CD%\dist\Pokolenie-0.2.1+6.apk.sha256
-echo Version: 0.2.1 ^(build 6^)
+for %%F in ("dist\Pokolenie-0.2.1+7.apk") do echo APK size: %%~zF bytes
+echo APK: %CD%\dist\Pokolenie-0.2.1+7.apk
+echo SHA-256: %CD%\dist\Pokolenie-0.2.1+7.apk.sha256
+echo Version: 0.2.1 ^(build 7^)
 echo.
 echo This offline-first build does not embed a school API URL.
 echo Keep this APK private until the tests, signing and school data are approved.
