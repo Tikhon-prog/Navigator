@@ -59,21 +59,49 @@ class StudentTaskStore {
   static const storageKey = 'pokolenie_student_tasks_v1';
   static const remindersKey = 'pokolenie_student_task_reminders_enabled';
 
+  /// The anonymous local profile keeps the legacy key. A signed-in school
+  /// account gets its own key; local tasks are never silently imported into
+  /// another student's account on a shared device.
+  static String _profileId(SharedPreferences prefs) {
+    final raw = prefs.getString('school_user_v1');
+    if (raw == null || raw.trim().isEmpty) return '';
+    try {
+      final account = jsonDecode(raw);
+      if (account is Map) {
+        return (account['id'] ?? '').toString().trim()
+            .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  static String _keyForProfile(String base, String profileId) =>
+      profileId.isEmpty ? base : '${base}_$profileId';
+
   static Future<bool> remindersEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(remindersKey) ?? true;
+    final profileId = _profileId(prefs);
+    return prefs.getBool(_keyForProfile(remindersKey, profileId)) ?? true;
   }
 
   static Future<void> setRemindersEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(remindersKey, enabled);
+    final profileId = _profileId(prefs);
+    await prefs.setBool(_keyForProfile(remindersKey, profileId), enabled);
     final tasks = await load();
-    await _scheduleReminders(enabled ? tasks : const <StudentTask>[]);
+    await _scheduleReminders(
+      enabled ? tasks : const <StudentTask>[],
+      profileId: profileId,
+    );
   }
 
-  static Future<void> _scheduleReminders(List<StudentTask> tasks) async {
+  static Future<void> _scheduleReminders(
+    List<StudentTask> tasks, {
+    required String profileId,
+  }) async {
     try {
       await LocalNotificationService().scheduleUpcomingStudentTasks(
+        scopeKey: profileId.isEmpty ? 'local' : profileId,
         entries: tasks.where((task) => !task.done).map((task) => (
           id: task.id,
           dueAt: task.dueAt,
@@ -89,7 +117,8 @@ class StudentTaskStore {
 
   static Future<List<StudentTask>> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
+    final profileId = _profileId(prefs);
+    final raw = prefs.getString(_keyForProfile(storageKey, profileId));
     if (raw == null || raw.trim().isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
@@ -113,11 +142,16 @@ class StudentTaskStore {
 
   static Future<void> save(List<StudentTask> tasks) async {
     final prefs = await SharedPreferences.getInstance();
-    final ok = await prefs.setString(storageKey, jsonEncode(tasks.map((task) => task.toJson()).toList()));
+    final profileId = _profileId(prefs);
+    final storageKeyForProfile = _keyForProfile(storageKey, profileId);
+    final ok = await prefs.setString(
+      storageKeyForProfile,
+      jsonEncode(tasks.map((task) => task.toJson()).toList()),
+    );
     if (!ok) throw StateError('Не удалось сохранить список заданий.');
     revision.value++;
-    if (prefs.getBool(remindersKey) ?? true) {
-      await _scheduleReminders(tasks);
+    if (prefs.getBool(_keyForProfile(remindersKey, profileId)) ?? true) {
+      await _scheduleReminders(tasks, profileId: profileId);
     }
   }
 
