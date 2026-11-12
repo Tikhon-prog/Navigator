@@ -68,11 +68,18 @@ class StudentTaskStore {
     try {
       final account = jsonDecode(raw);
       if (account is Map) {
-        return (account['id'] ?? '').toString().trim()
-            .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        final identity = (account['id'] ?? account['username'] ?? '')
+            .toString()
+            .trim();
+        if (identity.isNotEmpty) {
+          return identity.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        }
       }
-    } catch (_) {}
-    return '';
+    } catch (_) {
+      // A non-empty but unreadable school session must never fall back to the
+      // anonymous local profile on a shared device.
+    }
+    return 'invalid-school-session';
   }
 
   static String _keyForProfile(String base, String profileId) =>
@@ -88,6 +95,21 @@ class StudentTaskStore {
     final prefs = await SharedPreferences.getInstance();
     final profileId = _profileId(prefs);
     await prefs.setBool(_keyForProfile(remindersKey, profileId), enabled);
+    final tasks = await load();
+    await _scheduleReminders(
+      enabled ? tasks : const <StudentTask>[],
+      profileId: profileId,
+    );
+  }
+
+  /// Reconcile OS reminders with the currently active school/local profile.
+  ///
+  /// This also cancels stale scheduled reminders after an account switch, even
+  /// when the new account has not created or edited any tasks yet.
+  static Future<void> synchronizeReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final profileId = _profileId(prefs);
+    final enabled = prefs.getBool(_keyForProfile(remindersKey, profileId)) ?? true;
     final tasks = await load();
     await _scheduleReminders(
       enabled ? tasks : const <StudentTask>[],
