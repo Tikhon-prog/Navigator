@@ -22,6 +22,7 @@ import 'supplements_page.dart';
 import 'school_account_service.dart';
 import 'dop_parser.dart';
 import 'school_portal_page.dart';
+import 'mentor_mentees_page.dart';
 import 'online_data_service.dart';
 import 'desktop_notification_polling_stub.dart' if (dart.library.io) 'desktop_notification_polling_io.dart' as desktop_polling;
 
@@ -440,6 +441,26 @@ class SchoolScheduleCatalog {
         ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList()
         : <Map<String, dynamic>>[];
   }
+  static String? clockRangeForLessonRange(
+    String className, int day, int firstLesson, int lastLesson,
+  ) {
+    if (className.trim().isEmpty || day < 1 || day > 6 ||
+        firstLesson < 1 || lastLesson < firstLesson) return null;
+    final slots = variants(className)
+        .where((row) => (int.tryParse('${row['day']}') ?? 0) == day)
+        .where((row) => baseSubject('${row['subject'] ?? ''}').toLowerCase() != 'обед')
+        .map((row) => '${row['time'] ?? ''}'.trim())
+        .where((value) => normalizeLessonTimeRange(value) != null)
+        .toSet()
+        .toList()
+      ..sort(compareLessonTimes);
+    if (lastLesson > slots.length) return null;
+    final start = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(slots[firstLesson - 1]);
+    final end = RegExp(r'[-–—]\s*(\d{1,2}:\d{2})').firstMatch(slots[lastLesson - 1]);
+    if (start == null || end == null) return null;
+    return '${start.group(1)}–${end.group(1)}';
+  }
+
   static String baseSubject(String value) {
     var subject = value.trim();
     subject = subject.replaceFirst(RegExp(r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'), '');
@@ -1540,6 +1561,29 @@ class AppShell extends StatefulWidget{
 }
 class _AppShellState extends State<AppShell>{
   int index=0;String? selectedRoom;final key=GlobalKey<ScaffoldState>();
+  bool _mentorMenuAllowed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshMentorMenuAccess());
+  }
+
+  Future<void> _refreshMentorMenuAccess() async {
+    final allowed = await MentorMenteesPage.canAccessForCurrentUser();
+    if (mounted && allowed != _mentorMenuAllowed) {
+      setState(() => _mentorMenuAllowed = allowed);
+    }
+  }
+
+  Future<void> _openMentorMentees() async {
+    key.currentState?.closeDrawer();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const MentorMenteesPage()),
+    );
+  }
+
   void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
   Future<void> _openAnnouncements() async {
     key.currentState?.closeDrawer();
@@ -2398,7 +2442,10 @@ class _AppShellState extends State<AppShell>{
 
   @override
   Widget build(BuildContext context) {
-    void menu() => key.currentState?.openDrawer();
+    void menu() {
+      unawaited(_refreshMentorMenuAccess());
+      key.currentState?.openDrawer();
+    }
     final pages = <Widget>[
       HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat, onTasks: _openStudentTasks),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
@@ -2446,7 +2493,7 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),(8,Icons.assignment_rounded,'Домашние задания','Сроки, контрольные и проекты')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 8) { _openStudentTasks(); } else { go(x.$1); } }))]))])));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),(8,Icons.assignment_rounded,'Домашние задания','Сроки, контрольные и проекты'),if(_mentorMenuAllowed)(9,Icons.groups_rounded,'Мои подопечные','Локальный список наставника')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 8) { _openStudentTasks(); } else if (x.$1 == 9) { _openMentorMentees(); } else { go(x.$1); } }))]))])));}
 }
 class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
   const _PokoleniePageTransitionsBuilder();

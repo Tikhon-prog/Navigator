@@ -4,6 +4,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('maps a numbered lesson range to the selected class and weekday clock times', () async {
+    await SchoolScheduleCatalog.load();
+    expect(
+      SchoolScheduleCatalog.clockRangeForLessonRange('10А', 1, 1, 3),
+      '08:00–10:20',
+    );
+    expect(
+      SchoolScheduleCatalog.clockRangeForLessonRange('10А', 1, 1, 99),
+      isNull,
+    );
+  });
+
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('встроенное расписание содержит все 33 класса и непустые уроки', () async {

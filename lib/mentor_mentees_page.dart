@@ -196,7 +196,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return mentees;
     return mentees.where((item) =>
-      ('\${item.fullName} \${item.className} \${item.profile}').toLowerCase().contains(q)
+      ('${item.fullName} ${item.className} ${item.profile}').toLowerCase().contains(q)
     ).toList();
   }
 
@@ -227,7 +227,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Удалить подопечного?'),
-        content: Text('Карточка \${item.fullName}, расписание и ДОПы будут удалены с этого устройства.'),
+        content: Text('Карточка ${item.fullName}, расписание и ДОПы будут удалены с этого устройства.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
@@ -286,7 +286,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
           Row(children: [
             Icon(dop ? Icons.auto_awesome_rounded : Icons.menu_book_rounded, color: scheme.primary, size: 19),
             const SizedBox(width: 8),
-            Expanded(child: Text('$sectionTitle (\${items.length})', style: const TextStyle(fontWeight: FontWeight.w900))),
+            Expanded(child: Text('$sectionTitle (${items.length})', style: const TextStyle(fontWeight: FontWeight.w900))),
             IconButton(
               tooltip: dop ? 'Добавить ДОП' : 'Добавить урок',
               onPressed: () => _editPlan(mentee, dop: dop),
@@ -302,13 +302,13 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
           else
             ...items.map((entry) => ListTile(
               dense: true, contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(radius: 17, child: Text('\${entry.day}')),
+              leading: CircleAvatar(radius: 17, child: Text('${entry.day}')),
               title: Text(entry.title, style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text([
                 _mentorDays[entry.day] ?? 'День не выбран', entry.time,
-                if (entry.room.isNotEmpty) 'каб. \${entry.room}',
+                if (entry.room.isNotEmpty) 'каб. ${entry.room}',
                 if (entry.teacher.isNotEmpty) entry.teacher,
-                if (entry.group.isNotEmpty) 'группа \${entry.group}',
+                if (entry.group.isNotEmpty) 'группа ${entry.group}',
                 if (entry.notes.isNotEmpty) entry.notes,
               ].join(' • ')),
               trailing: PopupMenuButton<String>(
@@ -338,7 +338,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
           child: Text(item.lastName.isEmpty ? '?' : item.lastName.substring(0, 1).toUpperCase()),
         ),
         title: Text(item.fullName, style: const TextStyle(fontWeight: FontWeight.w900)),
-        subtitle: Text('\${item.className}\${item.profile.isEmpty ? '' : ' • \${item.profile}'}'),
+        subtitle: Text('${item.className}${item.profile.isEmpty ? '' : ' • ${item.profile}'}'),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         children: [
           Align(alignment: Alignment.centerLeft, child: Wrap(
@@ -418,7 +418,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Align(alignment: Alignment.centerLeft, child: Text(
-              'Локальная база • только на этом устройстве • \${mentees.length} учеников',
+              'Локальная база • только на этом устройстве • ${mentees.length} учеников',
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
             )),
           ),
@@ -522,7 +522,7 @@ class _MenteeEditorState extends State<_MenteeEditor> {
           setState(() => error = 'Буква класса должна быть одним символом.'); return;
         }
         Navigator.pop(context, MentorMentee(
-          id: widget.initial?.id ?? 'mentee_\${DateTime.now().microsecondsSinceEpoch}',
+          id: widget.initial?.id ?? 'mentee_${DateTime.now().microsecondsSinceEpoch}',
           lastName: surname, firstName: name, middleName: middleName.text.trim(),
           grade: grade, letter: groupLetter, profile: grade == '10' ? profile.text.trim() : '',
           notes: notes.text.trim(), selectedDays: Set<int>.from(days),
@@ -598,7 +598,7 @@ class _PlanEditorState extends State<_PlanEditor> {
             setState(() => error = 'Время укажи как 15:30 или 15:30–16:10.'); return;
           }
           Navigator.pop(context, MentorPlanEntry(
-            id: widget.initial?.id ?? 'plan_\${DateTime.now().microsecondsSinceEpoch}',
+            id: widget.initial?.id ?? 'plan_${DateTime.now().microsecondsSinceEpoch}',
             day: day, title: label, time: value, teacher: teacher.text.trim(),
             room: room.text.trim(), group: widget.dop ? group.text.trim() : '',
             notes: notes.text.trim(),

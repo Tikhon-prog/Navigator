@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
 import 'dop_parser.dart';
-import 'dop_catalog_page.dart';
 import 'local_notification_service.dart';
 import 'school_account_service.dart';
 
@@ -286,17 +285,6 @@ class _SupplementsPageState extends State<SupplementsPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _openDopCatalog() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => DopCatalogPage(
-          onEditStudent: _editStudent,
-          onSelectionSubmitted: _syncFromIntranet,
-        ),
-      ),
-    );
-  }
-
   Future<void> _syncFromIntranet() async {
     if (syncing) return;
     setState(() => syncing = true);
@@ -454,37 +442,6 @@ class _SupplementsPageState extends State<SupplementsPage> {
                       ],
                       const SizedBox(height: 12),
                       Card(
-                        clipBehavior: Clip.antiAlias,
-                        child: ListTile(
-                          leading: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withValues(alpha: .12),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(
-                              Icons.explore_rounded,
-                              color: scheme.primary,
-                            ),
-                          ),
-                          title: const Text(
-                            'Каталог новых ДОПов',
-                            style: TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          subtitle: Text(
-                            'Посмотри программы, направления и свободные группы',
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: _openDopCatalog,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
                         child: SwitchListTile.adaptive(
                           value: remindersEnabled,
                           onChanged: _setReminders,
@@ -566,14 +523,33 @@ class _SupplementsPageState extends State<SupplementsPage> {
     );
   }
 
+  String _timeLabel(Supplement supplement) {
+    final firstMatch = RegExp(r'^урок\s+(\d+)$', caseSensitive: false)
+        .firstMatch(supplement.start.trim());
+    if (firstMatch == null) {
+      return supplement.start.isEmpty
+          ? ''
+          : '${supplement.start}${supplement.end.isNotEmpty ? '–${supplement.end}' : ''}';
+    }
+    final lastMatch = RegExp(r'^урок\s+(\d+)$', caseSensitive: false)
+        .firstMatch(supplement.end.trim());
+    final firstLesson = int.tryParse(firstMatch.group(1) ?? '');
+    final lastLesson = int.tryParse(lastMatch?.group(1) ?? '') ?? firstLesson;
+    if (firstLesson == null || lastLesson == null) return 'Уроки: время не определено';
+    final clockRange = SchoolScheduleCatalog.clockRangeForLessonRange(
+      student?.className ?? '', supplement.weekday, firstLesson, lastLesson,
+    );
+    final numberLabel = firstLesson == lastLesson
+        ? 'Урок $firstLesson'
+        : 'Уроки $firstLesson–$lastLesson';
+    return clockRange == null
+        ? '$numberLabel • точное время не найдено в расписании'
+        : '$numberLabel • $clockRange';
+  }
+
   Widget _card(Supplement supplement) {
     final scheme = Theme.of(context).colorScheme;
-    final isLessonNumber = supplement.start.startsWith('урок ');
-    final startNumber = isLessonNumber ? supplement.start.replaceFirst('урок ', '') : '';
-    final endNumber = isLessonNumber ? supplement.end.replaceFirst('урок ', '') : '';
-    final timeLabel = isLessonNumber
-        ? (endNumber.isEmpty ? 'Урок $startNumber' : 'Уроки $startNumber–$endNumber')
-        : (supplement.start.isEmpty ? '' : '${supplement.start}${supplement.end.isNotEmpty ? '–${supplement.end}' : ''}');
+    final timeLabel = _timeLabel(supplement);
     final details = <String>[
       if (supplement.teacher.isNotEmpty) supplement.teacher,
       if (supplement.room.isNotEmpty) 'каб. ${supplement.room}',
@@ -583,386 +559,72 @@ class _SupplementsPageState extends State<SupplementsPage> {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _edit(supplement),
-        child: Padding(
-          padding: const EdgeInsets.all(15),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(width: 5, height: 70, decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(8))),
-            const SizedBox(width: 12),
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(15)),
-              child: Icon(Icons.school_rounded, color: scheme.primary),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 5, height: 70,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              borderRadius: BorderRadius.circular(8),
             ),
-            const SizedBox(width: 13),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(supplement.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: .11),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(Icons.school_rounded, color: scheme.primary),
+          ),
+          const SizedBox(width: 13),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(supplement.title,
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
               if (timeLabel.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Text(timeLabel, style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 12)),
+                Text(timeLabel, style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 12,
+                )),
               ],
               if (details.isNotEmpty) ...[
                 const SizedBox(height: 5),
-                Text(details, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35)),
+                Text(details, style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35,
+                )),
               ],
               if (supplement.description.isNotEmpty) ...[
                 const SizedBox(height: 5),
-                Text(supplement.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                Text(supplement.description, maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
               ],
-            ])),
-            PopupMenuButton<String>(
-              tooltip: 'Действия',
-              onSelected: (value) {
-                if (value == 'edit') _edit(supplement);
-                if (value == 'delete') _delete(supplement);
-                if (value == 'route' && supplement.room.isNotEmpty) {
-                  final route = RouteEngine.build(supplement.room);
-                  final room = SchoolData.tryRoom(supplement.room);
-                  if (route != null && room != null) {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePage(room: room, route: route)));
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Для этого кабинета пока нет маршрута.')));
-                  }
+            ],
+          )),
+          if (supplement.room.isNotEmpty)
+            IconButton(
+              tooltip: 'Как пройти',
+              onPressed: () {
+                final route = RouteEngine.build(supplement.room);
+                final room = SchoolData.tryRoom(supplement.room);
+                if (route != null && room != null) {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => RoutePage(room: room, route: route),
+                  ));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Для этого кабинета пока нет маршрута.')),
+                  );
                 }
               },
-              itemBuilder: (_) => [
-                if (supplement.room.isNotEmpty) const PopupMenuItem(value: 'route', child: Text('Как пройти')),
-                const PopupMenuItem(value: 'edit', child: Text('Изменить')),
-                const PopupMenuItem(value: 'delete', child: Text('Удалить')),
-              ],
+              icon: const Icon(Icons.directions_rounded),
             ),
-          ]),
-        ),
+        ]),
       ),
     );
   }
 
-  Future<void> _add() async {
-    final result = await showDialog<Supplement>(
-      context: context,
-      builder: (_) => const _SupplementEditor(),
-    );
-    if (result != null) {
-      setState(() => items.add(result));
-      await _save();
-    }
-  }
-
-  Future<void> _edit(Supplement old) async {
-    final result = await showDialog<Supplement>(
-      context: context,
-      builder: (_) => _SupplementEditor(initial: old),
-    );
-    if (result != null) {
-      final index = items.indexWhere((e) => e.id == old.id);
-      if (index >= 0) {
-        setState(() => items[index] = result);
-        await _save();
-      }
-    }
-  }
-
-  Future<void> _delete(Supplement supplement) async {
-    setState(() => items.removeWhere((e) => e.id == supplement.id));
-    await _save();
-  }
-}
-
-class _SupplementEditor extends StatefulWidget {
-  final Supplement? initial;
-
-  const _SupplementEditor({this.initial});
-
-  @override
-  State<_SupplementEditor> createState() => _SupplementEditorState();
-}
-
-class _SupplementEditorState extends State<_SupplementEditor> {
-  late int day;
-  late final TextEditingController title;
-  late final TextEditingController start;
-  late final TextEditingController end;
-  late final TextEditingController teacher;
-  late final TextEditingController room;
-  late final TextEditingController place;
-  late final TextEditingController group;
-  late final TextEditingController description;
-
-  @override
-  void initState() {
-    super.initState();
-    final item = widget.initial;
-    day = item?.weekday ?? DateTime.now().weekday.clamp(1, 6);
-    title = TextEditingController(text: item?.title ?? '');
-    start = TextEditingController(text: item?.start ?? '');
-    end = TextEditingController(text: item?.end ?? '');
-    teacher = TextEditingController(text: item?.teacher ?? '');
-    room = TextEditingController(text: item?.room ?? '');
-    place = TextEditingController(text: item?.place ?? '');
-    group = TextEditingController(text: item?.groupName ?? '');
-    description = TextEditingController(text: item?.description ?? '');
-  }
-
-  @override
-  void dispose() {
-    for (final controller in [title, start, end, teacher, room, place, group, description]) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.initial == null ? 'Новый ДОП' : 'Изменить ДОП'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DropdownButtonFormField<int>(
-                initialValue: day,
-                decoration: const InputDecoration(labelText: 'День'),
-                items: const [
-                  DropdownMenuItem(value: 1, child: Text('Понедельник')),
-                  DropdownMenuItem(value: 2, child: Text('Вторник')),
-                  DropdownMenuItem(value: 3, child: Text('Среда')),
-                  DropdownMenuItem(value: 4, child: Text('Четверг')),
-                  DropdownMenuItem(value: 5, child: Text('Пятница')),
-                  DropdownMenuItem(value: 6, child: Text('Суббота')),
-                ],
-                onChanged: (value) => setState(() => day = value ?? day),
-              ),
-              const SizedBox(height: 8),
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Название')),
-              TextField(controller: start, decoration: const InputDecoration(labelText: 'Начало', hintText: '16:00')),
-              TextField(controller: end, decoration: const InputDecoration(labelText: 'Конец', hintText: '17:30')),
-              TextField(controller: teacher, decoration: const InputDecoration(labelText: 'Учитель')),
-              TextField(controller: room, decoration: const InputDecoration(labelText: 'Кабинет')),
-              TextField(controller: place, decoration: const InputDecoration(labelText: 'Место / зона')),
-              TextField(controller: group, decoration: const InputDecoration(labelText: 'Группа')),
-              TextField(
-                controller: description,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Описание'),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-        FilledButton(
-          onPressed: () {
-            if (title.text.trim().isEmpty) return;
-            Navigator.pop(
-              context,
-              Supplement(
-                id: widget.initial?.id ?? 'manual_${DateTime.now().microsecondsSinceEpoch}',
-                title: title.text.trim(),
-                weekday: day,
-                start: start.text.trim(),
-                end: end.text.trim(),
-                teacher: teacher.text.trim(),
-                room: room.text.trim(),
-                place: place.text.trim(),
-                groupName: group.text.trim(),
-                description: description.text.trim(),
-              ),
-            );
-          },
-          child: const Text('Сохранить'),
-        ),
-      ],
-    );
-  }
-}
-
-class _DopStudentDialog extends StatefulWidget {
-  final DopStudent? initial;
-  const _DopStudentDialog({this.initial});
-  @override
-  State<_DopStudentDialog> createState() => _DopStudentDialogState();
-}
-
-class _DopStudentDialogState extends State<_DopStudentDialog> {
-  late final TextEditingController lastName;
-  late final TextEditingController firstName;
-  late final TextEditingController classNumber;
-  late final TextEditingController classLetter;
-  String selectedProfile = '';
-  List<String> availableProfiles = DopStudent.grade10Profiles;
-  bool profileError = false;
-  bool profilesLoading = false;
-  bool profilesRequested = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final student = widget.initial;
-    lastName = TextEditingController(text: student?.lastName ?? '');
-    firstName = TextEditingController(text: student?.firstName ?? '');
-    classNumber = TextEditingController(text: student?.classNumber ?? '');
-    classLetter = TextEditingController(text: student?.classLetter ?? '');
-    if (DopStudent.grade10Profiles.contains(student?.profile)) {
-      selectedProfile = student!.profile;
-    }
-    if (_isGrade10) _loadProfiles();
-  }
-
-  Future<void> _loadProfiles() async {
-    if (profilesRequested) return;
-    profilesRequested = true;
-    if (mounted) setState(() => profilesLoading = true);
-    final profiles = await const DopParser().loadGrade10Profiles();
-    if (!mounted) return;
-    final saved = widget.initial?.profile.trim() ?? '';
-    setState(() {
-      availableProfiles = profiles;
-      if (saved.isNotEmpty && profiles.contains(saved)) {
-        selectedProfile = saved;
-      } else if (!profiles.contains(selectedProfile)) {
-        selectedProfile = '';
-      }
-      profilesLoading = false;
-    });
-  }
-
-  @override
-  void dispose() {
-    lastName.dispose();
-    firstName.dispose();
-    classNumber.dispose();
-    classLetter.dispose();
-    super.dispose();
-  }
-
-  bool get _isGrade10 => classNumber.text.trim() == '10';
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Профиль ученика для ДОПов'),
-        content: SizedBox(
-          width: 440,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: lastName,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Фамилия'),
-                ),
-                TextField(
-                  controller: firstName,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Имя'),
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: classNumber,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Класс'),
-                        onChanged: (value) {
-                          setState(() => profileError = false);
-                          if (value.trim() == '10') {
-                            _loadProfiles();
-                          } else {
-                            profilesRequested = false;
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: classLetter,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(labelText: 'Буква'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_isGrade10) ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: selectedProfile.isEmpty ? null : selectedProfile,
-                    decoration: InputDecoration(
-                      labelText: 'Направление обучения (10 класс)',
-                      helperText: profilesLoading
-                          ? 'Загружаю список направлений школы…'
-                          : 'Выбери значение из списка intranet',
-                      errorText: profileError ? 'Нужно выбрать направление' : null,
-                    ),
-                    items: availableProfiles
-                        .map((profile) => DropdownMenuItem<String>(
-                              value: profile,
-                              child: Text(
-                                DopStudent.grade10ProfileLabel(profile),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
-                        .toList(),
-                    onChanged: profilesLoading
-                        ? null
-                        : (value) => setState(() {
-                              selectedProfile = value ?? '';
-                              profileError = false;
-                            }),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Text(
-                  'Тип проживания Поколение определит автоматически.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: profilesLoading
-                ? null
-                : () {
-              final grade10 = _isGrade10;
-              final validProfile =
-                  !grade10 || selectedProfile.trim().isNotEmpty;
-              if (lastName.text.trim().isEmpty ||
-                  firstName.text.trim().isEmpty ||
-                  classNumber.text.trim().isEmpty ||
-                  classLetter.text.trim().isEmpty ||
-                  !validProfile) {
-                setState(() => profileError = grade10 && !validProfile);
-                return;
-              }
-              Navigator.pop(
-                context,
-                DopStudent(
-                  lastName: lastName.text.trim(),
-                  firstName: firstName.text.trim(),
-                  classNumber: classNumber.text.trim(),
-                  classLetter: classLetter.text.trim().toUpperCase(),
-                  profile: grade10 ? selectedProfile : '',
-                  residenceType: 'auto',
-                ),
-              );
-            },
-            child: const Text('Сохранить'),
-          ),
-        ],
-      );
 }
