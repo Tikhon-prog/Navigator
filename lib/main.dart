@@ -214,19 +214,77 @@ class ScheduleEntry {
 }
 
 class SchoolScheduleCatalog {
+  static const int _bundledScheduleRevision = 2;
+  static const String _cacheKey = 'school_schedule_cache_v1';
+  static const String _cacheRevisionKey = 'school_schedule_cache_revision_v1';
   static Map<String, dynamic>? _data;
+
   static Future<void> load() async {
     if (_data != null) return;
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('school_schedule_cache_v1');
-    if (cached != null) {
+    final cached = prefs.getString(_cacheKey);
+    final cachedRevision = prefs.getInt(_cacheRevisionKey) ?? 0;
+
+    // A cache from an older app can otherwise hide a newly bundled quarter
+    // schedule forever. New bundles win for explicitly overridden classes,
+    // while cached online data for every other class remains available.
+    if (cached != null && cachedRevision >= _bundledScheduleRevision) {
       try {
         _data = Map<String, dynamic>.from(jsonDecode(cached) as Map);
         return;
       } catch (_) {}
     }
+
     final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
-    _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final bundled = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final classes = Map<String, dynamic>.from(
+      bundled['classes'] as Map? ?? const {},
+    );
+    final classOrder = <String, dynamic>{
+      for (final entry in (bundled['class_order'] as Map? ?? const {}).entries)
+        entry.key.toString(): List<String>.from(entry.value as List),
+    };
+
+    if (cached != null) {
+      try {
+        final cachedData = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        final cachedClasses = cachedData['classes'] as Map? ?? const {};
+        for (final entry in cachedClasses.entries) {
+          final cachedName = entry.key.toString();
+          final isBundledOverride = classes.entries.any((bundledEntry) {
+            final value = bundledEntry.value;
+            return _normalizeClassName(bundledEntry.key.toString()) ==
+                    _normalizeClassName(cachedName) &&
+                value is Map &&
+                value['local_override'] == true;
+          });
+          if (!isBundledOverride) classes[cachedName] = entry.value;
+        }
+        final cachedOrder = cachedData['class_order'] as Map? ?? const {};
+        for (final entry in cachedOrder.entries) {
+          final grade = entry.key.toString();
+          final names = List<String>.from(
+            classOrder[grade] as List? ?? const <String>[],
+          );
+          for (final name in (entry.value as List).whereType<String>()) {
+            if (classes.containsKey(name) && !names.contains(name)) {
+              names.add(name);
+            }
+          }
+          classOrder[grade] = names;
+        }
+      } catch (_) {
+        // Ignore an unreadable legacy cache; the bundled schedule is complete.
+      }
+    }
+
+    _data = {
+      ...bundled,
+      'classes': classes,
+      'class_order': classOrder,
+    };
+    await prefs.setString(_cacheKey, jsonEncode(_data));
+    await prefs.setInt(_cacheRevisionKey, _bundledScheduleRevision);
   }
 
   static Map<String, dynamic> _normalizedScheduleRow(Map<String, dynamic> row) {
@@ -316,6 +374,15 @@ class SchoolScheduleCatalog {
       classOrder[entry.key.toString()] = List<String>.from(entry.value as List);
     }
     for (final entry in variantsByClass.entries) {
+      final hasBundledOverride = classes.entries.any((existing) {
+        final value = existing.value;
+        return _normalizeClassName(existing.key.toString()) ==
+                _normalizeClassName(entry.key) &&
+            value is Map &&
+            value['local_override'] == true;
+      });
+      if (hasBundledOverride) continue;
+
       classes[entry.key] = {'variants': entry.value};
       final grade = RegExp(r'^\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
       final list = List<String>.from(classOrder[grade] as List? ?? const <String>[]);
@@ -324,7 +391,8 @@ class SchoolScheduleCatalog {
       classOrder[grade] = list;
     }
     _data = {...baseData, 'classes': classes, 'class_order': classOrder};
-    await prefs.setString('school_schedule_cache_v1', jsonEncode(_data));
+    await prefs.setString(_cacheKey, jsonEncode(_data));
+    await prefs.setInt(_cacheRevisionKey, _bundledScheduleRevision);
     return variantsByClass.values.fold<int>(0, (sum, rows) => sum + rows.length);
   }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
@@ -338,7 +406,7 @@ class SchoolScheduleCatalog {
         .map((letter) => lookalikes[letter] ?? letter).join();
   }
 
-  static List<Map<String, dynamic>> variants(String className) {
+  static Map<String, dynamic>? classDetails(String className) {
     final classes = _data?['classes'] as Map? ?? const {};
     dynamic classData = classes[className];
     if (classData == null) {
@@ -350,8 +418,19 @@ class SchoolScheduleCatalog {
         }
       }
     }
-    final raw = (classData as Map?)?['variants'];
-    return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
+    return classData is Map
+        ? Map<String, dynamic>.from(classData)
+        : null;
+  }
+
+  static String periodForClass(String className) =>
+      (classDetails(className)?['period'] ?? '').toString().trim();
+
+  static List<Map<String, dynamic>> variants(String className) {
+    final raw = classDetails(className)?['variants'];
+    return raw is List
+        ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
   }
   static String baseSubject(String value) {
     var subject = value.trim();
@@ -2882,6 +2961,7 @@ class _SchedulePageState extends State<SchedulePage> {
     final list = entries.where((e) => e.day == day).toList()..sort((a, b) => a.time.compareTo(b.time));
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
+    final schedulePeriod = SchoolScheduleCatalog.periodForClass(classId);
     final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
     final breakCountdown = _breakCountdown(list);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -2927,7 +3007,12 @@ class _SchedulePageState extends State<SchedulePage> {
                     ),
                     const SizedBox(width: 14),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(classId.isEmpty ? 'Твоё расписание' : 'Класс $classId', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
+                      Text(
+                        classId.isEmpty
+                            ? 'Твоё расписание'
+                            : 'Класс $classId${schedulePeriod.isEmpty ? '' : ' • $schedulePeriod'}',
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         classId.isEmpty ? 'Выбери класс, чтобы загрузить уроки' : '${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
