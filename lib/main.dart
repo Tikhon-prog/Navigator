@@ -501,13 +501,13 @@ class SchoolScheduleCatalog {
     final lunchEndByDay = <int, int>{};
 
     int? lessonStartMinutes(String value) {
-      final match = RegExp(r'^\\s*(\\d{1,2}):(\\d{2})').firstMatch(value);
+      final match = RegExp(r'^\s*(\d{1,2}):(\d{2})').firstMatch(value);
       if (match == null) return null;
       return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
     }
 
     int? lessonEndMinutes(String value) {
-      final match = RegExp(r'-\\s*(\\d{1,2}):(\\d{2})').firstMatch(value);
+      final match = RegExp(r'-\s*(\d{1,2}):(\d{2})').firstMatch(value);
       if (match == null) return null;
       return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
     }
