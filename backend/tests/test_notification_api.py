@@ -1,5 +1,6 @@
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import unittest
@@ -333,6 +334,46 @@ class NotificationScopeTests(unittest.TestCase):
         self.assertEqual(row["delivery_attempts"], 1)
         self.assertIsNotNone(row["next_attempt_at"])
         self.assertEqual(row["push_status"], "provider_error")
+
+    def test_delivery_claim_rechecks_expiry_after_queue_selection(self):
+        notification_id = "expires-during-claim"
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,"
+                "expires_at,delivery_status) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (notification_id, "Expiring", "Must not be sent", "personal", "user", "student1",
+                 "admin1", notifications._now(),
+                 (datetime.utcnow() + timedelta(hours=1)).isoformat(), "queued"),
+            )
+
+        real_db = core._db
+        calls = 0
+
+        @contextmanager
+        def expire_between_selection_and_claim():
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                with real_db() as db:
+                    db.execute(
+                        "UPDATE notifications SET expires_at=? WHERE id=?",
+                        ("2000-01-01T00:00:00+00:00", notification_id),
+                    )
+            with real_db() as db:
+                yield db
+
+        with patch.object(core, "_db", side_effect=expire_between_selection_and_claim):
+            with patch.object(core, "_send_push") as send_push:
+                self.assertEqual(notifications._dispatch_due_notifications(), 0)
+                send_push.assert_not_called()
+
+        with real_db() as db:
+            row = db.execute(
+                "SELECT delivery_status,delivery_attempts FROM notifications WHERE id=?",
+                (notification_id,),
+            ).fetchone()
+        self.assertEqual(row["delivery_status"], "queued")
+        self.assertEqual(row["delivery_attempts"], 0)
 
     def test_mentor_coordinator_cannot_add_staff_to_delivery_group(self):
         with core._db() as db:
