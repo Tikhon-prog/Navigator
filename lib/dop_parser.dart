@@ -1076,10 +1076,10 @@ class DopSelectionFormParser {
         if (type == 'hidden' && name.isNotEmpty) {
           hidden.add(MapEntry(name, value));
         } else if (type == 'submit' || type == 'image') {
-          if (parser._hasAttribute(tag, 'disabled') ||
-              parser._attr(tag, 'aria-disabled').toLowerCase() == 'true') {
-            selectionLocked = true;
-          }
+          // The site disables its submit control until at least one option is
+          // selected. That is normal form behaviour, not proof that enrolment
+          // is closed. Only the form-level lock and unavailable choices below
+          // determine whether selection is actually open.
           if (name.isNotEmpty && submitName.isEmpty) {
             submitName = name;
             submitValue = value;
@@ -1108,11 +1108,9 @@ class DopSelectionFormParser {
         final buttonAttributes = button.group(0) ?? '';
         final type = parser._attr(buttonAttributes, 'type').toLowerCase();
         if (type.isNotEmpty && type != 'submit') continue;
-        if (parser._hasAttribute(buttonAttributes, 'disabled') ||
-            parser._attr(buttonAttributes, 'aria-disabled').toLowerCase() ==
-                'true') {
-          selectionLocked = true;
-        }
+        // Do not infer a closed registration from a disabled submit button:
+        // it is disabled while the selection is empty and enabled by app.js
+        // after the student selects a valid subgroup.
         final name = parser._attr(buttonAttributes, 'name');
         if (name.isNotEmpty && submitName.isEmpty) {
           submitName = name;

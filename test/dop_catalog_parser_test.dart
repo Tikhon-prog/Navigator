@@ -117,6 +117,29 @@ void main() {
       expect(form.hasUnsupportedControls, isFalse);
     });
 
+    test('does not treat an initially disabled submit button as closed registration', () {
+      const html = '''
+        <form method="post" action="save.php" id="disciplines-form">
+          <input type="hidden" name="csrf_token" value="token-123">
+          <input class="discipline-checkbox" type="checkbox"
+              name="choices[]" value="21:301"
+              data-program-id="21" data-subgroup-id="301">
+          <button type="submit" id="submit-selection" disabled>
+            Отправить заявку
+          </button>
+        </form>
+      ''';
+
+      final form = DopSelectionFormParser.parse(
+        html,
+        Uri.parse('https://intranet.pokolenie.school/disciplines.php'),
+      );
+
+      expect(form, isNotNull);
+      expect(form!.selectionLocked, isFalse);
+      expect(form.hasUnsupportedControls, isFalse);
+    });
+
     test('keeps catalogue read-only when the form contains extra named controls', () {
       const html = '''
         <form method="post" action="choose_programs.php">
