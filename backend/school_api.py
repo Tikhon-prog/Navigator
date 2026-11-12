@@ -737,8 +737,28 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
         position_class = None
     actor_class = actor.get("class_id") or position_class
     normalized_actor_class = normalize_class_id(actor_class)
+    role_audience = {
+        "student": "students",
+        "mentor": "mentors",
+        "teacher": "teachers",
+    }.get(actor["role"])
+    recipient_audiences = ("all", "students", "mentors", "teachers", "class")
     with _db() as db:
-        rows = db.execute("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100").fetchall()
+        if actor["role"] == "admin":
+            rows = db.execute(
+                "SELECT * FROM announcements ORDER BY created_at DESC"
+            ).fetchall()
+        else:
+            allowed = ["all", "class"]
+            if role_audience:
+                allowed.append(role_audience)
+            placeholders = ",".join("?" for _ in allowed)
+            rows = db.execute(
+                f"SELECT * FROM announcements WHERE audience IN ({placeholders}) "
+                "ORDER BY created_at DESC",
+                allowed,
+            ).fetchall()
+
     visible = []
     now = datetime.now(timezone.utc)
     for row in rows:
@@ -752,13 +772,17 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
             except ValueError:
                 # Invalid legacy expiry values are excluded rather than shown indefinitely.
                 continue
-        audience_role = {"students": "student"}.get(row["audience"], row["audience"])
-        if row["audience"] == "all" or audience_role == actor["role"]:
+        if row["audience"] == "all" or row["audience"] == role_audience:
             visible.append(row)
-        elif row["audience"] == "class" and normalized_actor_class and normalize_class_id(row["class_id"]) == normalized_actor_class:
+        elif (
+            row["audience"] == "class"
+            and normalized_actor_class
+            and normalize_class_id(row["class_id"]) == normalized_actor_class
+        ):
             visible.append(row)
-        elif actor["role"] == "admin":
-            visible.append(row)
+
+    # Apply the response window only after recipient and expiry filtering.
+    visible = visible[:100]
     return {"data": [{k: row[k] for k in ("id","title","body","severity","audience","class_id","created_by","created_at","expires_at","push_status")} for row in visible]}
 
 
