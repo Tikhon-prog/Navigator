@@ -215,19 +215,76 @@ class ScheduleEntry {
 }
 
 class SchoolScheduleCatalog {
+  static const int _bundledScheduleRevision = 2;
+  static const String _cacheKey = 'school_schedule_cache_v1';
+  static const String _cacheRevisionKey = 'school_schedule_cache_revision_v1';
   static Map<String, dynamic>? _data;
+
   static Future<void> load() async {
     if (_data != null) return;
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('school_schedule_cache_v1');
-    if (cached != null) {
+    final cached = prefs.getString(_cacheKey);
+    final cachedRevision = prefs.getInt(_cacheRevisionKey) ?? 0;
+
+    // A cache from an older app can otherwise hide the new quarter schedule.
+    // Preserve cached online data for other classes, but let bundled overrides win.
+    if (cached != null && cachedRevision >= _bundledScheduleRevision) {
       try {
         _data = Map<String, dynamic>.from(jsonDecode(cached) as Map);
         return;
       } catch (_) {}
     }
+
     final raw = await rootBundle.loadString('assets/data/school_schedule_2026-10-05.json');
-    _data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final bundled = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final classes = Map<String, dynamic>.from(
+      bundled['classes'] as Map? ?? const {},
+    );
+    final classOrder = <String, dynamic>{
+      for (final entry in (bundled['class_order'] as Map? ?? const {}).entries)
+        entry.key.toString(): List<String>.from(entry.value as List),
+    };
+
+    if (cached != null) {
+      try {
+        final cachedData = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        final cachedClasses = cachedData['classes'] as Map? ?? const {};
+        for (final entry in cachedClasses.entries) {
+          final cachedName = entry.key.toString();
+          final isBundledOverride = classes.entries.any((bundledEntry) {
+            final value = bundledEntry.value;
+            return _normalizeClassName(bundledEntry.key.toString()) ==
+                    _normalizeClassName(cachedName) &&
+                value is Map &&
+                value['local_override'] == true;
+          });
+          if (!isBundledOverride) classes[cachedName] = entry.value;
+        }
+        final cachedOrder = cachedData['class_order'] as Map? ?? const {};
+        for (final entry in cachedOrder.entries) {
+          final grade = entry.key.toString();
+          final names = List<String>.from(
+            classOrder[grade] as List? ?? const <String>[],
+          );
+          for (final name in (entry.value as List).whereType<String>()) {
+            if (classes.containsKey(name) && !names.contains(name)) {
+              names.add(name);
+            }
+          }
+          classOrder[grade] = names;
+        }
+      } catch (_) {
+        // Ignore an unreadable legacy cache; use the bundled data.
+      }
+    }
+
+    _data = {
+      ...bundled,
+      'classes': classes,
+      'class_order': classOrder,
+    };
+    await prefs.setString(_cacheKey, jsonEncode(_data));
+    await prefs.setInt(_cacheRevisionKey, _bundledScheduleRevision);
   }
 
   static Map<String, dynamic> _normalizedScheduleRow(Map<String, dynamic> row) {
@@ -318,6 +375,15 @@ class SchoolScheduleCatalog {
       classOrder[entry.key.toString()] = List<String>.from(entry.value as List);
     }
     for (final entry in variantsByClass.entries) {
+      final hasBundledOverride = classes.entries.any((existing) {
+        final value = existing.value;
+        return _normalizeClassName(existing.key.toString()) ==
+                _normalizeClassName(entry.key) &&
+            value is Map &&
+            value['local_override'] == true;
+      });
+      if (hasBundledOverride) continue;
+
       classes[entry.key] = {'variants': entry.value};
       final grade = RegExp(r'^\d+').firstMatch(entry.key)?.group(0) ?? 'Другие';
       final list = List<String>.from(classOrder[grade] as List? ?? const <String>[]);
@@ -326,7 +392,8 @@ class SchoolScheduleCatalog {
       classOrder[grade] = list;
     }
     _data = {...baseData, 'classes': classes, 'class_order': classOrder};
-    await prefs.setString('school_schedule_cache_v1', jsonEncode(_data));
+    await prefs.setString(_cacheKey, jsonEncode(_data));
+    await prefs.setInt(_cacheRevisionKey, _bundledScheduleRevision);
     return variantsByClass.values.fold<int>(0, (sum, rows) => sum + rows.length);
   }
   static List<String> grades() => List<String>.from((_data?['class_order'] as Map? ?? {}).keys);
@@ -340,7 +407,7 @@ class SchoolScheduleCatalog {
         .map((letter) => lookalikes[letter] ?? letter).join();
   }
 
-  static List<Map<String, dynamic>> variants(String className) {
+  static Map<String, dynamic>? classDetails(String className) {
     final classes = _data?['classes'] as Map? ?? const {};
     dynamic classData = classes[className];
     if (classData == null) {
@@ -352,8 +419,17 @@ class SchoolScheduleCatalog {
         }
       }
     }
-    final raw = (classData as Map?)?['variants'];
-    return raw is List ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
+    return classData is Map ? Map<String, dynamic>.from(classData) : null;
+  }
+
+  static String periodForClass(String className) =>
+      (classDetails(className)?['period'] ?? '').toString().trim();
+
+  static List<Map<String, dynamic>> variants(String className) {
+    final raw = classDetails(className)?['variants'];
+    return raw is List
+        ? raw.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
   }
   static String baseSubject(String value) {
     var subject = value.trim();
@@ -406,6 +482,7 @@ class SchoolScheduleCatalog {
     String className,
     Map<String, int> selected, {
     Map<int, List<String>> mathNamesByDay = const {},
+    int? wholeClassGroup,
   }) {
     final all = variants(className);
     final result = <ScheduleEntry>[];
@@ -443,7 +520,13 @@ class SchoolScheduleCatalog {
       final time = '${e['time'] ?? ''}'.trim();
       final slotKey = '$day|${canonicalLessonTimeKey(time)}|$subject';
       final slotGroups = groupsBySlot[slotKey] ?? const <int>{};
-      if (slotGroups.length > 1 && group != wanted) continue;
+      // Group 0 denotes a merged timetable cell shared by both 8В subgroups.
+      // A global group choice handles slots where each subgroup has a different subject.
+      if (group > 0 && wholeClassGroup != null) {
+        if (group != wholeClassGroup) continue;
+      } else if (group > 0 && slotGroups.length > 1 && group != wanted) {
+        continue;
+      }
       var displaySubject = subject;
       if (isMathSubject(subject)) {
         final slots = mathSlots[day] ?? const <String>[];
@@ -510,12 +593,95 @@ String _studentScopedPreferenceKey(SharedPreferences prefs, String key) {
 
 Future<void> showStudentGroupSelection(BuildContext context, String className) async {
   await SchoolScheduleCatalog.load();
-  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
-  if (subjects.isEmpty || !context.mounted) return;
-  final prefs = await SharedPreferences.getInstance();
-  final values = <String, int>{for (final s in subjects) s: prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_group_${className}_$s')) ?? 1};
   if (!context.mounted) return;
-  await showDialog<void>(context: context, builder: (_) => _StudentGroupsDialog(className: className, subjects: subjects, values: values));
+  final prefs = await SharedPreferences.getInstance();
+  if (SchoolScheduleCatalog._normalizeClassName(className) ==
+      SchoolScheduleCatalog._normalizeClassName('8В')) {
+    final key = _studentScopedPreferenceKey(prefs, 'student_class_group_8В');
+    final storedGroup = prefs.getInt(key);
+    final savedGroup = storedGroup == 1 || storedGroup == 2
+        ? storedGroup
+        : null;
+    final selected = await showDialog<int>(
+      context: context,
+      barrierDismissible: savedGroup != null,
+      builder: (_) => _StudentClassGroupDialog(
+        initialGroup: savedGroup ?? 1,
+        requiredChoice: savedGroup == null,
+      ),
+    );
+    if (selected != null) await prefs.setInt(key, selected);
+    return;
+  }
+
+  final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
+  if (subjects.isEmpty) return;
+  final values = <String, int>{
+    for (final subject in subjects)
+      subject: prefs.getInt(
+            _studentScopedPreferenceKey(prefs, 'student_group_${className}_$subject'),
+          ) ??
+          1,
+  };
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _StudentGroupsDialog(
+      className: className,
+      subjects: subjects,
+      values: values,
+    ),
+  );
+}
+
+class _StudentClassGroupDialog extends StatefulWidget {
+  final int initialGroup;
+  final bool requiredChoice;
+
+  const _StudentClassGroupDialog({
+    required this.initialGroup,
+    this.requiredChoice = false,
+  });
+
+  @override
+  State<_StudentClassGroupDialog> createState() => _StudentClassGroupDialogState();
+}
+
+class _StudentClassGroupDialogState extends State<_StudentClassGroupDialog> {
+  late int selected = widget.initialGroup;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Твоя подгруппа 8В'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<int>(
+              value: 1,
+              groupValue: selected,
+              title: const Text('8В/1'),
+              onChanged: (value) => setState(() => selected = value ?? selected),
+            ),
+            RadioListTile<int>(
+              value: 2,
+              groupValue: selected,
+              title: const Text('8В/2'),
+              onChanged: (value) => setState(() => selected = value ?? selected),
+            ),
+          ],
+        ),
+        actions: [
+          if (!widget.requiredChoice)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, selected),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      );
 }
 class _StudentGroupsDialog extends StatefulWidget {
   final String className; final List<String> subjects; final Map<String, int> values;
@@ -2875,27 +3041,86 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     lessons: dayEntries.map((entry) => (time: entry.time, subject: entry.subject)).toList(),
   );
   Future<void> _load() async {
-    final p = await SharedPreferences.getInstance(); await SchoolScheduleCatalog.load();
-    try { await SchoolScheduleCatalog.refreshOnline(); } catch (_) {}
+    final p = await SharedPreferences.getInstance();
+    await SchoolScheduleCatalog.load();
+    try {
+      await SchoolScheduleCatalog.refreshOnline();
+    } catch (_) {}
     classId = p.getString('student_class_name') ?? '';
-    final groups = <String,int>{};
+    var needsEightVGroupSelection = false;
+    final groups = <String, int>{};
     if (classId.isNotEmpty) {
-      for (final s in SchoolScheduleCatalog.splitSubjects(classId)) {
-        groups[s] = p.getInt(_studentScopedPreferenceKey(p, 'student_group_${classId}_$s')) ?? 1;
+      for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) {
+        groups[subject] = p.getInt(
+              _studentScopedPreferenceKey(p, 'student_group_${classId}_$subject'),
+            ) ??
+            1;
       }
+
+      final isEightV = SchoolScheduleCatalog._normalizeClassName(classId) ==
+          SchoolScheduleCatalog._normalizeClassName('8В');
+      final storedWholeClassGroup = isEightV
+          ? p.getInt(_studentScopedPreferenceKey(p, 'student_class_group_8В'))
+          : null;
+      final wholeClassGroup = storedWholeClassGroup == 1 ||
+              storedWholeClassGroup == 2
+          ? storedWholeClassGroup
+          : (isEightV ? 1 : null);
+      needsEightVGroupSelection = isEightV &&
+          storedWholeClassGroup != 1 &&
+          storedWholeClassGroup != 2;
+
       final mathNames = <int, List<String>>{};
       for (var d = 1; d <= 6; d++) {
         final dayNames = <String>[];
         for (var slot = 0; slot < 6; slot++) {
-          dayNames.add(p.getString(_studentScopedPreferenceKey(p, 'math_subject_${classId}_${d}_$slot')) ?? '');
+          dayNames.add(
+            p.getString(
+                  _studentScopedPreferenceKey(
+                    p,
+                    'math_subject_${classId}_${d}_$slot',
+                  ),
+                ) ??
+                '',
+          );
         }
         mathNames[d] = dayNames;
       }
-      entries = SchoolScheduleCatalog.buildPersonal(classId, groups, mathNamesByDay: mathNames);
-    } else { entries = []; }
+      entries = SchoolScheduleCatalog.buildPersonal(
+        classId,
+        groups,
+        mathNamesByDay: mathNames,
+        wholeClassGroup: wholeClassGroup,
+      );
+    } else {
+      entries = [];
+    }
     if (mounted) setState(() => loading = false);
-    try { await LocalNotificationService().scheduleUpcomingLessons(entries: entries.map((e) => (id:e.id,day:e.day,time:e.time,subject:e.subject,room:e.room)).toList()); } catch (_) {}
-    if (classId.isEmpty && mounted) WidgetsBinding.instance.addPostFrameCallback((_) => _chooseClass(required: true));
+    try {
+      await LocalNotificationService().scheduleUpcomingLessons(
+        entries: entries
+            .map((e) => (
+                  id: e.id,
+                  day: e.day,
+                  time: e.time,
+                  subject: e.subject,
+                  room: e.room,
+                ))
+            .toList(),
+      );
+    } catch (_) {}
+
+    if (classId.isEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _chooseClass(required: true),
+      );
+    } else if (needsEightVGroupSelection && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await showStudentGroupSelection(context, classId);
+        await _load();
+      });
+    }
   }
   Future<void> _chooseClass({bool required = false}) async {
     final selected = await showDialog<String>(context: context, barrierDismissible: !required, builder: (_) => _StudentClassDialog(requiredChoice: required));
@@ -2929,6 +3154,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     final list = entries.where((e) => e.day == day).toList()..sort((a, b) => compareLessonTimes(a.time, b.time));
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
+    final schedulePeriod = SchoolScheduleCatalog.periodForClass(classId);
     final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
     final breakCountdown = _breakCountdown(list);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -2946,7 +3172,17 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
             ),
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
           if (classId.isNotEmpty) ...[
-            IconButton(tooltip: 'Группы по предметам', onPressed: () async { await showStudentGroupSelection(context, classId); await _load(); }, icon: const Icon(Icons.groups_rounded)),
+            IconButton(
+              tooltip: SchoolScheduleCatalog._normalizeClassName(classId) ==
+                      SchoolScheduleCatalog._normalizeClassName('8В')
+                  ? 'Выбрать подгруппу 8В'
+                  : 'Группы по предметам',
+              onPressed: () async {
+                await showStudentGroupSelection(context, classId);
+                await _load();
+              },
+              icon: const Icon(Icons.groups_rounded),
+            ),
             IconButton(tooltip: 'Раздельная математика по дням', onPressed: () async { await showDialog<void>(context: context, builder: (_) => _MathByDayDialog(className: classId)); await _load(); }, icon: const Icon(Icons.functions_rounded)),
           ],
           const SizedBox(width: 4),
@@ -2974,7 +3210,15 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                     ),
                     const SizedBox(width: 14),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(classId.isEmpty ? 'Твоё расписание' : 'Класс $classId', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
+                      Text(
+                        classId.isEmpty
+                            ? 'Твоё расписание'
+                            : 'Класс $classId${schedulePeriod.isEmpty ? '' : ' • $schedulePeriod'}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 19,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         classId.isEmpty ? 'Выбери класс, чтобы загрузить уроки' : '${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
