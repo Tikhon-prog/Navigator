@@ -246,7 +246,7 @@ function Install-Python312Portable {
     Write-Host ("Installed verified Python 3.12 at: " + $pythonHome) -ForegroundColor Green
 }
 
-function Find-Jdk27Home {
+function Find-Jdk21Home {
     $candidateList = @()
     if ($env:JAVA_HOME) { $candidateList += $env:JAVA_HOME }
 
@@ -257,7 +257,7 @@ function Find-Jdk27Home {
 
     foreach ($root in $searchRoots) {
         if (Test-Path -LiteralPath $root) {
-            $candidateList += @(Get-ChildItem -LiteralPath $root -Directory -Filter 'jdk-27*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+            $candidateList += @(Get-ChildItem -LiteralPath $root -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
         }
     }
 
@@ -266,8 +266,8 @@ function Find-Jdk27Home {
         if (-not (Test-Path -LiteralPath $javaExe)) { continue }
         # java -version writes to STDERR. With $ErrorActionPreference = 'Stop',
         # Windows PowerShell can turn that normal output into a terminating error.
-        # Temporarily allow native STDERR so an older JAVA_HOME (for example JDK 21)
-        # is skipped and the search continues to the managed JDK 27 installation.
+        # Temporarily allow native STDERR so an older JAVA_HOME (for example JDK 17)
+        # is skipped and the search continues to the managed Temurin JDK 21 installation.
         $previousErrorActionPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
@@ -278,7 +278,7 @@ function Find-Jdk27Home {
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
-        if ($versionText -match 'version "27(\.|")') { return $candidate }
+        if ($versionText -match 'version "21(\.|")') { return $candidate }
     }
     return $null
 }
@@ -378,23 +378,23 @@ function Install-InnoSetup {
     Write-Host ("Installed Inno Setup at: " + $installedCompiler) -ForegroundColor Green
 }
 
-function Install-Jdk27Portable {
-    $existing = Find-Jdk27Home
+function Install-Jdk21Portable {
+    $existing = Find-Jdk21Home
     if ($existing) {
-        Write-Host ("Using existing Java 27: " + $existing) -ForegroundColor DarkGray
+        Write-Host ("Using existing Temurin Java 21: " + $existing) -ForegroundColor DarkGray
         return
     }
 
-    Write-Step 'Downloading verified Oracle JDK 27 ZIP'
-    # Use Oracle's official JDK 27 ZIP and checksum sidecar.
+    Write-Step 'Downloading verified Eclipse Temurin JDK 21.0.13+9 ZIP'
+    # Use the official Eclipse Temurin JDK 21.0.13+9 release ZIP and checksum sidecar.
     # Verify SHA-256 before extracting the archive.
-    $version = '27.0.1'
-    $baseUrl = 'https://download.oracle.com/java/27/latest/jdk-27_windows-x64_bin.zip'
-    $checksumUrl = $baseUrl + '.sha256'
-    $downloadDir = Join-Path $BuildTemp 'OpenJDK27'
+    $version = '21.0.13+9'
+    $baseUrl = 'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip'
+    $checksumUrl = $baseUrl + '.sha256.txt'
+    $downloadDir = Join-Path $BuildTemp 'Temurin21'
     $extractDir = Join-Path $downloadDir 'extract'
-    $zipPath = Join-Path $downloadDir 'jdk-27_windows-x64_bin.zip'
-    $checksumPath = Join-Path $downloadDir 'jdk-27_windows-x64_bin.zip.sha256'
+    $zipPath = Join-Path $downloadDir 'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip'
+    $checksumPath = Join-Path $downloadDir 'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip.sha256.txt'
     $destination = Join-Path $ToolRoot ("jdk-" + $version)
 
     New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
@@ -425,20 +425,20 @@ function Install-Jdk27Portable {
     $sourceHome = Split-Path -Parent (Split-Path -Parent $javaExe.FullName)
 
     if (Test-Path -LiteralPath $destination) {
-        throw ("JDK destination exists but is not a recognized Java 27 install: " + $destination + '. Rename that folder and rerun.')
+        throw ("JDK destination exists but is not a recognized Temurin Java 21 install: " + $destination + '. Rename that folder and rerun.')
     }
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     Copy-Item -Path (Join-Path $sourceHome '*') -Destination $destination -Recurse -Force
 
-    $installed = Find-Jdk27Home
+    $installed = Find-Jdk21Home
     if (-not $installed) {
-        throw 'The verified JDK ZIP was extracted, but Java 27 could not be validated.'
+        throw 'The verified JDK ZIP was extracted, but Temurin Java 21 could not be validated.'
     }
 
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $checksumPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host ("Installed verified Java 27 at: " + $installed) -ForegroundColor Green
+    Write-Host ("Installed verified Temurin Java 21 at: " + $installed) -ForegroundColor Green
 }
 
 function Invoke-Checked {
@@ -488,7 +488,7 @@ function Wait-ForVisualStudioInstallerIdle {
     }
 }
 
-Write-Step 'Installing Git, Python 3.12, verified JDK 27 and Inno Setup'
+Write-Step 'Installing Git, Python 3.12, verified Temurin JDK 21 and Inno Setup'
 try { & winget source update --name winget } catch { Write-Warning 'Could not update winget sources; continuing.' }
 
 # Reuse an existing Git installation before asking winget to install it.
@@ -513,7 +513,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Install-WingetPackage -Id 'Git.Git'
 }
 Install-Python312Portable
-Install-Jdk27Portable
+Install-Jdk21Portable
 Install-InnoSetup
 
 # Reuse the already installed Visual Studio instance (Community, Professional,
@@ -684,9 +684,9 @@ if ($gh) {
     Write-Host 'gh is not installed; that is OK. Git + Git Credential Manager will be used for repository access.' -ForegroundColor DarkGray
 }
 
-# Find JDK 27 and add JAVA_HOME persistently.
-$javaHome = Find-Jdk27Home
-if (-not $javaHome) { throw 'Java 27 was not found after the verified ZIP installation.' }
+# Find Temurin JDK 21 and add JAVA_HOME persistently.
+$javaHome = Find-Jdk21Home
+if (-not $javaHome) { throw 'Temurin Java 21 was not found after the verified ZIP installation.' }
 Set-UserVariable -Name 'JAVA_HOME' -Value $javaHome
 Add-UserPath -Paths @((Join-Path $javaHome 'bin'))
 
