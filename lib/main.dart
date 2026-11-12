@@ -2976,6 +2976,7 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver {
   int day = DateTime.now().weekday > 6 ? 1 : DateTime.now().weekday;
   List<ScheduleEntry> entries = []; String classId = ''; bool loading = true;
+  int? _selectedEightVGroup;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
   bool _appResumed = true;
@@ -3047,6 +3048,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
       await SchoolScheduleCatalog.refreshOnline();
     } catch (_) {}
     classId = p.getString('student_class_name') ?? '';
+    _selectedEightVGroup = null;
     var needsEightVGroupSelection = false;
     final groups = <String, int>{};
     if (classId.isNotEmpty) {
@@ -3066,6 +3068,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
               storedWholeClassGroup == 2
           ? storedWholeClassGroup
           : (isEightV ? 1 : null);
+      _selectedEightVGroup = wholeClassGroup;
       needsEightVGroupSelection = isEightV &&
           storedWholeClassGroup != 1 &&
           storedWholeClassGroup != 2;
@@ -3155,6 +3158,11 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final schedulePeriod = SchoolScheduleCatalog.periodForClass(classId);
+    final isEightVClass = SchoolScheduleCatalog._normalizeClassName(classId) ==
+        SchoolScheduleCatalog._normalizeClassName('8В');
+    final subgroupSuffix = isEightVClass && _selectedEightVGroup != null
+        ? '/$_selectedEightVGroup'
+        : '';
     final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
     final breakCountdown = _breakCountdown(list);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -3213,7 +3221,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                       Text(
                         classId.isEmpty
                             ? 'Твоё расписание'
-                            : 'Класс $classId${schedulePeriod.isEmpty ? '' : ' • $schedulePeriod'}',
+                            : 'Класс $classId$subgroupSuffix${schedulePeriod.isEmpty ? '' : ' • $schedulePeriod'}',
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 19,
