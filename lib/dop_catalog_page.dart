@@ -45,6 +45,9 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
       '${group.programId}:${group.subgroupId}:${group.selectionName}:${group.selectionValue}';
 
   Future<void> _loadCatalog() async {
+    final previous = _catalog;
+    _catalog = null;
+    previous?.close();
     if (mounted) {
       setState(() {
         _loading = true;
