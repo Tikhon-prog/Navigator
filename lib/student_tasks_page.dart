@@ -106,11 +106,10 @@ class StudentTaskStore {
   ///
   /// This also cancels stale scheduled reminders after an account switch, even
   /// when the new account has not created or edited any tasks yet.
-  static Future<void> synchronizeReminders() async {
+  static Future<void> synchronizeReminders(List<StudentTask> tasks) async {
     final prefs = await SharedPreferences.getInstance();
     final profileId = _profileId(prefs);
     final enabled = prefs.getBool(_keyForProfile(remindersKey, profileId)) ?? true;
-    final tasks = await load();
     await _scheduleReminders(
       enabled ? tasks : const <StudentTask>[],
       profileId: profileId,
@@ -238,12 +237,16 @@ class _StudentTasksPageState extends State<StudentTasksPage> {
         StudentTaskStore.remindersEnabled(),
       ]);
       if (!mounted) return;
+      final loadedTasks = results[0] as List<StudentTask>;
       setState(() {
-        tasks = results[0] as List<StudentTask>;
+        tasks = loadedTasks;
         _remindersEnabled = results[1] as bool;
         _loadError = null;
         loading = false;
       });
+      // This clears scheduled notifications from a previous school account
+      // even when the newly active account has no tasks yet.
+      await StudentTaskStore.synchronizeReminders(loadedTasks);
     } catch (error) {
       if (!mounted) return;
       setState(() {
