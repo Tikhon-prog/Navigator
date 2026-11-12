@@ -121,6 +121,22 @@ void main() {
     expect(await StudentTaskStore.remindersEnabled(), isFalse);
   });
 
+  test('a malformed school session never falls back to local tasks', () async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await StudentTaskStore.upsert(buildTask(
+      id: 'local-only',
+      title: 'Локальное задание',
+    ));
+    expect((await StudentTaskStore.load()).single.id, 'local-only');
+
+    await prefs.setString('school_user_v1', '{broken-json');
+    expect(await StudentTaskStore.load(), isEmpty);
+
+    await prefs.remove('school_user_v1');
+    expect((await StudentTaskStore.load()).single.id, 'local-only');
+  });
+
   test('missing task updates return false', () async {
     expect(await StudentTaskStore.setCompleted('missing', true), isFalse);
     expect(await StudentTaskStore.delete('missing'), isFalse);
