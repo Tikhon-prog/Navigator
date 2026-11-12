@@ -4,6 +4,15 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DopStudent {
+  static const List<String> grade10Profiles = [
+    'Агротехнологический',
+    'Естественно-научный (медико-биологический)',
+    'Естественно-научный (физико-химический)',
+    'Технологический (инженерно-математический)',
+    'Технологический (информационно-технологический)',
+    'Гуманитарный',
+  ];
+
   final String lastName;
   final String firstName;
   final String classNumber;
@@ -21,6 +30,9 @@ class DopStudent {
   });
 
   String get className => classNumber + classLetter;
+  bool get requiresProfile => classNumber.trim() == '10';
+  bool get hasValidProfile =>
+      !requiresProfile || grade10Profiles.contains(profile.trim());
 }
 
 /// Keeps personally entered profile/supplement data isolated between school
@@ -251,6 +263,11 @@ class DopParser {
     if (student == null) {
       throw const DopParserException(
         'В хранилище профиля «Поколение» не найдены данные ученика.',
+      );
+    }
+    if (student.requiresProfile && !student.hasValidProfile) {
+      throw const DopParserException(
+        'Для 10 класса сначала выбери направление обучения в профиле ученика.',
       );
     }
 
