@@ -27,7 +27,7 @@ INTERNAL_READ_SHEETS = PUBLIC_READ_SHEETS | {"Supplements"}
 app = FastAPI(
     title="Поколение — сервер школы",
     description="API школьного приложения",
-    version="0.2.0",
+    version="0.2.1",
 )
 app.include_router(school_services_router)
 app.include_router(school_sso_router)
@@ -36,12 +36,12 @@ app.include_router(school_rbac_router)
 
 _cors_origins = [
     origin.strip()
-    for origin in os.getenv("NAVIGATOR_ALLOWED_ORIGINS", "*").split(",")
+    for origin in os.getenv("NAVIGATOR_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins or ["*"],
+    # Native Android/iOS/desktop clients do not use browser CORS. For web/PWA,\n    # require an explicit school portal origin instead of allowing every website.\n    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["Accept", "Authorization", "Content-Type"],
@@ -74,7 +74,7 @@ def read_sheet(sheet_name: str) -> list[dict[str, Any]]:
 def root() -> dict[str, str]:
     return {
         "name": "Поколение — сервер школы",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "status": "ok",
     }
 
