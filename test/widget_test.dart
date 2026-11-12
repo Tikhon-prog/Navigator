@@ -20,6 +20,12 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Навигация по школе'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Школьная жизнь'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Школьная жизнь'), findsOneWidget);
   });
 
