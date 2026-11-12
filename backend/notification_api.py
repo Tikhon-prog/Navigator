@@ -565,17 +565,41 @@ def list_notifications(actor: dict[str, Any] = Depends(core.current_user)) -> di
     normalized_actor_class = core.normalize_class_id(actor_class)
     now = _now()
     with core._db() as db:
-        rows = db.execute("SELECT * FROM notifications WHERE (scheduled_at IS NULL OR scheduled_at<=?) AND (expires_at IS NULL OR expires_at>?) AND delivery_status NOT IN ('processing','cancelled','expired') ORDER BY created_at DESC LIMIT 200", (now, now)).fetchall()
-        visible = []
-        for row in rows:
-            if row["target_type"] == "all":
-                visible.append(dict(row))
-            elif row["target_type"] == "user" and row["target_id"] == actor["id"]:
-                visible.append(dict(row))
-            elif row["target_type"] == "class" and normalized_actor_class and core.normalize_class_id(row["target_id"]) == normalized_actor_class:
-                visible.append(dict(row))
-            elif row["target_type"] == "group":
-                member = db.execute("SELECT 1 FROM notification_group_members WHERE group_id=? AND user_id=?", (row["target_id"], actor["id"])).fetchone()
-                if member:
-                    visible.append(dict(row))
-    return {"data": visible}
+        # Filter recipients in SQL before applying the page limit. Limiting the
+        # global table first could let 200 unrelated class/group notices hide
+        # an older personal notification from this user's feed.
+        recipient_conditions = [
+            "target_type='all'",
+            "(target_type='user' AND target_id=?)",
+            "(target_type='group' AND target_id IN "
+            "(SELECT group_id FROM notification_group_members WHERE user_id=?))",
+        ]
+        parameters: list[Any] = [now, now, actor["id"], actor["id"]]
+
+        if normalized_actor_class:
+            class_rows = db.execute(
+                "SELECT DISTINCT target_id FROM notifications "
+                "WHERE target_type='class' AND target_id IS NOT NULL"
+            ).fetchall()
+            matching_class_ids = [
+                row["target_id"]
+                for row in class_rows
+                if core.normalize_class_id(row["target_id"]) == normalized_actor_class
+            ]
+            if matching_class_ids:
+                placeholders = ",".join("?" for _ in matching_class_ids)
+                recipient_conditions.append(
+                    f"(target_type='class' AND target_id IN ({placeholders}))"
+                )
+                parameters.extend(matching_class_ids)
+
+        rows = db.execute(
+            "SELECT * FROM notifications "
+            "WHERE (scheduled_at IS NULL OR scheduled_at<=?) "
+            "AND (expires_at IS NULL OR expires_at>?) "
+            "AND delivery_status NOT IN ('processing','cancelled','expired') "
+            "AND (" + " OR ".join(recipient_conditions) + ") "
+            "ORDER BY created_at DESC LIMIT 200",
+            parameters,
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
