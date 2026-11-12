@@ -771,7 +771,7 @@ def list_announcements(actor: dict[str, Any] = Depends(current_user)) -> dict[st
             except ValueError:
                 # Invalid legacy expiry values are excluded rather than shown indefinitely.
                 continue
-        if row["audience"] == "all" or row["audience"] == role_audience:
+        if actor["role"] == "admin" or row["audience"] == "all" or row["audience"] == role_audience:
             visible.append(row)
         elif (
             row["audience"] == "class"
