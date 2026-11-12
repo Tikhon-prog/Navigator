@@ -576,7 +576,8 @@ class _PlanEditorState extends State<_PlanEditor> {
       scrollable: true,
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
         DropdownButtonFormField<int>(
-          value: day, decoration: const InputDecoration(labelText: 'День недели'),
+          value: orderedDays.contains(day) ? day : orderedDays.first,
+          decoration: const InputDecoration(labelText: 'День недели'),
           items: [for (final d in orderedDays) DropdownMenuItem(value: d, child: Text(_mentorDays[d] ?? ''))],
           onChanged: (value) => setState(() => day = value ?? day),
         ),

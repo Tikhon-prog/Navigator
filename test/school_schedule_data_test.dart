@@ -2,9 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:navigator/main.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('maps a numbered lesson range to the selected class and weekday clock times', () async {
+    SharedPreferences.setMockInitialValues({});
     await SchoolScheduleCatalog.load();
     expect(
       SchoolScheduleCatalog.clockRangeForLessonRange('10А', 1, 1, 3),
@@ -16,8 +21,6 @@ void main() {
     );
   });
 
-
-  TestWidgetsFlutterBinding.ensureInitialized();
 
   test('встроенное расписание содержит все 33 класса и непустые уроки', () async {
     final raw = await rootBundle.loadString(
