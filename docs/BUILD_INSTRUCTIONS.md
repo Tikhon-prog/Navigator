@@ -1,6 +1,6 @@
 # Сборка тестовой офлайн-версии без секретов
 
-Для локального тестового APK и Windows EXE из уже скачанного репозитория используй [`build_test.ps1`](../build_test.ps1). Он собирает оба отладочных клиента без API URL, SSO, Firebase secrets и серверного `.env`. Для Windows EXE нужны Visual Studio 2026 или Build Tools 2026 с workload Desktop development with C++ и ATL.
+Для локальной проверки APK и Windows EXE используй [`build_test.ps1`](../build_test.ps1). Он собирает оба отладочных клиента без API URL, SSO, Firebase secrets и серверного `.env`. Для release APK используй [`build_apk.bat`](../build_apk.bat), а для APK + Windows installer + portable EXE — [`build_all_release.ps1`](../build_all_release.ps1). Текущая версия приложения — 0.2.1+6. Для Windows EXE нужны Visual Studio 2026 или Build Tools 2026 с workload Desktop development with C++ и ATL.
 
 # Быстрая установка на чистый Windows 10/11 x64
 
@@ -48,8 +48,8 @@ Android Emulator и LLDB для сборки не нужны, если прил�
 
 | Артефакт | Что внутри | Для чего |
 |---|---|---|
-| `pokolenie-android-0.2.1+5` | `Pokolenie-0.2.1+5.apk` и файл SHA-256 | Установка на Android |
-| `pokolenie-windows-0.2.1+5` | `Pokolenie-Setup-0.2.1+5.exe` и каталог `Pokolenie-Windows-Portable-0.2.1+5` со всеми DLL и данными | Установка Windows или переносной запуск |
+| `pokolenie-android-0.2.1+6` | `Pokolenie-0.2.1+6.apk` и файл SHA-256 | Установка на Android |
+| `pokolenie-windows-0.2.1+6` | `Pokolenie-Setup-0.2.1+6.exe` и каталог `Pokolenie-Windows-Portable-0.2.1+6` со всеми DLL и данными | Установка Windows или переносной запуск |
 
 **Для обычной установки Windows запускай `Pokolenie-Setup-*.exe`.** Если используешь переносную сборку, запускай `pokolenie.exe` внутри каталога `Pokolenie-Windows-Portable-*`; не выноси его отдельно от соседних DLL и папки `data`.
 
@@ -177,10 +177,10 @@ APK: `build/app/outputs/flutter-apk/app-release.apk`.
 
 ```powershell
 New-Item -ItemType Directory -Force -Path dist | Out-Null
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=0.2.1+5" "windows/installer.iss"
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=0.2.1+6" "windows/installer.iss"
 ```
 
-Установщик будет создан в `dist/Pokolenie-Setup-0.2.1+5.exe`. Если путь `ISCC.exe` отличается, выбери путь, куда установлен Inno Setup 6. Для локальной Windows-сборки потребуется настроенный MSVC/CMake toolchain; `flutter doctor -v` покажет отсутствующие компоненты.
+Установщик будет создан в `dist/Pokolenie-Setup-0.2.1+6.exe`. Если путь `ISCC.exe` отличается, выбери путь, куда установлен Inno Setup 6. Для локальной Windows-сборки потребуется настроенный MSVC/CMake toolchain; `flutter doctor -v` покажет отсутствующие компоненты.
 
 ## 8. Тесты и выпуск
 
