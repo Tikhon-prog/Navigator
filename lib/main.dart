@@ -1539,8 +1539,28 @@ class AppShell extends StatefulWidget{
   @override State<AppShell> createState()=>_AppShellState();
 }
 class _AppShellState extends State<AppShell>{
-  int index=0;String? selectedRoom;final key=GlobalKey<ScaffoldState>();
-  void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
+  int index = 0;
+  int studyTab = 0;
+  String? selectedRoom;
+  final key = GlobalKey<ScaffoldState>();
+  final studyPageKey = GlobalKey<_StudyHubPageState>();
+
+  void go(int i) {
+    setState(() => index = i);
+    key.currentState?.closeDrawer();
+  }
+
+  void _openStudyTab(int tab) {
+    final target = tab.clamp(0, 1).toInt();
+    setState(() {
+      index = 2;
+      studyTab = target;
+    });
+    key.currentState?.closeDrawer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) studyPageKey.currentState?.selectTab(target);
+    });
+  }
   Future<void> _openAnnouncements() async {
     key.currentState?.closeDrawer();
     if (!mounted) return;
@@ -2400,17 +2420,36 @@ class _AppShellState extends State<AppShell>{
   Widget build(BuildContext context) {
     void menu() => key.currentState?.openDrawer();
     final pages = <Widget>[
-      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat, onTasks: _openStudentTasks),
+      HomePage(
+        userName: widget.userName,
+        theme: widget.theme,
+        onMenu: menu,
+        onMap: () => go(1),
+        onSchedule: () => _openStudyTab(0),
+        onDop: () => _openStudyTab(1),
+        onAnnouncements: _openAnnouncements,
+        onAiChat: _openAiChat,
+        onTasks: _openStudentTasks,
+      ),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
-      SchedulePage(onMenu: menu, onNotes: _openNotes),
-      SupplementsPage(onMenu: menu),
-      SettingsPage(theme: widget.theme, userName: widget.userName, onThemeChanged: widget.onThemeChanged, onNameChanged: widget.onNameChanged, onMenu: menu),
+      StudyHubPage(
+        key: studyPageKey,
+        initialTab: studyTab,
+        onMenu: menu,
+        onNotes: _openNotes,
+      ),
+      SettingsPage(
+        theme: widget.theme,
+        userName: widget.userName,
+        onThemeChanged: widget.onThemeChanged,
+        onNameChanged: widget.onNameChanged,
+        onMenu: menu,
+      ),
     ];
     const destinations = <NavigationDestination>[
       NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Главная'),
       NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Карта'),
-      NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: 'Расписание'),
-      NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: 'ДОПы'),
+      NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school_rounded), label: 'Учёба'),
       NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'Настройки'),
     ];
     return Scaffold(
@@ -2429,8 +2468,7 @@ class _AppShellState extends State<AppShell>{
                 destinations: const [
                   NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: Text('Главная')),
                   NavigationRailDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: Text('Карта')),
-                  NavigationRailDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: Text('Расписание')),
-                  NavigationRailDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: Text('ДОПы')),
+                  NavigationRailDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school_rounded), label: Text('Учёба')),
                   NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: Text('Настройки')),
                 ],
               ),
@@ -2446,8 +2484,181 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),(8,Icons.assignment_rounded,'Домашние задания','Сроки, контрольные и проекты')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 8) { _openStudentTasks(); } else { go(x.$1); } }))]))])));}
+  Widget _drawer(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final items = <(int, int, IconData, String, String)>[
+      (0, -1, Icons.home_rounded, 'Главное меню', 'Обзор'),
+      (1, -1, Icons.map_rounded, 'Карта школы', 'Кабинеты и маршруты'),
+      (2, 0, Icons.calendar_month_rounded, 'Расписание', 'Уроки и группы'),
+      (2, 1, Icons.auto_awesome_rounded, 'ДОПы', 'Кружки и секции'),
+      (3, -1, Icons.settings_rounded, 'Настройки', 'Профиль и кабинет'),
+      (5, -1, Icons.campaign_rounded, 'Оповещения', 'Объявления школы'),
+      (6, -1, Icons.note_alt_rounded, 'Мои заметки', 'Личные записи на устройстве'),
+      (7, -1, Icons.smart_toy_rounded, 'ИИ-помощник', 'Локальный чат без облака'),
+      (8, -1, Icons.assignment_rounded, 'Домашние задания', 'Сроки, контрольные и проекты'),
+    ];
+
+    return Drawer(
+      width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: AppPalette.gradient(widget.theme)),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: const Icon(Icons.explore_rounded, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Поколение',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  for (final item in items)
+                    Card(
+                      color: index == item.$1 ? colors.primaryContainer : null,
+                      child: ListTile(
+                        leading: Icon(
+                          item.$3,
+                          color: index == item.$1 ? colors.primary : null,
+                        ),
+                        title: Text(
+                          item.$4,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(item.$5),
+                        onTap: () {
+                          switch (item.$1) {
+                            case 5:
+                              _openAnnouncements();
+                            case 6:
+                              _openNotes();
+                            case 7:
+                              _openAiChat();
+                            case 8:
+                              _openStudentTasks();
+                            case 2:
+                              _openStudyTab(item.$2);
+                            default:
+                              go(item.$1);
+                          }
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+class _StudyHubPageState extends State<StudyHubPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 1).toInt(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant StudyHubPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final target = widget.initialTab.clamp(0, 1).toInt();
+    if (target != _controller.index) _controller.animateTo(target);
+  }
+
+  void selectTab(int tab) {
+    if (!mounted) return;
+    _controller.animateTo(tab.clamp(0, 1).toInt());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: widget.onMenu,
+          tooltip: 'Меню',
+          icon: const Icon(Icons.menu_rounded),
+        ),
+        title: const Text('Учёба'),
+        bottom: TabBar(
+          controller: _controller,
+          tabs: const [
+            Tab(icon: Icon(Icons.calendar_month_rounded), text: 'Расписание'),
+            Tab(icon: Icon(Icons.auto_awesome_rounded), text: 'ДОПы'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _controller,
+        children: [
+          SchedulePage(
+            onMenu: widget.onMenu,
+            onNotes: widget.onNotes,
+            embedded: true,
+          ),
+          SupplementsPage(
+            onMenu: widget.onMenu,
+            embedded: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StudyHubPage extends StatefulWidget {
+  final int initialTab;
+  final VoidCallback onMenu;
+  final VoidCallback onNotes;
+
+  const StudyHubPage({
+    super.key,
+    required this.initialTab,
+    required this.onMenu,
+    required this.onNotes,
+  });
+
+  @override
+  State<StudyHubPage> createState() => _StudyHubPageState();
+}
+
 class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
   const _PokoleniePageTransitionsBuilder();
 
@@ -3045,7 +3256,13 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
 class SchedulePage extends StatefulWidget {
   final VoidCallback onMenu;
   final VoidCallback onNotes;
-  const SchedulePage({super.key, required this.onMenu, required this.onNotes});
+  final bool embedded;
+  const SchedulePage({
+    super.key,
+    required this.onMenu,
+    required this.onNotes,
+    this.embedded = false,
+  });
   @override State<SchedulePage> createState() => _SchedulePageState();
 }
 class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver {
@@ -3252,7 +3469,9 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.embedded
+          ? null
+          : AppBar(
         leading: IconButton(onPressed: widget.onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)),
         title: const Text('Расписание'),
         actions: [
@@ -3287,6 +3506,40 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.embedded) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _chooseClass(),
+                          icon: const Icon(Icons.school_rounded),
+                          label: const Text('Выбрать класс'),
+                        ),
+                        if (classId.isNotEmpty)
+                          IconButton(
+                            tooltip: 'Раздельная математика по дням',
+                            onPressed: () async {
+                              await showDialog<void>(
+                                context: context,
+                                builder: (_) => _MathByDayDialog(className: classId),
+                              );
+                              if (mounted) await _load();
+                            },
+                            icon: const Icon(Icons.functions_rounded),
+                          ),
+                        IconButton(
+                          tooltip: 'Мои заметки',
+                          onPressed: widget.onNotes,
+                          icon: const Icon(Icons.note_alt_outlined),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
