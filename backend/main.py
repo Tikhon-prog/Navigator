@@ -41,7 +41,9 @@ _cors_origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    # Native Android/iOS/desktop clients do not use browser CORS. For web/PWA,\n    # require an explicit school portal origin instead of allowing every website.\n    allow_origins=_cors_origins,
+    # Native Android/iOS/desktop clients do not use browser CORS. For web/PWA,
+    # require an explicit school portal origin instead of allowing every website.
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["Accept", "Authorization", "Content-Type"],
