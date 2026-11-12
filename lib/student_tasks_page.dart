@@ -146,9 +146,15 @@ class StudentTaskStore {
       if (decoded is! List) {
         throw const FormatException('Список заданий имеет неизвестный формат.');
       }
-      final tasks = decoded.whereType<Map>()
+      final tasks = decoded
+          .whereType<Map>()
+          // A damaged/missing due date must not silently become a fake
+          // "tomorrow" deadline. Ignore only that broken row; keep valid tasks.
+          .where((item) =>
+              DateTime.tryParse((item['due_at'] ?? '').toString()) != null)
           .map((item) => StudentTask.fromJson(Map<String, dynamic>.from(item)))
-          .where((task) => task.id.isNotEmpty && task.title.trim().isNotEmpty).toList();
+          .where((task) => task.id.isNotEmpty && task.title.trim().isNotEmpty)
+          .toList();
       tasks.sort((a, b) {
         if (a.done != b.done) return a.done ? 1 : -1;
         final deadlineOrder = a.dueAt.compareTo(b.dueAt);
