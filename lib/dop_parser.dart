@@ -997,7 +997,7 @@ class DopSelectionFormParser {
           submitName = name;
           submitValue = value;
         } else if (type == 'checkbox') {
-          final classes = parser._attr(tag, 'class').split(RegExp(r'\\s+'));
+          final classes = parser._attr(tag, 'class').split(RegExp(r'\s+'));
           if (name.isNotEmpty && !classes.contains('discipline-checkbox')) {
             hasUnsupportedControls = true;
           }
@@ -1007,7 +1007,7 @@ class DopSelectionFormParser {
       }
 
       if (RegExp(
-        r'<(?:select|textarea)\\b[^>]*\\bname\\s*=',
+        r'<(?:select|textarea)\b[^>]*\bname\s*=',
         caseSensitive: false,
       ).hasMatch(body)) {
         hasUnsupportedControls = true;
