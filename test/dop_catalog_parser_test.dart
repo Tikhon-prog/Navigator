@@ -7,6 +7,7 @@ void main() {
       const html = '''
         <select name="profile">
           <option value="">Выбери направление</option>
+          <option value="0">Выберите профиль</option>
           <option value="Технологический (информационный)">Технологический профиль</option>
           <option value="Естественно-научный">Естественно-научный</option>
         </select>
