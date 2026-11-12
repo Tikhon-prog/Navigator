@@ -15,6 +15,7 @@ class LocalNotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  bool _permissionsRequested = false;
 
   static const String channelId = 'navigator_lessons';
   static const String channelName = 'Уроки';
@@ -30,8 +31,8 @@ class LocalNotificationService {
   static const String tasksChannelDescription = 'Напоминания о сроках домашних заданий, контрольных и проектов';
   static const String _taskNotificationIdsKey = 'pokolenie_student_task_notification_ids_v1';
 
-  Future<void> initialize() async {
-    if (_initialized) return;
+  Future<void> initialize({bool requestPermissions = true}) async {
+    if (!_initialized) {
 
     tz_data.initializeTimeZones();
     // Школа находится в Краснодаре; расписание работает по московскому времени.
@@ -93,15 +94,24 @@ class LocalNotificationService {
       ),
     );
 
-    await androidPlugin?.requestNotificationsPermission();
-    final iosPlugin = plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    await iosPlugin?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
     _initialized = true;
+    }
+
+    // Queue cleanup must not open a system permission prompt. Ask only when a
+    // caller is actually scheduling notifications for the active profile.
+    if (requestPermissions && !_permissionsRequested) {
+      final androidPlugin = plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await androidPlugin?.requestNotificationsPermission();
+      final iosPlugin = plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      await iosPlugin?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      _permissionsRequested = true;
+    }
   }
 
   Future<void> cancelAll() => plugin.cancelAll();
@@ -251,7 +261,7 @@ class LocalNotificationService {
   Future<void> scheduleUpcomingSupplements({
     required List<({String id, int day, String time, String title, String room})> entries,
   }) async {
-    await initialize();
+    await initialize(requestPermissions: entries.isNotEmpty);
     await _cancelNotificationRange(2000, 2999);
     final now = tz.TZDateTime.now(tz.local);
     var notificationId = 2000;
@@ -289,7 +299,7 @@ class LocalNotificationService {
     required List<({String id, DateTime dueAt, String title, String subject})> entries,
     String scopeKey = 'local',
   }) async {
-    await initialize();
+    await initialize(requestPermissions: entries.isNotEmpty);
     final prefs = await SharedPreferences.getInstance();
     final safeScope = scopeKey.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     final idsKey = safeScope.isEmpty || safeScope == 'local'
