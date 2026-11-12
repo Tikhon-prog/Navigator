@@ -6,13 +6,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:navigator/announcements_page.dart';
 
 void main() {
-  testWidgets('announcements screen explains when no server is configured', (tester) async {
+  testWidgets('announcements screen shows a clean empty state without a configured source', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const MaterialApp(home: SchoolAnnouncementsPage()));
     await tester.pumpAndSettle();
 
     expect(find.text('Новости школы'), findsOneWidget);
-    expect(find.textContaining('Сервер ещё не настроен'), findsOneWidget);
+    expect(find.text('Объявления появятся здесь'), findsOneWidget);
+    expect(find.textContaining('интранет'), findsNothing);
+    expect(find.textContaining('офлайн'), findsNothing);
   });
 
   testWidgets('announcements screen shows cached school-wide notices offline', (tester) async {
@@ -34,6 +36,6 @@ void main() {
 
     expect(find.text('Завтра школьное мероприятие'), findsOneWidget);
     expect(find.text('Начало в 10:00'), findsOneWidget);
-    expect(find.textContaining('сохранённая копия'), findsOneWidget);
+    expect(find.textContaining('сохранённая копия'), findsNothing);
   });
 }
