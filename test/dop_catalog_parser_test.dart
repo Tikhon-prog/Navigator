@@ -103,9 +103,9 @@ void main() {
         form.action,
         Uri.parse('https://intranet.pokolenie.school/choose_programs.php'),
       );
-      expect(form.hiddenFields, [
-        const MapEntry('csrf_token', 'token-123'),
-      ]);
+      expect(form.hiddenFields, hasLength(1));
+      expect(form.hiddenFields.single.key, 'csrf_token');
+      expect(form.hiddenFields.single.value, 'token-123');
       expect(form.submitName, 'apply');
       expect(form.submitValue, 'save');
       expect(form.hasUnsupportedControls, isFalse);
