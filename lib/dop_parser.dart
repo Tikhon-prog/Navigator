@@ -922,7 +922,347 @@ class DopProfileCatalogParser {
         final rawValue = parser._attr(optionAttributes, 'value');
         final label = parser._clean(option.group(2) ?? '');
         final value = hasValue ? rawValue : label;
+        final isPlaceholder = RegExp(
+          r'^(?:выберите|выбрать|не выбрано|select\b|—|-)
+          continue;
+        }
+        if (!values.contains(value.trim())) values.add(value.trim());
+      }
+      if (values.isNotEmpty) break;
+    }
+    return List<String>.unmodifiable(values);
+  }
+}
+
+/// Finds the actual form that owns the catalogue checkboxes. It preserves all
+/// hidden fields and the repeated checkbox names required by PHP forms.
+class DopSelectionFormParser {
+  static DopSelectionFormInfo? parse(String html, Uri pageUri) {
+    final parser = const DopParser();
+    final forms = RegExp(
+      r'<form\b([^>]*)>([\s\S]*?)</form>',
+      caseSensitive: false,
+    ).allMatches(html);
+
+    for (final form in forms) {
+      final attributes = form.group(1) ?? '';
+      final body = form.group(2) ?? '';
+      if (!body.contains('discipline-checkbox')) continue;
+
+      final action = parser._attr(attributes, 'action');
+      final target = action.isEmpty ? pageUri : pageUri.resolve(action);
+      if (!DopParser.isTrustedUri(target)) continue;
+
+      final method = parser._attr(attributes, 'method').toUpperCase();
+      final hidden = <MapEntry<String, String>>[];
+      String submitName = '';
+      String submitValue = '';
+
+      for (final inputMatch in RegExp(
+        r'<input\b[^>]*>',
+        caseSensitive: false,
+      ).allMatches(body)) {
+        final tag = inputMatch.group(0) ?? '';
+        final type = parser._attr(tag, 'type').toLowerCase();
+        final name = parser._attr(tag, 'name');
+        final value = parser._attr(tag, 'value');
+        if (type == 'hidden' && name.isNotEmpty) {
+          hidden.add(MapEntry(name, value));
+        } else if ((type == 'submit' || type == 'image') &&
+            name.isNotEmpty &&
+            submitName.isEmpty) {
+          submitName = name;
+          submitValue = value;
+        }
+      }
+
+      if (submitName.isEmpty) {
+        final button = RegExp(
+          r'<button\b([^>]*)>',
+          caseSensitive: false,
+        ).firstMatch(body);
+        if (button != null) {
+          final buttonAttributes = button.group(1) ?? '';
+          final type = parser._attr(buttonAttributes, 'type').toLowerCase();
+          final name = parser._attr(buttonAttributes, 'name');
+          if ((type.isEmpty || type == 'submit') && name.isNotEmpty) {
+            submitName = name;
+            submitValue = parser._attr(buttonAttributes, 'value');
+          }
+        }
+      }
+
+      return DopSelectionFormInfo(
+        action: target,
+        method: method.isEmpty ? 'GET' : method,
+        hiddenFields: List<MapEntry<String, String>>.unmodifiable(hidden),
+        submitName: submitName,
+        submitValue: submitValue,
+      );
+    }
+    return null;
+  }
+}
+
+class DopSelectionFormInfo {
+  final Uri action;
+  final String method;
+  final List<MapEntry<String, String>> hiddenFields;
+  final String submitName;
+  final String submitValue;
+
+  const DopSelectionFormInfo({
+    required this.action,
+    required this.method,
+    required this.hiddenFields,
+    required this.submitName,
+    required this.submitValue,
+  });
+}
+
+/// A live catalogue and its authenticated intranet cookie session.
+class DopCatalogSession {
+  final DopStudent student;
+  final List<DopProgram> programs;
+  final _DopSession _session;
+  final DopParser _parser;
+  final DopSelectionFormInfo? _form;
+  bool _closed = false;
+
+  DopCatalogSession._({
+    required this.student,
+    required this.programs,
+    required _DopSession session,
+    required DopParser parser,
+    required DopSelectionFormInfo? form,
+  })  : _session = session,
+        _parser = parser,
+        _form = form;
+
+  bool get canSubmit =>
+      !_closed &&
+      _form != null &&
+      _form.method == 'POST' &&
+      programs.any((program) => program.subgroups.any((group) =>
+          group.selectionName.trim().isNotEmpty &&
+          group.selectionValue.trim().isNotEmpty));
+
+  /// Submits only real name/value pairs parsed from the school's form.
+  /// No guessed endpoint, checkbox name, or subgroup ID is ever sent.
+  Future<String> submit(List<DopSubgroup> selections) async {
+    if (_closed) {
+      throw const DopParserException('Сеанс каталога уже закрыт. Обнови каталог.');
+    }
+    if (selections.isEmpty) {
+      throw const DopParserException('Сначала выбери хотя бы одну группу.');
+    }
+    final form = _form;
+    if (form == null || form.method != 'POST') {
+      throw const DopParserException(
+        'На странице каталога не найдена поддерживаемая форма отправки. '
+        'Просмотр доступен, но записывать через приложение пока небезопасно.',
+      );
+    }
+
+    final fields = <MapEntry<String, String>>[
+      ...form.hiddenFields,
+    ];
+    final unique = <String>{};
+    for (final group in selections) {
+      if (group.selectionName.trim().isEmpty ||
+          group.selectionValue.trim().isEmpty) {
+        throw const DopParserException(
+          'У выбранной группы не найдены точные параметры checkbox. '
+          'Сайт не будет получать выдуманные значения.',
+        );
+      }
+      final key = group.selectionName + '\u0000' + group.selectionValue;
+      if (unique.add(key)) {
+        fields.add(MapEntry(group.selectionName, group.selectionValue));
+      }
+    }
+    if (form.submitName.isNotEmpty) {
+      fields.add(MapEntry(form.submitName, form.submitValue));
+    }
+
+    final response = await _session.postEntries(form.action, fields);
+    final error = _parser._textClass(response.body, 'alert-danger');
+    if (error.isNotEmpty) {
+      throw DopParserException('Intranet отклонил выбор: ' + error);
+    }
+    final success = _parser._textClass(response.body, 'alert-success');
+    if (success.isNotEmpty) return success;
+    final notice = _parser._textClass(response.body, 'alert');
+    if (notice.isNotEmpty) return notice;
+    return 'Ответ intranet получен. Проверь статус выбранных занятий в разделе «Мои ДОПы».';
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _session.close();
+  }
+}
+
+class _DopSession {
+  final HttpClient _client = HttpClient();
+  final Map<String, String> _cookies = {};
+
+  Future<_DopResponse> get(Uri uri) =>
+      _request('GET', uri);
+
+  Future<_DopResponse> post(
+    Uri uri,
+    Map<String, String> data,
+  ) =>
+      _request('POST', uri, data: data);
+
+  Future<_DopResponse> postEntries(
+    Uri uri,
+    List<MapEntry<String, String>> fields,
+  ) =>
+      _request('POST', uri, formFields: fields);
+
+  Future<_DopResponse> _request(
+    String method,
+    Uri uri, {
+    Map<String, String> data = const {},
+    List<MapEntry<String, String>>? formFields,
+  }) async {
+    var currentUri = uri;
+    var currentMethod = method;
+    var currentData = data;
+
+    for (var i = 0; i < 6; i++) {
+      if (!DopParser.isTrustedUri(currentUri)) {
+        throw const DopParserException(
+          'Школьный intranet перенаправил запрос на недоверенный адрес. Cookies не отправлены.',
+        );
+      }
+      final request = await _client
+          .openUrl(currentMethod, currentUri)
+          .timeout(const Duration(seconds: 20));
+
+      request.followRedirects = false;
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Navigator-Dop-Parser/1.0',
+      );
+      request.headers.set(
+        HttpHeaders.acceptHeader,
+        'text/html,application/xhtml+xml',
+      );
+      request.headers.set(
+        HttpHeaders.acceptLanguageHeader,
+        'ru-RU,ru;q=0.9',
+      );
+
+      for (final cookie in _cookies.entries) {
+        request.cookies.add(
+          Cookie(cookie.key, cookie.value),
+        );
+      }
+
+      if (currentMethod == 'POST') {
+        request.headers.contentType = ContentType(
+          'application',
+          'x-www-form-urlencoded',
+          charset: 'utf-8',
+        );
+
+        final fields = formFields ?? currentData.entries.toList();
+        request.write(
+          fields
+              .map(
+                (e) =>
+                    '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
+              )
+              .join('&'),
+        );
+      }
+
+      final response = await request.close().timeout(const Duration(seconds: 20));
+
+      for (final cookie in response.cookies) {
+        if (cookie.expires != null &&
+            cookie.expires!.isBefore(DateTime.now())) {
+          _cookies.remove(cookie.name);
+        } else {
+          _cookies[cookie.name] = cookie.value;
+        }
+      }
+
+      final body = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(const Duration(seconds: 20));
+
+      if (response.isRedirect) {
+        final location =
+            response.headers.value('location');
+
+        if (location == null || location.isEmpty) {
+          return _DopResponse(
+            response.statusCode,
+            body,
+            currentUri,
+          );
+        }
+
+        if (response.statusCode == 301 ||
+            response.statusCode == 302 ||
+            response.statusCode == 303) {
+          currentMethod = 'GET';
+          currentData = const {};
+          formFields = null;
+        }
+
+        currentUri = currentUri.resolve(location);
+        continue;
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 400) {
+        throw DopParserException(
+          'HTTP ${response.statusCode} при обращении к $currentUri',
+        );
+      }
+
+      return _DopResponse(
+        response.statusCode,
+        body,
+        currentUri,
+      );
+    }
+
+    throw const DopParserException(
+      'Слишком много перенаправлений intranet.',
+    );
+  }
+
+  void close() {
+    _client.close(force: true);
+  }
+}
+
+class _DopResponse {
+  final int statusCode;
+  final String body;
+  final Uri uri;
+
+  const _DopResponse(
+    this.statusCode,
+    this.body,
+    this.uri,
+  );
+}
+
+,
+          caseSensitive: false,
+        ).hasMatch(label.trim());
         if (value.trim().isEmpty ||
+            rawValue.trim() == '0' ||
+            isPlaceholder ||
             RegExp(
               r'(?:^|\s)disabled(?:\s|=|$)',
               caseSensitive: false,
