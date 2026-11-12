@@ -1,12 +1,10 @@
 import 'dart:convert';
-import 'dart:ffi' as ffi;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:llm_llamacpp/llm_llamacpp.dart';
-import 'package:llm_llamacpp/src/backend_initializer.dart';
 import 'package:path_provider/path_provider.dart';
 
 
@@ -68,9 +66,8 @@ class _ChatLine {
 }
 
 class _LocalAiChatPageState extends State<LocalAiChatPage> {
-  // Keep the native engine alive across chat-page closes and screen changes.
-  // llama.cpp itself performs inference in a worker isolate.
-  static LlamaCppModel? _sharedModel;
+  // Keep the chat repository alive across page closes. The package owns a
+  // persistent native inference isolate and loads the GGUF model there once.
   static LlamaCppChatRepository? _sharedChatRepository;
   static String? _sharedModelPath;
   static Future<void>? _sharedLoadFuture;
@@ -404,9 +401,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       throw StateError('Сначала скачай модель. Это делается один раз.');
     }
 
-    if (_sharedChatRepository != null &&
-        _sharedModel != null &&
-        _sharedModelPath == modelPath) {
+    if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
       _chatRepository = _sharedChatRepository;
       return;
     }
@@ -414,9 +409,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     final activeLoad = _sharedLoadFuture;
     if (activeLoad != null) {
       await activeLoad;
-      if (_sharedChatRepository != null &&
-          _sharedModel != null &&
-          _sharedModelPath == modelPath) {
+      if (_sharedChatRepository != null && _sharedModelPath == modelPath) {
         _chatRepository = _sharedChatRepository;
         return;
       }
@@ -437,58 +430,21 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   static Future<void> _loadSharedModel(String modelPath) async {
     final oldChat = _sharedChatRepository;
-    final oldModel = _sharedModel;
     _sharedChatRepository = null;
-    _sharedModel = null;
     _sharedModelPath = null;
     oldChat?.dispose();
-    oldModel?.dispose();
 
-    LlamaCppModel? model;
-    LlamaCppChatRepository? chat;
-    try {
-      // Use the dependency's Android-aware initializer. It resolves the actual
-      // extracted native-library directory, loads dynamic backends once per
-      // process, and avoids the legacy ModelLoader's generic Android path.
-      final backend = BackendInitializer.initializeBackend();
-      final library = backend.$1;
-      final bindings = backend.$2;
-
-      if (Platform.isAndroid) {
-        final backendCount = library.lookupFunction<
-            ffi.Size Function(),
-            int Function()>(
-          'ggml_backend_reg_count',
-        )();
-        if (backendCount <= 0) {
-          throw StateError(
-            'llama.cpp не зарегистрировал CPU-бэкенд Android.',
-          );
-        }
-      }
-
-      model = LlamaCppModel.load(
-        modelPath,
-        bindings,
-        nGpuLayers: 0,
-        useMemoryMap: true,
-      );
-      chat = LlamaCppChatRepository.withModel(
-        model,
-        bindings,
-        contextSize: 4096,
-        nGpuLayers: 0,
-      );
-
-      _sharedModel = model;
-      _sharedChatRepository = chat;
-      _sharedModelPath = modelPath;
-    } catch (_) {
-      chat?.dispose();
-      model?.dispose();
-      _sharedModelPath = null;
-      rethrow;
-    }
+    // withModelPath delegates native initialization and GGUF loading to the
+    // dependency's persistent inference isolate. Do not load another model in
+    // the UI isolate: that would duplicate ~491 MB and initialize llama.cpp
+    // twice in the same process.
+    final chat = LlamaCppChatRepository.withModelPath(
+      modelPath,
+      contextSize: 4096,
+      nGpuLayers: 0,
+    );
+    _sharedChatRepository = chat;
+    _sharedModelPath = modelPath;
   }
 
   Future<bool> _confirmDestructiveAction(
