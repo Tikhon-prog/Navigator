@@ -879,10 +879,12 @@ class _DopStudentDialogState extends State<_DopStudentDialog> {
                               child: Text(profile, maxLines: 2, overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
-                    onChanged: (value) => setState(() {
-                      selectedProfile = value ?? '';
-                      profileError = false;
-                    }),
+                    onChanged: profilesLoading
+                        ? null
+                        : (value) => setState(() {
+                              selectedProfile = value ?? '';
+                              profileError = false;
+                            }),
                   ),
                 ],
                 const SizedBox(height: 10),
