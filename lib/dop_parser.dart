@@ -923,8 +923,10 @@ class DopProfileCatalogParser {
         final label = parser._clean(option.group(2) ?? '');
         final value = hasValue ? rawValue : label;
         if (value.trim().isEmpty ||
-            RegExp(r'\bdisabled\b', caseSensitive: false)
-                .hasMatch(optionAttributes)) {
+            RegExp(
+              r'(?:^|\s)disabled(?:\s|=|$)',
+              caseSensitive: false,
+            ).hasMatch(optionAttributes)) {
           continue;
         }
         if (!values.contains(value.trim())) values.add(value.trim());
