@@ -377,6 +377,9 @@ class DopParser {
     }
   }
 
+  /// Exposed for deterministic fixture tests; production uses [openCatalog].
+  List<DopProgram> parseCatalogHtml(String html) => _parseCatalog(html);
+
   Future<DopParseResult> parse() async {
     final student = await studentProvider.load();
 
@@ -707,15 +710,15 @@ class DopParser {
 
   String _attr(String tag, String name) {
     final match = RegExp(
-      r'''(?:\b)''' +
+      r'(?:^|\s)' +
           RegExp.escape(name) +
-          r'''(?:\s*=\s*["'])(.*?)(?:["'])''',
+          r'\s*=\s*(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s>]+))',
       caseSensitive: false,
     ).firstMatch(tag);
 
-    return _decode(match?.group(1) ?? '').trim();
+    final value = match?.group(1) ?? match?.group(2) ?? match?.group(3) ?? '';
+    return _decode(value).trim();
   }
-
   String _textTag(String html, String tag) {
     return _clean(
       RegExp(
@@ -914,7 +917,7 @@ class DopProfileCatalogParser {
 /// Finds the actual form that owns the catalogue checkboxes. It preserves all
 /// hidden fields and the repeated checkbox names required by PHP forms.
 class DopSelectionFormParser {
-  static _DopSelectionForm? parse(String html, Uri pageUri) {
+  static DopSelectionFormInfo? parse(String html, Uri pageUri) {
     final parser = const DopParser();
     final forms = RegExp(
       r'<form\b([^>]*)>([\s\S]*?)</form>',
@@ -969,7 +972,7 @@ class DopSelectionFormParser {
         }
       }
 
-      return _DopSelectionForm(
+      return DopSelectionFormInfo(
         action: target,
         method: method.isEmpty ? 'GET' : method,
         hiddenFields: List<MapEntry<String, String>>.unmodifiable(hidden),
@@ -981,14 +984,14 @@ class DopSelectionFormParser {
   }
 }
 
-class _DopSelectionForm {
+class DopSelectionFormInfo {
   final Uri action;
   final String method;
   final List<MapEntry<String, String>> hiddenFields;
   final String submitName;
   final String submitValue;
 
-  const _DopSelectionForm({
+  const DopSelectionFormInfo({
     required this.action,
     required this.method,
     required this.hiddenFields,
@@ -1003,7 +1006,7 @@ class DopCatalogSession {
   final List<DopProgram> programs;
   final _DopSession _session;
   final DopParser _parser;
-  final _DopSelectionForm? _form;
+  final DopSelectionFormInfo? _form;
   bool _closed = false;
 
   DopCatalogSession._({
@@ -1011,7 +1014,7 @@ class DopCatalogSession {
     required this.programs,
     required _DopSession session,
     required DopParser parser,
-    required _DopSelectionForm? form,
+    required DopSelectionFormInfo? form,
   })  : _session = session,
         _parser = parser,
         _form = form;
