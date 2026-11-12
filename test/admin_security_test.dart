@@ -34,6 +34,42 @@ void main() {
     expect((await repository.list()).map((e) => e.login), ['owner-one']);
   });
 
+  test('an explicitly empty permission set stays empty after save/load', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final restricted = AdminAccount(
+      id: 'restricted',
+      login: 'restricted-user',
+      passwordHash: PasswordHasher.secureDigest('a-long-unique-password-42'),
+      role: 'admin',
+      permissions: const [],
+      permissionsConfigured: true,
+    );
+
+    await AdminRepository().save([restricted]);
+    final loaded = (await AdminRepository().list()).single;
+
+    expect(loaded.permissionsConfigured, isTrue);
+    expect(loaded.effectivePermissions, isEmpty);
+    expect(loaded.can(AdminPermissions.manageData), isFalse);
+
+    final copied = loaded.copyWith(permissions: const []);
+    expect(copied.effectivePermissions, isEmpty);
+    expect(prefs.getString('navigator_admins_v2'), isNotNull);
+  });
+
+  test('accounts without a configured permission list receive role defaults', () {
+    final account = AdminAccount(
+      id: 'legacy',
+      login: 'legacy-user',
+      passwordHash: 'legacy-hash',
+      role: 'content',
+    );
+
+    expect(account.permissionsConfigured, isFalse);
+    expect(account.can(AdminPermissions.manageSchedule), isTrue);
+    expect(account.can(AdminPermissions.manageSync), isFalse);
+  });
+
   test('empty storage has no default admin account', () async {
     expect(await AdminRepository().list(), isEmpty);
   });
