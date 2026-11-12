@@ -34,6 +34,19 @@ void main() {
       expect(selected.hasValidProfile, isTrue);
     });
 
+    test('accepts a non-empty profile returned by a newer intranet catalog', () {
+      final student = DopStudent(
+        lastName: 'Иванов',
+        firstName: 'Иван',
+        classNumber: '10',
+        classLetter: 'А',
+        profile: 'Технологический (новое направление школы)',
+      );
+
+      expect(student.requiresProfile, isTrue);
+      expect(student.hasValidProfile, isTrue);
+    });
+
     test('grades below 10 do not require a study profile', () {
       final student = DopStudent(
         lastName: 'Иванов',
