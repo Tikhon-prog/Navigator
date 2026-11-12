@@ -58,7 +58,7 @@ jobs:
         run: flutter test
 
       - name: Flutter analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze --no-fatal-infos
 
       - name: Read application version
         id: app-version
@@ -73,7 +73,6 @@ jobs:
     name: Audit backend dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v7
