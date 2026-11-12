@@ -2,7 +2,7 @@
 # not the school API service.
 services:
   flutter-dev:
-    image: pokolenie/flutter-dev:3.47.9-jdk27
+    image: pokolenie/flutter-dev:3.47.9-jdk21
     platform: linux/amd64
     build:
       context: .
