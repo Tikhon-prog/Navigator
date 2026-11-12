@@ -104,7 +104,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
         rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty;
     if (hasSchoolSession) {
       try {
-        final account = jsonDecode(rawSchoolUser!);
+        final account = jsonDecode(rawSchoolUser);
         final id = account is Map ? (account['id'] ?? '').toString().trim() : '';
         currentSchoolUserId = id.isNotEmpty ? id : 'invalid-school-session';
       } catch (_) {
@@ -220,7 +220,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
         rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty;
     if (hasSchoolSession) {
       try {
-        final account = jsonDecode(rawSchoolUser!);
+        final account = jsonDecode(rawSchoolUser);
         final id = account is Map ? (account['id'] ?? '').toString().trim() : '';
         currentSchoolUserId = id.isNotEmpty ? id : 'invalid-school-session';
       } catch (_) {

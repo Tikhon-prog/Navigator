@@ -7,7 +7,7 @@ ARG FLUTTER_VERSION=3.47.9
 ARG FLUTTER_SHA256=25ed8c3c29d51a7353f2a944310b478af8214920639524b19c50a19e6c044c5a
 ARG ANDROID_TOOLS_BUILD=13114758
 ARG ANDROID_TOOLS_SHA256=7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee
-ARG JDK27_SHA256=d41bdc29a13920e90ee0f8e97a5bb9cb854ac06e0aa648a7fda1620db6c4e1ee
+ARG TEMURIN21_SHA256=d7f5d5cf865a2902b70ff549b97586a7d3f234e016f041ab447ea740c7d66d1c
 
 ENV DEBIAN_FRONTEND=noninteractive \
     FLUTTER_ROOT=/opt/flutter \
@@ -41,14 +41,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Oracle JDK 27. The fixed checksum deliberately makes an upstream update fail
-# closed; update the checksum in this Dockerfile when intentionally upgrading JDK 27.
+# Eclipse Temurin JDK 21.0.13+9. Pin the official release asset and SHA-256.
 RUN set -eux; \
-    curl -fsSL "https://download.oracle.com/java/27/latest/jdk-27_linux-x64_bin.tar.gz" -o /tmp/jdk27.tar.gz; \
-    echo "${JDK27_SHA256}  /tmp/jdk27.tar.gz" | sha256sum -c -; \
+    curl -fsSL "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.13_9.tar.gz" -o /tmp/temurin21.tar.gz; \
+    echo "${TEMURIN21_SHA256}  /tmp/temurin21.tar.gz" | sha256sum -c -; \
     mkdir -p /opt/java; \
-    tar -xzf /tmp/jdk27.tar.gz --strip-components=1 -C /opt/java; \
-    rm -f /tmp/jdk27.tar.gz
+    tar -xzf /tmp/temurin21.tar.gz --strip-components=1 -C /opt/java; \
+    rm -f /tmp/temurin21.tar.gz
 
 # Flutter 3.47.9 includes Dart 3.13.7. Verify the SDK archive before extraction.
 RUN set -eux; \

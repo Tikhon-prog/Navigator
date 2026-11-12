@@ -645,6 +645,7 @@ Future<void> showStudentGroupSelection(BuildContext context, String className) a
   await SchoolScheduleCatalog.load();
   if (!context.mounted) return;
   final prefs = await SharedPreferences.getInstance();
+  if (!context.mounted) return;
 
   if (SchoolScheduleCatalog.usesWholeClassSubgroup(className)) {
     final key = _studentScopedPreferenceKey(prefs, 'student_class_group_8В');
@@ -3966,6 +3967,7 @@ class SettingsPage extends StatelessWidget {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    if (!context.mounted) return;
     final enabled = prefs.getBool('navigator_api_enabled') ?? false;
     final baseUrl = (prefs.getString('navigator_api_url') ?? '').trim();
     if (!enabled || baseUrl.isEmpty) {
@@ -4043,6 +4045,7 @@ class SettingsPage extends StatelessWidget {
       } catch (_) {}
     }
     await SchoolScheduleCatalog.load();
+    if (!context.mounted) return;
     final result = await showDialog<String>(context: context, builder: (_) => const _StudentClassDialog());
     if (!context.mounted || result == null || result.isEmpty) return;
     await prefs.setString('student_class_name', result);

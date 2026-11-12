@@ -4,7 +4,7 @@ setlocal
 set DIRNAME=%~dp0
 set APP_HOME=%DIRNAME%
 
-rem Honor the explicitly configured JAVA_HOME (JDK 27 for this project).
+rem Honor the explicitly configured JAVA_HOME (Temurin JDK 21.0.13+9 for this project).
 rem Use Android Studio's bundled JBR only when JAVA_HOME is not defined.
 if not defined JAVA_HOME if exist "%ProgramFiles%\Android\Android Studio\jbr\bin\java.exe" set "JAVA_HOME=%ProgramFiles%\Android\Android Studio\jbr"
 if not defined JAVA_HOME if exist "%ProgramFiles(x86)%\Android\Android Studio\jbr\bin\java.exe" set "JAVA_HOME=%ProgramFiles(x86)%\Android\Android Studio\jbr"
@@ -22,7 +22,7 @@ if not exist "%APP_HOME%gradle\wrapper\gradle-wrapper.jar" (
 set CLASSPATH=%APP_HOME%gradle\wrapper\gradle-wrapper.jar
 if not exist "%JAVA_HOME%\bin\java.exe" (
   echo ERROR: A compatible Java runtime was not found.
-  echo Install JDK 27 and set JAVA_HOME, or use Android Studio's bundled JDK.
+  echo Install Temurin JDK 21.0.13+9 and set JAVA_HOME, or use Android Studio's bundled JDK.
   exit /b 1
 )
 "%JAVA_HOME%\bin\java.exe" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
