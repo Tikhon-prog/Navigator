@@ -268,6 +268,48 @@ class SchoolApiTests(unittest.TestCase):
         result = api.list_announcements({"id": "student1", "role": "student", "class_id": "8A"})
         self.assertEqual([item["id"] for item in result["data"]], ["notice1"])
 
+    def test_mentor_and_teacher_announcement_audiences_use_role_aliases(self):
+        with api._db() as db:
+            db.executemany(
+                "INSERT INTO announcements(id,title,body,severity,audience,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                [
+                    ("mentor-notice", "For mentors", "Mentor message", "info", "mentors", "admin1", api._utc_now()),
+                    ("teacher-notice", "For teachers", "Teacher message", "info", "teachers", "admin1", api._utc_now()),
+                ],
+            )
+        mentor_feed = api.list_announcements({"id": "mentor1", "role": "mentor"})["data"]
+        teacher_feed = api.list_announcements({"id": "teacher1", "role": "teacher"})["data"]
+        self.assertIn("mentor-notice", [item["id"] for item in mentor_feed])
+        self.assertNotIn("teacher-notice", [item["id"] for item in mentor_feed])
+        self.assertIn("teacher-notice", [item["id"] for item in teacher_feed])
+        self.assertNotIn("mentor-notice", [item["id"] for item in teacher_feed])
+
+    def test_unrelated_class_announcements_do_not_hide_older_assigned_class_notice(self):
+        with api._db() as db:
+            db.execute(
+                "INSERT INTO announcements(id,title,body,severity,audience,class_id,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                ("old-8a", "Older 8A announcement", "Visible to 8A", "info", "class",
+                 "8A", "admin1", "2026-01-01T00:00:00+00:00"),
+            )
+            db.executemany(
+                "INSERT INTO announcements(id,title,body,severity,audience,class_id,created_by,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                [
+                    (f"new-8b-{index}", f"8B announcement {index}", "Not for 8A",
+                     "info", "class", "8B", "admin1",
+                     f"9999-01-{(index % 28) + 1:02d}T00:00:00+00:00")
+                    for index in range(110)
+                ],
+            )
+        feed = api.list_announcements({
+            "id": "student1",
+            "role": "student",
+            "class_id": "8A",
+        })["data"]
+        self.assertEqual([item["id"] for item in feed], ["old-8a"])
+
     def test_announcement_push_fails_safely_without_firebase(self):
         with patch.object(api, "_send_push", return_value=("firebase_not_configured", 0)):
             with api._db() as db:
