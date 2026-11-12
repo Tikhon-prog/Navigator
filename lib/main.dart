@@ -2552,14 +2552,19 @@ class _AppShellState extends State<AppShell>{
                           switch (item.$1) {
                             case 5:
                               _openAnnouncements();
+                              break;
                             case 6:
                               _openNotes();
+                              break;
                             case 7:
                               _openAiChat();
+                              break;
                             case 8:
                               _openStudentTasks();
+                              break;
                             case 2:
                               _openStudyTab(item.$2);
+                              break;
                             default:
                               go(item.$1);
                           }
