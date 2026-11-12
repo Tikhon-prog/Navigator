@@ -63,6 +63,46 @@ void main() {
     });
   });
 
+  group('DOP subgroup schedule matching', () {
+    DopScheduleItem item(int day, int start, int end, String room) =>
+        DopScheduleItem(day: day, start: start, end: end, room: room);
+
+    test('matches each duplicate slot exactly once', () {
+      final left = [
+        item(1, 2, 3, 'Кабинет 214'),
+        item(1, 2, 3, '214'),
+      ];
+      final same = [
+        item(1, 2, 3, '214'),
+        item(1, 2, 3, '214'),
+      ];
+      final different = [
+        item(1, 2, 3, '214'),
+        item(2, 2, 3, '214'),
+      ];
+
+      expect(dopSchedulesEqual(left, same), isTrue);
+      expect(dopSchedulesEqual(left, different), isFalse);
+    });
+
+    test('rejects different lengths and different lesson numbers', () {
+      expect(
+        dopSchedulesEqual(
+          [item(1, 2, 3, '214')],
+          [item(1, 2, 4, '214')],
+        ),
+        isFalse,
+      );
+      expect(
+        dopSchedulesEqual(
+          [item(1, 2, 3, '214')],
+          const [],
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('DOP parser redirect policy', () {
     test('allows only the exact intranet HTTPS origin', () {
       expect(
