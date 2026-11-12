@@ -53,18 +53,19 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
     }
     DopCatalogSession? opened;
     try {
-      opened = await const DopParser().openCatalog();
+      final loaded = await const DopParser().openCatalog();
+      opened = loaded;
       if (!mounted) {
-        opened.close();
+        loaded.close();
         return;
       }
       setState(() {
         _catalog?.close();
-        _catalog = opened;
+        _catalog = loaded;
         _selected
           ..clear()
           ..addAll(
-            opened!.programs
+            loaded.programs
                 .expand((program) => program.subgroups)
                 .where((group) => group.preselected)
                 .map(_key),
