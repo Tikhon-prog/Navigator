@@ -227,6 +227,32 @@ class NotificationScopeTests(unittest.TestCase):
             result = notifications.list_notifications({"id": "teacher1", "role": "teacher", "class_id": None})
         self.assertEqual([row["title"] for row in result["data"]], ["Class notice"])
 
+    def test_unrelated_notifications_do_not_hide_older_personal_messages(self):
+        with core._db() as db:
+            db.execute(
+                "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,delivery_status) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                ("personal-old", "Important personal notice", "For student1",
+                 "personal", "user", "student1", "admin1", "2026-01-01T00:00:00+00:00", "queued"),
+            )
+            db.executemany(
+                "INSERT INTO notifications(id,title,body,kind,target_type,target_id,created_by,created_at,delivery_status) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                [
+                    (f"other-class-{index}", f"Other class {index}", "Not for 8A",
+                     "targeted", "class", "8B", "admin1",
+                     f"9999-01-{(index % 28) + 1:02d}T00:00:00+00:00", "queued")
+                    for index in range(250)
+                ],
+            )
+
+        feed = notifications.list_notifications({
+            "id": "student1",
+            "role": "student",
+            "class_id": "8A",
+        })["data"]
+        self.assertEqual([item["id"] for item in feed], ["personal-old"])
+
     def test_group_manager_can_create_group_and_add_active_member(self):
         actor = {"id": "admin1", "role": "admin"}
         group = notifications.create_group(notifications.GroupBody(name="Math Olympiad"), actor)
