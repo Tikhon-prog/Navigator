@@ -6,7 +6,23 @@ from fastapi import HTTPException
 
 from backend import main
 from backend import school_api
+from backend import security_check
 
+
+class SecretScannerTests(unittest.TestCase):
+    def test_detects_yandex_oauth_token_formats(self):
+        for prefix in ("y0_", "y1_", "y2_", "y3_"):
+            with self.subTest(prefix=prefix):
+                token = prefix + ("A9_b-" * 8)
+                self.assertTrue(
+                    any(pattern.search(token) for pattern in security_check.TOKEN_PATTERNS)
+                )
+
+    def test_does_not_match_short_yandex_like_identifier(self):
+        value = "y3_short"
+        self.assertFalse(
+            any(pattern.search(value) for pattern in security_check.TOKEN_PATTERNS)
+        )
 
 class SchoolAuthConfigurationTests(unittest.TestCase):
     def test_placeholder_signing_secret_is_rejected(self):
