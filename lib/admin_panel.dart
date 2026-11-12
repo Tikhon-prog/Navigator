@@ -603,6 +603,7 @@ class _AdminEditorState extends State<_AdminEditor> {
           role: role,
           active: active,
           permissions: role == 'superadmin' ? AdminPermissions.all.toList() : selected.toList(),
+          permissionsConfigured: true,
         ));
       }, child: Text(widget.existing == null ? 'Создать' : 'Сохранить')),
     ],
