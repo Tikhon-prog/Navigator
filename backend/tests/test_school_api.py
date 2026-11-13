@@ -11,7 +11,8 @@ from backend import rbac_api
 
 class SchoolApiTests(unittest.TestCase):
     def setUp(self):
-        api.login._attempts = {}
+        api.reset_login_throttle()
+        self.addCleanup(api.reset_login_throttle)
         self.tmp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {"NAVIGATOR_TOKEN_SECRET": "test-secret-that-is-long-enough-for-hmac-signing"})
         self.env.start()
@@ -111,6 +112,63 @@ class SchoolApiTests(unittest.TestCase):
         result = api.login(api.LoginBody(username="admin", password="correct horse battery"), request)
         self.assertEqual(result["user"]["role"], "admin")
         self.assertEqual(api._decode_token(result["access_token"])["auth_method"], "password")
+
+    @staticmethod
+    def _login_request(host: str):
+        from starlette.requests import Request
+        return Request({
+            "type": "http", "method": "POST", "path": "/api/v2/auth/login",
+            "scheme": "http", "server": ("testserver", 80),
+            "client": (host, 4000), "query_string": b"", "headers": [],
+        })
+
+    def _fail_login(self, host: str, username: str = "admin"):
+        with self.assertRaises(HTTPException) as raised:
+            api.login(api.LoginBody(username=username, password="definitely wrong"), self._login_request(host))
+        return raised.exception.status_code
+
+    def test_failed_logins_are_throttled_per_address_only(self):
+        for _ in range(10):
+            self.assertEqual(self._fail_login("10.0.0.1"), 401)
+        self.assertEqual(self._fail_login("10.0.0.1"), 429)
+        # Another client address is unaffected, and the right password from the
+        # blocked address is still refused until the window passes.
+        self.assertEqual(self._fail_login("10.0.0.2"), 401)
+        with self.assertRaises(HTTPException) as raised:
+            api.login(api.LoginBody(username="admin", password="correct horse battery"), self._login_request("10.0.0.1"))
+        self.assertEqual(raised.exception.status_code, 429)
+
+    def test_successful_logins_never_count_towards_the_limit(self):
+        request = self._login_request("10.0.0.3")
+        for _ in range(25):
+            result = api.login(api.LoginBody(username="admin", password="correct horse battery"), request)
+            self.assertEqual(result["user"]["role"], "admin")
+
+    def test_successful_login_clears_earlier_failures(self):
+        for _ in range(9):
+            self.assertEqual(self._fail_login("10.0.0.4"), 401)
+        api.login(api.LoginBody(username="admin", password="correct horse battery"), self._login_request("10.0.0.4"))
+        for _ in range(9):
+            self.assertEqual(self._fail_login("10.0.0.4"), 401)
+
+    def test_unknown_and_inactive_logins_answer_like_a_wrong_password(self):
+        self.assertEqual(self._fail_login("10.0.0.5", username="nobody-here"), 401)
+        with api._db() as db:
+            db.execute("UPDATE users SET active=0 WHERE username='admin'")
+        self.assertEqual(self._fail_login("10.0.0.5", username="admin"), 401)
+
+    def test_placeholder_token_secrets_are_rejected_whatever_the_separators(self):
+        for placeholder in (
+            "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_VALUE",
+            "please-change-me-to-something-long-1234",
+            "your secret goes here, at least 32 chars",
+        ):
+            with patch.object(api, "TOKEN_SECRET", placeholder):
+                with self.assertRaises(HTTPException) as raised:
+                    api._signing_key()
+            self.assertEqual(raised.exception.status_code, 503, placeholder)
+        with patch.object(api, "TOKEN_SECRET", "k7Qx9vLm2PzR8tYw4NcB6hJd3FsA5gUe"):
+            self.assertEqual(len(api._signing_key()), 32)
 
     def test_password_session_for_student_is_revoked_when_local_login_is_disabled(self):
         with api._db() as db:

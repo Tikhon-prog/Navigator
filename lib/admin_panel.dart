@@ -480,7 +480,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     _SecurityTile(Icons.lock_clock_rounded, 'Защита от перебора', 'После 5 неверных попыток логин блокируется на 5 минут.'),
     _SecurityTile(Icons.password_rounded, 'Пароли', 'Новые и успешно используемые старые пароли переходят на солёное многократное хеширование.'),
     _SecurityTile(Icons.shield_rounded, 'Права', 'Каждая административная операция проверяет разрешение текущего аккаунта.'),
-    _SecurityTile(Icons.phone_android_rounded, 'Важно', 'Локальные права находятся в APK/хранилище устройства. Для настоящей защиты полномочий нужен сервер, который проверяет роль на своей стороне.'),
   ]);
 
   Widget _audit() => ListView(padding: const EdgeInsets.all(20), children: [

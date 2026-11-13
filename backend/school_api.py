@@ -15,9 +15,11 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -196,8 +198,9 @@ def _b64(data: bytes) -> str:
 
 def _signing_key() -> bytes:
     secret = TOKEN_SECRET.strip()
-    normalized = secret.lower()
-    placeholders = ("replace", "change-me", "changeme", "your-secret", "example", "placeholder", "set-me")
+    # Compare without separators so CHANGE_ME, change-me and "change me" are all caught.
+    normalized = re.sub(r"[^a-z0-9]", "", secret.lower())
+    placeholders = ("replace", "changeme", "yoursecret", "example", "placeholder", "setme")
     if len(secret) < 32 or any(marker in normalized for marker in placeholders):
         # A copied example value must never enable a predictable JWT signing key.
         raise HTTPException(status_code=503, detail="Server authentication secret is missing or still a placeholder")
@@ -553,39 +556,74 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "pokolenie-school-api-v2"}
 
 
+# Per-process throttle of *failed* password logins, keyed by client address. Only
+# failures count, so ordinary successful logins never lock anybody out. Behind a
+# reverse proxy the address is real only if uvicorn trusts the proxy's
+# X-Forwarded-For (see FORWARDED_ALLOW_IPS in docker-compose.yml); otherwise every
+# user shares the proxy's address. Multi-worker setups need a shared limiter.
+_LOGIN_WINDOW_SECONDS = 60
+_LOGIN_MAX_FAILURES = 10
+_LOGIN_BUCKET_LIMIT = 4096
+_login_failures: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
+
+
+def reset_login_throttle() -> None:
+    with _login_lock:
+        _login_failures.clear()
+
+
+def _login_is_blocked(key: str, now: float) -> bool:
+    with _login_lock:
+        recent = [stamp for stamp in _login_failures.get(key, ()) if now - stamp < _LOGIN_WINDOW_SECONDS]
+        if recent:
+            _login_failures[key] = recent
+        else:
+            _login_failures.pop(key, None)
+        return len(recent) >= _LOGIN_MAX_FAILURES
+
+
+def _record_login_failure(key: str, now: float) -> None:
+    with _login_lock:
+        if len(_login_failures) >= _LOGIN_BUCKET_LIMIT:
+            # Stay bounded if a client rotates source addresses: drop expired
+            # buckets first, then the oldest ones. Authentication data is untouched.
+            for address in [a for a, stamps in _login_failures.items()
+                            if all(now - s >= _LOGIN_WINDOW_SECONDS for s in stamps)]:
+                del _login_failures[address]
+            while len(_login_failures) >= _LOGIN_BUCKET_LIMIT:
+                del _login_failures[next(iter(_login_failures))]
+        _login_failures.setdefault(key, []).append(now)
+
+
+def _clear_login_failures(key: str) -> None:
+    with _login_lock:
+        _login_failures.pop(key, None)
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    return _hash_password(secrets.token_urlsafe(16))
+
+
 @router.post("/auth/login")
 def login(body: LoginBody, request: Request) -> dict[str, Any]:
-    # Basic per-process throttle. Production deployments should additionally use
-    # a reverse-proxy/IP rate limit and centralized throttling for multi-worker setups.
     ip = request.client.host if request.client else "unknown"
-    now = time.monotonic()
-    attempts = getattr(login, "_attempts", {})
-    # Keep the per-process development throttle bounded if clients rotate source IPs.
-    if len(attempts) > 4096:
-        attempts = {
-            address: [stamp for stamp in stamps if now - stamp < 60]
-            for address, stamps in attempts.items()
-        }
-        attempts = {address: stamps for address, stamps in attempts.items() if stamps}
-        if len(attempts) > 4096:
-            # Preserve the most recently inserted buckets; stale/overflow entries are
-            # dropped only from this local throttle, never from authentication data.
-            attempts = dict(list(attempts.items())[-2048:])
-    recent = [stamp for stamp in attempts.get(ip, []) if now - stamp < 60]
-    if len(recent) >= 10:
-        login._attempts = attempts
+    if _login_is_blocked(ip, time.monotonic()):
         raise HTTPException(status_code=429, detail="Too many login attempts; retry later")
-    recent.append(now)
-    attempts[ip] = recent
-    login._attempts = attempts
     with _db() as db:
         user = db.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE", (body.username,)).fetchone()
-    if not user or not user["active"] or not _verify_password(body.password, user["password_hash"]):
+    usable = bool(user and user["active"])
+    # Always spend one password hash so response time does not reveal whether a login exists.
+    password_ok = _verify_password(body.password, user["password_hash"] if usable else _dummy_password_hash())
+    if not usable or not password_ok:
+        _record_login_failure(ip, time.monotonic())
         _audit(None, "auth.login_failed", None, {"username": body.username[:120]})
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if user["role"] != "admin" and not _allow_non_sso_password_login():
         _audit(user["id"], "auth.password_login_blocked")
         raise HTTPException(status_code=403, detail="Use the school's single sign-on for this account")
+    _clear_login_failures(ip)
     result = _issue_session(user, auth_method="password")
     _audit(user["id"], "auth.login", details={"auth_method": "password"})
     return result

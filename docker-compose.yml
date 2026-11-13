@@ -9,6 +9,10 @@ services:
       - .env
     environment:
       NAVIGATOR_DB_PATH: /data/navigator.sqlite3
+      # Trust X-Forwarded-For from the reverse proxy so the login limiter sees real client
+      # addresses instead of one shared proxy address. Safe here only because the port below
+      # is bound to 127.0.0.1: nothing but the local reverse proxy can reach the API.
+      FORWARDED_ALLOW_IPS: "*"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

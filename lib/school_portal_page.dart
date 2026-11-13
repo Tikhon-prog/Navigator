@@ -1352,7 +1352,6 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: busy ? null : _syncTeacherAssignments,
       )),
-    Card(child: ListTile(leading: const Icon(Icons.info_outline_rounded), title: const Text('Важно'), subtitle: const Text('Доступ к ученикам и дополнительным занятиям ограничивается назначениями. Экстренные сообщения не заменяют школьную систему тревоги.'))),
   ]);
 
   Widget _stat(String title, dynamic value) => SizedBox(width: 155, child: Card(child: Padding(
