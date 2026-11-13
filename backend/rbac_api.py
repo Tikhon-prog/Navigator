@@ -766,12 +766,7 @@ class TeacherAliasBody(BaseModel):
 
 
 def _class_key(value: str) -> str:
-    lookalikes = str.maketrans({
-        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
-        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
-        "Х": "X", "У": "Y",
-    })
-    return str(value or "").strip().upper().replace(" ", "").translate(lookalikes)
+    return core.normalize_class_id(value)
 
 
 @router.get("/management/sync/teacher-aliases")

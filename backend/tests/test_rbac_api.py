@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from backend import rbac_api, school_api as core, sso_api
+from backend import main, rbac_api, school_api as core, sso_api
 
 
 class SchoolPositionTests(unittest.TestCase):
@@ -244,7 +244,22 @@ class SchoolPositionTests(unittest.TestCase):
 
     def test_class_labels_normalize_cyrillic_and_latin_lookalikes(self):
         self.assertEqual(core.normalize_class_id("8А"), core.normalize_class_id("8A"))
-        self.assertEqual(core.normalize_class_id(" 10-Б "), core.normalize_class_id("10-B"))
+        self.assertEqual(core.normalize_class_id(" 10-В "), core.normalize_class_id("10-B"))
+
+    def test_different_parallel_classes_never_collapse_into_one(self):
+        # Real school classes: «Б» and «В» are different parallels, and «Б» is not
+        # a Latin lookalike, so 5Б/5В/5B must keep 5Б separate from the other two.
+        keys = {label: core.normalize_class_id(label) for label in ("5Б", "5В", "5Г", "5Д", "5Е", "5Ж", "5З")}
+        self.assertEqual(len(set(keys.values())), len(keys))
+        self.assertNotEqual(core.normalize_class_id("5Б"), core.normalize_class_id("5В"))
+        self.assertNotEqual(core.normalize_class_id("5Б"), core.normalize_class_id("5B"))
+        self.assertEqual(core.normalize_class_id("5В"), core.normalize_class_id("5B"))
+        self.assertEqual(core.normalize_class_id("5б"), core.normalize_class_id("5Б"))
+
+    def test_every_module_uses_the_same_class_normalizer(self):
+        for label in ("5Б", "5В", "10-Е", " 8 а "):
+            self.assertEqual(rbac_api._class_key(label), core.normalize_class_id(label))
+            self.assertEqual(main._normalize_class_key(label), core.normalize_class_id(label))
 
     def test_teacher_account_cannot_receive_mentor_only_position(self):
         with self.assertRaises(HTTPException) as raised:

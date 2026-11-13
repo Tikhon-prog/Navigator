@@ -14,7 +14,7 @@ load_dotenv(BASE_DIR.parent / ".env")
 load_dotenv(BASE_DIR / ".env")
 
 from .data_sources import load_configured_sheet
-from .school_api import router as school_services_router
+from .school_api import normalize_class_id, router as school_services_router
 from .sso_api import router as school_sso_router
 from .notification_api import router as notification_router
 from .rbac_api import router as school_rbac_router
@@ -190,12 +190,7 @@ def get_places(floor: int | None = None, search: str | None = None) -> dict[str,
 
 
 def _normalize_class_key(value: Any) -> str:
-    lookalikes = str.maketrans({
-        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
-        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
-        "Х": "X", "У": "Y",
-    })
-    return "".join(str(value or "").strip().upper().split()).translate(lookalikes)
+    return normalize_class_id(value)
 
 
 def _visible_announcements(

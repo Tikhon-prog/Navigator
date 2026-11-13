@@ -38,14 +38,23 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Only letters that are *visually identical* in Cyrillic and Latin may be merged.
+# «Б» (Be) looks like no Latin letter, and mapping it to "B" made 5Б and 5В the
+# same class for every access check. Do not add letters here that merely sound alike.
+_CLASS_LOOKALIKES = str.maketrans({
+    "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+    "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+    "Х": "X", "У": "Y",
+})
+
+
 def normalize_class_id(value: Any) -> str:
-    """Normalize visually equivalent Cyrillic/Latin class letters for access checks."""
-    lookalikes = str.maketrans({
-        "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
-        "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
-        "Х": "X", "У": "Y", "Б": "B",
-    })
-    return "".join(str(value or "").strip().upper().translate(lookalikes).split())
+    """Normalize visually identical Cyrillic/Latin class letters for access checks.
+
+    This is the single class-label normalizer for the whole backend; other
+    modules must call it instead of keeping their own copy of the table.
+    """
+    return "".join(str(value or "").strip().upper().translate(_CLASS_LOOKALIKES).split())
 
 
 @contextmanager
