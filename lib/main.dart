@@ -3721,28 +3721,10 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _serverAdminLogin(BuildContext context, String baseUrl) async {
-    final login = TextEditingController();
-    final password = TextEditingController();
     final result = await showDialog<Map<String, String>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Технический вход администратора'),
-        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Только для первого запуска и восстановления доступа. Для обычной работы используй школьный SSO.'),
-          const SizedBox(height: 12),
-          TextField(controller: login, autofocus: true, decoration: const InputDecoration(labelText: 'Логин администратора')),
-          TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Пароль администратора')),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
-          FilledButton(onPressed: () {
-            if (login.text.trim().isEmpty || password.text.isEmpty) return;
-            Navigator.pop(dialogContext, {'username': login.text.trim(), 'password': password.text});
-          }, child: const Text('Войти')),
-        ],
-      ),
+      builder: (_) => const _ServerAdminLoginDialog(),
     );
-    login.dispose(); password.dispose();
     if (result == null) return;
     try {
       await SchoolAccountService().signInAsServerAdmin(
@@ -3950,6 +3932,45 @@ class _EditValueDialogState extends State<_EditValueDialog> {
       FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Сохранить')),
     ],
   );
+}
+
+class _ServerAdminLoginDialog extends StatefulWidget {
+  const _ServerAdminLoginDialog();
+
+  @override
+  State<_ServerAdminLoginDialog> createState() => _ServerAdminLoginDialogState();
+}
+
+class _ServerAdminLoginDialogState extends State<_ServerAdminLoginDialog> {
+  // Owned by the State so they are disposed only after the dialog's closing
+  // animation has finished, not right after showDialog() returns.
+  final login = TextEditingController();
+  final password = TextEditingController();
+
+  @override
+  void dispose() {
+    login.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Технический вход администратора'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Только для первого запуска и восстановления доступа. Для обычной работы используй школьный SSO.'),
+          const SizedBox(height: 12),
+          TextField(controller: login, autofocus: true, decoration: const InputDecoration(labelText: 'Логин администратора')),
+          TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Пароль администратора')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          FilledButton(onPressed: () {
+            if (login.text.trim().isEmpty || password.text.isEmpty) return;
+            Navigator.pop(context, {'username': login.text.trim(), 'password': password.text});
+          }, child: const Text('Войти')),
+        ],
+      );
 }
 
 class _ThemeTile extends StatelessWidget { final String title; final String description; final List<Color> colors; final bool selected; final VoidCallback onTap; const _ThemeTile({required this.title, required this.description, required this.colors, required this.selected, required this.onTap}); @override Widget build(BuildContext context) => Card(margin: const EdgeInsets.only(bottom: 10), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(20), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [Container(width: 58, height: 58, decoration: BoxDecoration(gradient: LinearGradient(colors: colors), borderRadius: BorderRadius.circular(16))), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(description, style: const TextStyle(fontSize: 12))])), Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: selected ? colors.first : null)])))); }
