@@ -2604,7 +2604,7 @@ class _StartDialogState extends State<_StartDialog> {
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
         SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v){setState((){floor=v.first;choice='__entrance__';});}),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [
+        DropdownButtonFormField<String>(key: ValueKey(floor), initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [
           if (floor == 1) const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')),
           ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text(SchoolData.isPlace(r) ? SchoolData.title(r) : '${r.id} — ${r.name}'))),
         ], onChanged:(v)=>setState(()=>choice=v??values.first)),
@@ -2948,6 +2948,9 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
         Padding(padding: const EdgeInsets.only(top: 10, bottom: 4), child: Text(days[d - 1], style: const TextStyle(fontWeight: FontWeight.w800))),
         for (var slot = 0; slot < SchoolScheduleCatalog.mathLessonCount(widget.className, d); slot++)
           DropdownButtonFormField<String>(
+            // initialValue is read once; re-key so values loaded from prefs after the
+            // first frame are actually shown.
+            key: ValueKey('$d|$slot|${selected['$d|$slot']}'),
             isExpanded: true,
             decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
             initialValue: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
