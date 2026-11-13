@@ -2631,8 +2631,10 @@ class _MapPageState extends State<MapPage>{
   final search=TextEditingController();
   @override void initState(){
     super.initState();
-    selected=widget.initialRoom;
-    if(selected!=null)floor=SchoolData.room(selected!).floor;
+    // Same guard as didUpdateWidget: a stale room id must not crash the map.
+    final initial = widget.initialRoom == null ? null : SchoolData.tryRoom(widget.initialRoom!);
+    selected = initial?.id;
+    if (initial != null) floor = initial.floor;
     schoolLocalDataRevision.addListener(_reloadPreferencesAfterAi);
     _load();
   }
@@ -2653,7 +2655,9 @@ class _MapPageState extends State<MapPage>{
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     startFloor = prefs.getInt('map_start_floor') ?? 1;
-    startId = prefs.getString('map_start_location');
+    // Drop a saved start point that no longer exists in the current map data.
+    final savedStart = prefs.getString('map_start_location');
+    startId = savedStart != null && SchoolData.tryRoom(savedStart) != null ? savedStart : null;
     favoriteIds = (prefs.getStringList(_favoritesKey) ?? const <String>[]).toSet();
     if (mounted) setState(() {});
   }
