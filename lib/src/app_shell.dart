@@ -429,23 +429,6 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Future<void> _openStudentTasks() async {
-    key.currentState?.closeDrawer();
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => StudentTasksPage(
-          onMenu: () {
-            Navigator.of(context).pop();
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) key.currentState?.openDrawer();
-            });
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openAiChat() async {
     key.currentState?.closeDrawer();
     if (!mounted) return;
@@ -783,93 +766,6 @@ class _AppShellState extends State<AppShell>{
         notifySchoolLocalDataChanged();
         return 'Заметка «${title.isEmpty ? 'Заметка' : title}» сохранена на этом устройстве.';
 
-      case 'get_student_tasks':
-        final filter = arg('filter').toLowerCase();
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
-        final tomorrow = today.add(const Duration(days: 1));
-        final allTasks = await StudentTaskStore.load();
-        final matching = allTasks.where((task) {
-          switch (filter) {
-            case 'active':
-              return !task.done;
-            case 'today':
-              return !task.done &&
-                  !task.dueAt.isBefore(today) &&
-                  task.dueAt.isBefore(tomorrow);
-            case 'overdue':
-              return !task.done && task.dueAt.isBefore(now);
-            case 'completed':
-              return task.done;
-            default:
-              return true;
-          }
-        }).take(30).toList();
-        if (matching.isEmpty) {
-          return filter == 'overdue'
-              ? 'Просроченных заданий нет.'
-              : 'В выбранной категории заданий пока нет.';
-        }
-        return matching.map((task) =>
-          'ID: ${task.id}; ${task.done ? 'выполнено' : 'активно'}; '
-          '${task.kind.label}; предмет: ${task.subject.isEmpty ? 'не указан' : task.subject}; '
-          'срок: ${task.dueAt.toLocal().toString().substring(0, 16)}; '
-          'важность: ${task.priority}; задание: ${task.title}'
-          '${task.description.isEmpty ? '' : '; подробности: ${task.description}'}'
-        ).join('\n');
-
-      case 'add_student_task':
-        final title = arg('title');
-        final subject = arg('subject');
-        final dueText = arg('due_at');
-        final description = arg('description');
-        if (title.isEmpty) return 'Укажи, что нужно сделать.';
-        if (title.length > 180 || description.length > 3000) {
-          return 'Слишком длинное задание или описание.';
-        }
-        final dueAt = DateTime.tryParse(dueText);
-        if (dueAt == null) {
-          return 'Не удалось разобрать срок сдачи. Уточни дату и время в формате ISO 8601.';
-        }
-        final rawKind = arg('kind').toLowerCase();
-        final kind = rawKind.contains('test') || rawKind.contains('контроль')
-            ? StudentTaskKind.test
-            : rawKind.contains('project') || rawKind.contains('проект')
-                ? StudentTaskKind.project
-                : StudentTaskKind.homework;
-        final priority = (integer('priority') ?? 2).clamp(1, 3).toInt();
-        final now = DateTime.now();
-        final task = StudentTask(
-          id: now.microsecondsSinceEpoch.toString(),
-          title: title,
-          subject: subject,
-          description: description,
-          dueAt: dueAt.isUtc ? dueAt.toLocal() : dueAt,
-          kind: kind,
-          priority: priority,
-          done: false,
-          createdAt: now,
-        );
-        await StudentTaskStore.upsert(task);
-        notifySchoolLocalDataChanged();
-        return 'Задание «$title» сохранено локально. Срок: ${task.dueAt.toLocal().toString().substring(0, 16)}. ID: ${task.id}.';
-
-      case 'complete_student_task':
-        final taskId = arg('id');
-        if (taskId.isEmpty) return 'Не указан ID задания.';
-        final completed = await StudentTaskStore.setCompleted(taskId, true);
-        if (!completed) return 'Задание с таким ID не найдено.';
-        notifySchoolLocalDataChanged();
-        return 'Задание отмечено выполненным.';
-
-      case 'delete_student_task':
-        final taskId = arg('id');
-        if (taskId.isEmpty) return 'Не указан ID задания.';
-        final deleted = await StudentTaskStore.delete(taskId);
-        if (!deleted) return 'Задание с таким ID не найдено.';
-        notifySchoolLocalDataChanged();
-        return 'Задание удалено с этого устройства.';
-
       default:
         return 'Неизвестное действие приложения: $action.';
     }
@@ -882,7 +778,7 @@ class _AppShellState extends State<AppShell>{
       key.currentState?.openDrawer();
     }
     final pages = <Widget>[
-      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat, onTasks: _openStudentTasks),
+      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
       SchedulePage(onMenu: menu, onNotes: _openNotes),
       SupplementsPage(onMenu: menu),
@@ -928,7 +824,7 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),(8,Icons.assignment_rounded,'Домашние задания','Сроки, контрольные и проекты'),if(_mentorMenuAllowed)(9,Icons.groups_rounded,'Мои подопечные','Локальный список наставника')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 8) { _openStudentTasks(); } else if (x.$1 == 9) { _openMentorMentees(); } else { go(x.$1); } }))]))])));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),if(_mentorMenuAllowed)(9,Icons.groups_rounded,'Мои подопечные','Локальный список наставника')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 9) { _openMentorMentees(); } else { go(x.$1); } }))]))])));}
 }
 class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
   const _PokoleniePageTransitionsBuilder();

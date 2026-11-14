@@ -100,7 +100,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
-Перед ответами о домашних заданиях используй get_student_tasks. Для новых заданий не выдумывай срок: если дата или время не названы либо неоднозначны, сначала уточни их. Перед удалением или отметкой выполнения сначала найди точный ID задания. ДОПы только отображай: не добавляй, не изменяй и не удаляй их.
 Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, задания, избранное и настройки только через инструменты приложения. Не изменяй ДОПы: они доступны только для просмотра.
 ''';
 
@@ -447,52 +446,10 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     _sharedModelPath = modelPath;
   }
 
-  Future<bool> _confirmDestructiveAction(
-    Map<String, dynamic> args,
-  ) async {
-    if (!mounted) return false;
-
-    final subject = (args['id'] ?? '').toString().trim();
-    if (subject.isEmpty) return false;
-    final description = 'Удалить задание с ID $subject с этого устройства?';
-
-    return await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Подтвердить удаление'),
-            content: Text(
-              '$description\n\nЭто действие нельзя автоматически отменить.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Не удалять'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
-                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
-                ),
-                child: const Text('Удалить'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
   Future<String> _runAction(String name, Map<String, dynamic> args) async {
     final handler = widget.actionHandler;
     if (handler == null) {
       return 'Действия приложения пока не подключены в этой сборке.';
-    }
-    if (name == 'delete_student_task') {
-      final approved = await _confirmDestructiveAction(args);
-      if (!approved) {
-        return 'Пользователь отменил удаление. Не повторяй это действие без нового прямого запроса.';
-      }
     }
     final result = await handler(name, args);
     final mapPrefix = '__OPEN_MAP__:';
@@ -630,43 +587,6 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           parameters: [
             LLMToolParam(name: 'title', type: 'string', description: 'Заголовок заметки', isRequired: true),
             LLMToolParam(name: 'body', type: 'string', description: 'Содержимое заметки', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
-          name: 'get_student_tasks',
-          description: 'Прочитать домашние задания, контрольные и проекты ученика. Вызывай перед вопросами о дедлайнах и перед изменением существующего задания.',
-          parameters: [
-            LLMToolParam(name: 'filter', type: 'string', description: 'all, active, today, overdue или completed', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
-          name: 'add_student_task',
-          description: 'Создать домашнее задание, контрольную или проект в локальном списке. Если срок неясен, сначала спроси дату и время, не выдумывай дедлайн.',
-          parameters: [
-            LLMToolParam(name: 'title', type: 'string', description: 'Что нужно сделать', isRequired: true),
-            LLMToolParam(name: 'subject', type: 'string', description: 'Предмет или пустая строка', isRequired: true),
-            LLMToolParam(name: 'due_at', type: 'string', description: 'Точная дата и время в ISO 8601 local time, например 2026-11-12T18:00:00', isRequired: true),
-            LLMToolParam(name: 'kind', type: 'string', description: 'homework, test или project', isRequired: true),
-            LLMToolParam(name: 'priority', type: 'integer', description: '1 срочно, 2 обычно, 3 можно позже', isRequired: true),
-            LLMToolParam(name: 'description', type: 'string', description: 'Страница, упражнения или дополнительные детали', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
-          name: 'complete_student_task',
-          description: 'Отметить задание выполненным. Сначала найди точный ID через get_student_tasks.',
-          parameters: [
-            LLMToolParam(name: 'id', type: 'string', description: 'ID задания из локального списка', isRequired: true),
-          ],
-          handler: _runAction,
-        ),
-        _LocalAiTool(
-          name: 'delete_student_task',
-          description: 'Удалить задание по точному ID. Сначала найди его через get_student_tasks.',
-          parameters: [
-            LLMToolParam(name: 'id', type: 'string', description: 'ID задания из локального списка', isRequired: true),
           ],
           handler: _runAction,
         ),

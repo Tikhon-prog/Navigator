@@ -3,8 +3,8 @@ part of '../main.dart';
 class HomePage extends StatelessWidget {
   final String userName;
   final AppThemeType theme;
-  final VoidCallback onMenu, onMap, onSchedule, onDop, onAnnouncements, onAiChat, onTasks;
-  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop, required this.onAnnouncements, required this.onAiChat, required this.onTasks});
+  final VoidCallback onMenu, onMap, onSchedule, onDop, onAnnouncements, onAiChat;
+  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop, required this.onAnnouncements, required this.onAiChat});
 
   @override
   Widget build(BuildContext context) {
@@ -66,11 +66,8 @@ class HomePage extends StatelessWidget {
                   _DashboardCard(icon: Icons.calendar_month_rounded, title: 'Расписание', subtitle: 'Уроки, группы и кабинеты', accent: const Color(0xFF13A88A), onTap: onSchedule),
                   _DashboardCard(icon: Icons.auto_awesome_rounded, title: 'Дополнительные занятия', subtitle: 'ДОПы, время и преподаватели', accent: const Color(0xFF9667E8), onTap: onDop),
                   _DashboardCard(icon: Icons.campaign_rounded, title: 'Объявления и оповещения', subtitle: 'Новости школы и важные сообщения', accent: const Color(0xFFE58B35), onTap: onAnnouncements),
-                  _DashboardCard(icon: Icons.assignment_rounded, title: 'Домашние задания', subtitle: 'Дедлайны, контрольные и проекты', accent: const Color(0xFF3B82C4), onTap: onTasks),
                 ],
               ),
-              const SizedBox(height: 14),
-              UpcomingStudentTaskPreview(onOpen: onTasks),
               const SizedBox(height: 24),
             ],
           ),
