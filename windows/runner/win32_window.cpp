@@ -209,8 +209,21 @@ Win32Window::MessageHandler(HWND hwnd,
 
       return 0;
     }
+    case WM_ERASEBKGND:
+      // Flutter рисует всё окно сам; стирание фона вызывает мерцание и чёрные
+      // полосы при изменении размера.
+      return 1;
+
     case WM_SIZE: {
+      // При сворачивании клиентская область нулевая: не сжимаем дочернее окно
+      // Flutter в 0x0, иначе после восстановления остаются чёрные пятна.
+      if (wparam == SIZE_MINIMIZED) {
+        return 0;
+      }
       RECT rect = GetClientArea();
+      if (rect.right - rect.left <= 0 || rect.bottom - rect.top <= 0) {
+        return 0;
+      }
       if (child_content_ != nullptr) {
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
