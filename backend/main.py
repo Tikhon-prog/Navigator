@@ -14,6 +14,9 @@ load_dotenv(BASE_DIR.parent / ".env")
 load_dotenv(BASE_DIR / ".env")
 
 from .data_sources import load_configured_sheet
+from contextlib import asynccontextmanager
+
+from . import notification_api, polls_api, rbac_api, school_api, sso_api
 from .school_api import normalize_class_id, router as school_services_router
 from .sso_api import router as school_sso_router
 from .notification_api import router as notification_router
@@ -25,7 +28,24 @@ PUBLIC_READ_SHEETS = frozenset({
 })
 INTERNAL_READ_SHEETS = PUBLIC_READ_SHEETS | {"Supplements"}
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Порядок совпадает с прежним порядком startup-обработчиков роутеров.
+    school_api.startup()
+    sso_api.init_sso_tables()
+    await notification_api.init_notifications()
+    await rbac_api.init_roles()
+    await polls_api.init_polls()
+    try:
+        yield
+    finally:
+        for task in (notification_api._worker_task, rbac_api._auto_sync_task):
+            if task is not None and not task.done():
+                task.cancel()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Поколение — сервер школы",
     description="API школьного приложения",
     version="0.2.1",

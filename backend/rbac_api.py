@@ -180,7 +180,6 @@ def _auto_sync_interval() -> int:
     return max(60, min(86400, value))
 
 
-@router.on_event("startup")
 async def init_roles() -> None:
     global _auto_sync_task
     _init()

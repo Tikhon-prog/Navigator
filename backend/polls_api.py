@@ -58,7 +58,6 @@ def _init() -> None:
         """)
 
 
-@router.on_event("startup")
 async def init_polls() -> None:
     _init()
 

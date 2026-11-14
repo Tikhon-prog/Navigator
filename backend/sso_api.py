@@ -139,7 +139,6 @@ def _userinfo(access_token: str) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="School SSO is temporarily unavailable")
 
 
-@router.on_event("startup")
 def init_sso_tables() -> None:
     with core._db() as db:
         db.execute("""

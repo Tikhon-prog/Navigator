@@ -557,7 +557,6 @@ def _send_push(tokens: list[str], title: str, body: str, data: dict[str, str]) -
         return "provider_error", 0
 
 
-@router.on_event("startup")
 def startup() -> None:
     init_db()
 

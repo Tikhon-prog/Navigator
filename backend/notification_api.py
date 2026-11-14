@@ -85,7 +85,6 @@ def _init() -> None:
                    (_now(),))
 
 
-@router.on_event("startup")
 async def init_notifications() -> None:
     _init()
     if os.getenv("NAVIGATOR_NOTIFICATION_WORKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}:
