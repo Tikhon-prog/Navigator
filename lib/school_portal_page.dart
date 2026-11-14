@@ -1078,6 +1078,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             if (eligible.isEmpty)
               const Text('Нет активных сотрудников с выбранным типом аккаунта.')
             else DropdownButtonFormField<String>(
+              key: ValueKey(assignmentType), // initialValue is read once; rebuild when the list changes
               initialValue: staffId,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Сотрудник'),
