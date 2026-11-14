@@ -85,6 +85,11 @@ class PollTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             self.make(options=["Да", "да"])
 
+    def test_blank_title_is_rejected_after_trimming(self):
+        with self.assertRaises(HTTPException) as ctx:
+            self.make(title="   ")
+        self.assertEqual(ctx.exception.status_code, 422)
+
     def test_class_poll_without_class_is_rejected_and_delete_requires_manager(self):
         with self.assertRaises(HTTPException):
             polls.create_poll_for(actor("a1", "admin"), polls.PollCreate(

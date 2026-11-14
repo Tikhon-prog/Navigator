@@ -238,10 +238,10 @@ class _PollsPageState extends State<PollsPage> {
         : <Map<String, dynamic>>[];
     final isClass = poll['scope'] == 'class';
     final accent = isClass ? const Color(0xFF2E7D32) : const Color(0xFFD32F2F);
-    final canVote = open && mine.isEmpty;
-    final showResults = !canVote;
+    final canVote = open;
+    final showResults = mine.isNotEmpty || !open || poll['can_manage'] == true;
     final total = options.fold<int>(0, (sum, o) => sum + ((o['votes'] as num?)?.toInt() ?? 0));
-    final selected = _selected.putIfAbsent(id, () => <String>{});
+    final selected = _selected.putIfAbsent(id, () => mine.toSet());
     final description = '${poll['description'] ?? ''}'.trim();
 
     return Padding(
@@ -312,17 +312,19 @@ class _PollsPageState extends State<PollsPage> {
                 const SizedBox(height: 8),
                 FilledButton(
                   onPressed: selected.isEmpty ? null : () => _vote(poll),
-                  child: const Text('Проголосовать'),
+                  child: Text(mine.isEmpty ? 'Проголосовать' : 'Изменить голос'),
                 ),
-              ] else
+              ],
+              if (showResults) ...[
+                const Divider(height: 20),
                 for (final option in options)
                   _resultRow(option, mine.contains('${option['id']}'), total, accent, scheme),
-              if (showResults)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text('Проголосовало: ${poll['total_voters'] ?? 0}',
                       style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
                 ),
+              ],
             ],
           ),
         ),

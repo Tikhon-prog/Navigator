@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ================================================
-echo   Поколение 0.2.1+7 — сборка Android APK
+echo   Поколение — Android release
 echo ================================================
 echo.
 
@@ -15,11 +15,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
-findstr /b /c:"version: 0.2.1+7" pubspec.yaml >nul
-if errorlevel 1 (
-    echo ERROR: pubspec.yaml is not set to version 0.2.1+7.
+for /f "tokens=2 delims=: " %%V in ('findstr /b /c:"version:" pubspec.yaml') do set "APP_VERSION=%%V"
+set "APP_VERSION=%APP_VERSION:"=%"
+set "APP_VERSION=%APP_VERSION:'=%"
+if not defined APP_VERSION (
+    echo ERROR: Could not read version from pubspec.yaml.
     exit /b 1
 )
+powershell -NoProfile -Command "if ('%APP_VERSION%' -notmatch '^\d+\.\d+\.\d+\+\d+$') { exit 1 }"
+if errorlevel 1 (
+    echo ERROR: pubspec.yaml version must use major.minor.patch+build format.
+    exit /b 1
+)
+set "APK_NAME=Pokolenie-%APP_VERSION%.apk"
+
+echo Version: %APP_VERSION%
+echo.
 
 echo [1/5] Resolving packages...
 call flutter pub get
@@ -50,16 +61,16 @@ echo.
 echo [5/5] Preparing named release files...
 if not exist "dist" mkdir "dist"
 if errorlevel 1 exit /b 1
-copy /y "%APK_PATH%" "dist\Pokolenie-0.2.1+7.apk" >nul
+copy /y "%APK_PATH%" "dist\%APK_NAME%" >nul
 if errorlevel 1 exit /b 1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath 'dist\Pokolenie-0.2.1+7.apk').Hash.ToLower(); Set-Content -LiteralPath 'dist\Pokolenie-0.2.1+7.apk.sha256' -Value ($hash + '  Pokolenie-0.2.1+7.apk') -Encoding ascii"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$file='dist\%APK_NAME%'; $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant(); Set-Content -LiteralPath ($file+'.sha256') -Value ($hash + '  %APK_NAME%') -Encoding ascii"
 if errorlevel 1 exit /b 1
-for %%F in ("dist\Pokolenie-0.2.1+7.apk") do echo APK size: %%~zF bytes
-echo APK: %CD%\dist\Pokolenie-0.2.1+7.apk
-echo SHA-256: %CD%\dist\Pokolenie-0.2.1+7.apk.sha256
-echo Version: 0.2.1 ^(build 7^)
+for %%F in ("dist\%APK_NAME%") do echo APK size: %%~zF bytes
+echo APK: %CD%\dist\%APK_NAME%
+echo SHA-256: %CD%\dist\%APK_NAME%.sha256
+echo Version: %APP_VERSION%
 echo.
 echo This offline-first build does not embed a school API URL.
-echo Keep this APK private until the tests, signing and school data are approved.
+echo Keep this APK private until tests, signing and school data are approved.
 endlocal
 exit /b 0
