@@ -1,6 +1,6 @@
 #define MyAppName "Поколение"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.1"
+  #define MyAppVersion "0.2.2+8"
 #endif
 #define MyAppPublisher "Школа «Поколение»"
 #define MyAppExeName "pokolenie.exe"
