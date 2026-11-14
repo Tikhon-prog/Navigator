@@ -101,7 +101,6 @@
 | `lib/desktop_notification_polling_stub.dart` | Пустой fallback только для платформ без Windows-поллера; не используется на Windows |
 | `lib/notes_page.dart` | Личные заметки |
 | `lib/local_ai_chat_page.dart` | Локальный Qwen-чат и инструменты действий приложения |
-| `lib/student_tasks_page.dart` | Локальные домашние задания, дедлайны и пользовательские напоминания |
 | `lib/admin_panel.dart` | Административный интерфейс |
 | `assets/maps/` | Оптимизированные `floor1.webp`–`floor3.webp` используются приложением; исходный PDF и `floor1.png`–`floor3.png` сохранены в Git для редактирования планов, но исключены из APK/EXE. Производные debug-рендеры и дубли исходных PNG не хранятся |
 | `assets/data/rooms.json` | Локальный каталог помещений |

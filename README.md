@@ -46,7 +46,6 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 | `lib/school_account_service.dart`, `lib/security_service.dart` | Сессии, SSO-интеграция, хранение токенов и клиентские проверки |
 | `lib/dop_parser.dart`, `lib/supplements_page.dart` | Дополнительные занятия |
 | `lib/announcements_page.dart`, `lib/notes_page.dart` | Объявления и заметки |
-| `lib/student_tasks_page.dart` | Локальные задания, дедлайны и напоминания |
 | `assets/maps/`, `assets/data/` | Офлайн-карты, точки, граф навигации и локальный снимок расписания; исходные PDF/PNG/XLSX не входят в APK/EXE |
 | `backend/` | FastAPI API, SQLite, роли, SSO, синхронизация и уведомления |
 | `website/` | Отдельная PWA-веб-версия для iPhone; самостоятельный интерфейс HTML/CSS/JS |

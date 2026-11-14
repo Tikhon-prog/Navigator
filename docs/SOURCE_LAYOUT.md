@@ -10,7 +10,6 @@
 - `lib/online_data_service.dart`, `lib/api_security.dart` — безопасная конфигурация клиентского API.
 - `lib/local_notification_service.dart` — локальные напоминания.
 - `lib/schedule_time.dart` — нормализация и сортировка времени расписания.
-- `lib/student_tasks_page.dart` — локальные задания и напоминания, изолированные по школьным аккаунтам.
 - `lib/local_ai_chat_page.dart` — локальный ИИ и on-device GGUF runtime.
 
 ## Данные и карты
