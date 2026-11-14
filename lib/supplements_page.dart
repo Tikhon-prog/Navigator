@@ -336,7 +336,12 @@ class _SupplementsPageState extends State<SupplementsPage> {
   Widget build(BuildContext context) {
     final current = items.where((e) => e.weekday == day).toList()
       ..sort((a, b) {
-        int sortKey(String value) => int.tryParse(RegExp(r'\d+').firstMatch(value)?.group(0) ?? '') ?? 999;
+        int sortKey(String value) {
+          final time = RegExp(r'(\d{1,2})[:.](\d{2})').firstMatch(value);
+          if (time != null) return int.parse(time.group(1)!) * 60 + int.parse(time.group(2)!);
+          final number = int.tryParse(RegExp(r'\d+').firstMatch(value)?.group(0) ?? '');
+          return number == null ? 99999 : 10000 + number;
+        }
         return sortKey(a.start).compareTo(sortKey(b.start));
       });
     final scheme = Theme.of(context).colorScheme;
