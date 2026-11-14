@@ -24,6 +24,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+  int _loadToken = 0;
   String _query = '';
   String _direction = 'Все';
   final Set<String> _selected = <String>{};
@@ -45,6 +46,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
       '${group.programId}:${group.subgroupId}:${group.selectionName}:${group.selectionValue}';
 
   Future<void> _loadCatalog() async {
+    final token = ++_loadToken;
     final previous = _catalog;
     _catalog = null;
     previous?.close();
@@ -58,7 +60,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
     try {
       final loaded = await const DopParser().openCatalog();
       opened = loaded;
-      if (!mounted) {
+      if (!mounted || token != _loadToken) {
         loaded.close();
         return;
       }
@@ -80,7 +82,7 @@ class _DopCatalogPageState extends State<DopCatalogPage> {
       });
     } catch (error) {
       opened?.close();
-      if (!mounted) return;
+      if (!mounted || token != _loadToken) return;
       setState(() {
         _loading = false;
         _catalog = null;

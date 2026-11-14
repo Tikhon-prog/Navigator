@@ -46,6 +46,13 @@ class SchoolApiTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def test_username_unique_case_insensitively(self):
+        import sqlite3
+        with self.assertRaises(sqlite3.IntegrityError):
+            with api._db() as db:
+                db.execute("INSERT INTO users(id,username,password_hash,role,display_name,class_id,created_at) VALUES(?,?,?,?,?,?,?)",
+                           ("dup1", "ADMIN", "x", "admin", "Dup", None, api._utc_now()))
+
     def test_admin_supplement_route_is_bound_to_admin_creation_handler(self):
         matches = [
             route for route in api.router.routes

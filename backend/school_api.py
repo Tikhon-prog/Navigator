@@ -136,7 +136,18 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_teacher_subject_staff ON teacher_subject_assignments(staff_id, subject);
         CREATE INDEX IF NOT EXISTS idx_supplements_student ON student_supplements(student_id);
         CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);
+        CREATE INDEX IF NOT EXISTS idx_links_student ON student_links(student_id);
+        CREATE INDEX IF NOT EXISTS idx_teacher_subject_student ON teacher_subject_assignments(student_id);
+        CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id, active);
+        CREATE INDEX IF NOT EXISTS idx_users_role_active ON users(role, active);
+        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
         """)
+        # Login looks usernames up case-insensitively, so «Ivan» and «ivan» must
+        # not coexist. Skipped (not fatal) if a legacy database already has such a pair.
+        try:
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nocase ON users(username COLLATE NOCASE)")
+        except sqlite3.IntegrityError:
+            pass
         # Backward-compatible migration for databases created by earlier builds.
         user_columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "token_version" not in user_columns:
