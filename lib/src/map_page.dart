@@ -22,18 +22,21 @@ class _StartDialogState extends State<_StartDialog> {
       if (floor == 1) '__entrance__',
       ...rooms.map((r) => r.id),
     ];
-    if (!values.contains(choice)) choice = values.first;
+    if (values.isNotEmpty && !values.contains(choice)) choice = values.first;
     return AlertDialog(
       title: const Text('Начало маршрута'),
       content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
         SegmentedButton<int>(segments: const [ButtonSegment(value:1,label:Text('1 этаж')),ButtonSegment(value:2,label:Text('2 этаж')),ButtonSegment(value:3,label:Text('3 этаж'))], selected:{floor}, onSelectionChanged:(v){setState((){floor=v.first;choice='__entrance__';});}),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(key: ValueKey(floor), initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [
+        if (values.isEmpty)
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('На этом этаже нет помещений'))
+        else
+          DropdownButtonFormField<String>(key: ValueKey(floor), initialValue: choice, isExpanded: true, decoration: const InputDecoration(labelText:'Точка старта'), items: [
           if (floor == 1) const DropdownMenuItem(value:'__entrance__',child:Text('Главный вход')),
           ...rooms.map((r)=>DropdownMenuItem(value:r.id,child:Text(SchoolData.isPlace(r) ? SchoolData.title(r) : '${r.id} — ${r.name}'))),
         ], onChanged:(v)=>setState(()=>choice=v??values.first)),
       ])),
-      actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:()=>Navigator.pop(context,_StartChoice(floor:floor,id:choice=='__entrance__'?null:choice)),child:const Text('Сохранить'))],
+      actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Отмена')),FilledButton(onPressed:values.isEmpty?null:()=>Navigator.pop(context,_StartChoice(floor:floor,id:choice=='__entrance__'?null:choice)),child:const Text('Сохранить'))],
     );
   }
 }

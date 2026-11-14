@@ -269,10 +269,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
 
   Future<void> _remove(AdminAccount account) async {
     if (!can(AdminPermissions.manageAdmins) || account.id == 'root') return;
-    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
+    final ok = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
       title: const Text('Удалить администратора?'),
       content: Text('Аккаунт «${account.login}» больше не сможет войти в «Поколение».'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить'))],
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Удалить'))],
     )) ?? false;
     if (!ok) return;
     admins.removeWhere((a) => a.id == account.id);

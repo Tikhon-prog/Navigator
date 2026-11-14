@@ -233,12 +233,12 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
   Future<void> _deleteMentee(MentorMentee item) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Удалить подопечного?'),
         content: Text('Карточка ${item.fullName}, расписание и ДОПы будут удалены с этого устройства.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Удалить')),
         ],
       ),
     );
@@ -630,7 +630,7 @@ class _PlanEditorState extends State<_PlanEditor> {
     super.initState();
     final item = widget.initial;
     final orderedDays = widget.days.toList()..sort();
-    day = item?.day ?? orderedDays.first;
+    day = item?.day ?? (orderedDays.isEmpty ? 1 : orderedDays.first);
     title = TextEditingController(text: item?.title ?? '');
     time = TextEditingController(text: item?.time ?? '');
     teacher = TextEditingController(text: item?.teacher ?? '');

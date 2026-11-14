@@ -663,7 +663,6 @@ def assign_position(body: PositionBody,
         _protect_top_leadership_target(actor, user["position"])
         if user["role"] not in {"teacher", "mentor", "admin"}:
             raise HTTPException(status_code=422, detail="Only staff accounts can receive school positions")
-        mentor_positions = {"mentor", "mentor_coordinator"}
         teacher_positions = {"teacher", "homeroom_teacher", "dop_coordinator", "librarian"}
         leadership_positions = {"director", "deputy"}
         if body.position == "mentor" and user["role"] not in {"mentor", "admin"}:

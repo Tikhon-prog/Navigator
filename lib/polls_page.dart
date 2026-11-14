@@ -460,9 +460,13 @@ class _CreatePollDialogState extends State<_CreatePollDialog> {
                         ? IconButton(
                             tooltip: 'Убрать вариант',
                             icon: const Icon(Icons.close_rounded),
-                            onPressed: () => setState(() {
-                              _options.removeAt(i).dispose();
-                            }),
+                            onPressed: () {
+                              final removed = _options[i];
+                              setState(() => _options.removeAt(i));
+                              // TextField ещё в дереве до конца кадра.
+                              WidgetsBinding.instance
+                                  .addPostFrameCallback((_) => removed.dispose());
+                            },
                           )
                         : null,
                   ),

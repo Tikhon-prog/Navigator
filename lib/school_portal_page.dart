@@ -276,7 +276,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                 maxLines: 2, overflow: TextOverflow.ellipsis,
               ),
             )],
-          onChanged: (value) => setDialogState(() => selectedId = value ?? candidates.first['id'].toString()),
+          onChanged: (value) => setDialogState(() => selectedId = value ?? selectedId),
         )),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
