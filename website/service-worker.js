@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "pokolenie-website-v0.2.1-minimal1";
+const CACHE_NAME = "pokolenie-website-v0.2.2-minimal1";
 const SHELL = [
   "./", "./index.html", "./manifest.webmanifest",
   "./assets/app.css", "./assets/app.js",

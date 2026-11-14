@@ -48,7 +48,7 @@ app = FastAPI(
     lifespan=lifespan,
     title="Поколение — сервер школы",
     description="API школьного приложения",
-    version="0.2.1",
+    version="0.2.2",
 )
 app.include_router(school_services_router)
 app.include_router(school_sso_router)
@@ -98,7 +98,7 @@ def read_sheet(sheet_name: str) -> list[dict[str, Any]]:
 def root() -> dict[str, str]:
     return {
         "name": "Поколение — сервер школы",
-        "version": "0.2.1",
+        "version": "0.2.2",
         "status": "ok",
     }
 
