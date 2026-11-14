@@ -942,6 +942,10 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
     } catch (error) {
       debugPrint('[Поколение AI] Ошибка локальной модели: $error');
+      // Не открывать карту/маршрут от прерванного запроса при следующем ответе.
+      _pendingOpenMapLocationId = null;
+      _pendingOpenSchoolRouteId = null;
+      _pendingOpenSchoolRouteOriginId = null;
       answerLine.text =
           'Сейчас не получилось запустить ИИ-помощника. Поиск кабинетов и навигация остаются доступны.';
       _history.add(LLMMessage(
