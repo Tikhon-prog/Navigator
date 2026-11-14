@@ -39,8 +39,15 @@ class SchoolAnnouncement {
       return fallback;
     }
 
+    final fallbackTitle = firstText(['title', 'name', 'subject']);
+    final fallbackBody = firstText(['body', 'message', 'text', 'description']);
+    final fallbackDate = firstText(['published_at', 'created_at', 'date', 'updated_at']);
+    var stableHash = 0x811c9dc5;
+    for (final unit in '$fallbackTitle|$fallbackBody|$fallbackDate'.codeUnits) {
+      stableHash = ((stableHash ^ unit) * 0x01000193) & 0x7fffffff;
+    }
     return SchoolAnnouncement(
-      id: firstText(['id', 'announcement_id'], fallback: jsonEncode(json.hashCode)),
+      id: firstText(['id', 'announcement_id'], fallback: 'ann-$stableHash'),
       title: firstText(['title', 'name', 'subject'], fallback: 'Объявление школы'),
       body: firstText(['body', 'message', 'text', 'description'], fallback: 'Подробности не указаны.'),
       publishedAt: firstText(['published_at', 'created_at', 'date', 'updated_at']),
