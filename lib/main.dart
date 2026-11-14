@@ -2054,7 +2054,7 @@ class _AppShellState extends State<AppShell>{
         final steps = RouteEngine.instructions(route);
         final originLabel = originId.isEmpty
             ? 'главный вход'
-            : SchoolData.title(SchoolData.room(originId));
+            : (SchoolData.tryRoom(originId) == null ? originId : SchoolData.title(SchoolData.tryRoom(originId)!));
         final summary = StringBuffer()
           ..writeln('Маршрут построен по графу коридоров школы.')
           ..writeln('Откуда: $originLabel.')
