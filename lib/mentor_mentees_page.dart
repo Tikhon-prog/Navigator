@@ -204,9 +204,11 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
     final result = await showDialog<MentorMentee>(
       context: context, builder: (_) => const _MenteeEditor(),
     );
-    if (result == null) return;
-    setState(() => mentees.add(result));
-    mentees.sort((a, b) => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()));
+    if (result == null || !mounted) return;
+    setState(() {
+      mentees.add(result);
+      mentees.sort((a, b) => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()));
+    });
     await _save();
   }
 
@@ -214,11 +216,13 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
     final result = await showDialog<MentorMentee>(
       context: context, builder: (_) => _MenteeEditor(initial: item),
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
     final index = mentees.indexWhere((value) => value.id == item.id);
     if (index < 0) return;
-    setState(() => mentees[index] = result);
-    mentees.sort((a, b) => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()));
+    setState(() {
+      mentees[index] = result;
+      mentees.sort((a, b) => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()));
+    });
     await _save();
   }
 
