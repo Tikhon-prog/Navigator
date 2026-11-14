@@ -1,6 +1,7 @@
 """HTTP API for the «Поколение» school app."""
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
@@ -30,18 +31,28 @@ INTERNAL_READ_SHEETS = PUBLIC_READ_SHEETS | {"Supplements"}
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Порядок совпадает с прежним порядком startup-обработчиков роутеров.
-    school_api.startup()
-    sso_api.init_sso_tables()
-    await notification_api.init_notifications()
-    await rbac_api.init_roles()
-    await polls_api.init_polls()
     try:
+        # Startup and shutdown must share one try/finally: a failure during a
+        # later initializer must not leave an earlier background worker running.
+        school_api.startup()
+        sso_api.init_sso_tables()
+        await notification_api.init_notifications()
+        await rbac_api.init_roles()
+        await polls_api.init_polls()
         yield
     finally:
-        for task in (notification_api._worker_task, rbac_api._auto_sync_task):
-            if task is not None and not task.done():
+        tasks = [
+            task for task in (notification_api._worker_task, rbac_api._auto_sync_task)
+            if task is not None
+        ]
+        for task in tasks:
+            if not task.done():
                 task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # Clear completed task references so a later lifespan can create workers.
+        notification_api._worker_task = None
+        rbac_api._auto_sync_task = None
 
 
 app = FastAPI(
