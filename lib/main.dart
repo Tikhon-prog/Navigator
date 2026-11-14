@@ -32,6 +32,7 @@ part 'src/school_data.dart';
 part 'src/route_engine.dart';
 part 'src/app_shell.dart';
 part 'src/home_page.dart';
+part 'src/all_features_page.dart';
 part 'src/map_page.dart';
 part 'src/schedule_page.dart';
 part 'src/route_pages.dart';

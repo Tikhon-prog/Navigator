@@ -141,6 +141,31 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
+  Future<void> _openAllFeatures() async {
+    key.currentState?.closeDrawer();
+    if (!mounted) return;
+    // Вкладки открываются после закрытия списка, остальные разделы — поверх него.
+    void tab(int i) {
+      Navigator.of(context).pop();
+      go(i);
+    }
+
+    final features = <AppFeature>[
+      AppFeature(title: 'Карта школы', subtitle: 'Кабинеты, этажи и маршруты', category: 'Учёба', icon: Icons.map_rounded, keywords: 'кабинет маршрут навигация этаж найти', open: () async => tab(1)),
+      AppFeature(title: 'Расписание', subtitle: 'Уроки, группы и кабинеты', category: 'Учёба', icon: Icons.calendar_month_rounded, keywords: 'уроки звонки группа', open: () async => tab(2)),
+      AppFeature(title: 'ДОПы', subtitle: 'Дополнительные занятия, время и преподаватели', category: 'Учёба', icon: Icons.auto_awesome_rounded, keywords: 'кружки секции допы intranet', open: () async => tab(3)),
+      AppFeature(title: 'Оповещения', subtitle: 'Объявления школы и класса', category: 'Школа', icon: Icons.campaign_rounded, keywords: 'объявления новости уведомления', open: _openAnnouncements),
+      AppFeature(title: 'Мои заметки', subtitle: 'Личные записи на устройстве', category: 'Личное', icon: Icons.note_alt_rounded, keywords: 'заметки записи', open: _openNotes),
+      AppFeature(title: 'ИИ-помощник', subtitle: 'Локальный чат без облака', category: 'Личное', icon: Icons.smart_toy_rounded, keywords: 'чат ии нейросеть помощник', open: _openAiChat),
+      AppFeature(title: 'Настройки', subtitle: 'Профиль, класс, тема и аккаунт', category: 'Личное', icon: Icons.settings_rounded, keywords: 'профиль тема класс аккаунт выход', open: () async => tab(4)),
+      if (_mentorMenuAllowed)
+        AppFeature(title: 'Мои подопечные', subtitle: 'Список наставника, расписание и ДОПы', category: 'Наставнику', icon: Icons.groups_rounded, keywords: 'наставник подопечные', open: _openMentorMentees),
+    ];
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => AllFeaturesPage(features: features)),
+    );
+  }
+
   void go(int i){setState(()=>index=i);key.currentState?.closeDrawer();}
   Future<void> _openAnnouncements() async {
     key.currentState?.closeDrawer();
@@ -824,7 +849,7 @@ class _AppShellState extends State<AppShell>{
     );
   }
 
-  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),if(_mentorMenuAllowed)(9,Icons.groups_rounded,'Мои подопечные','Локальный список наставника')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 9) { _openMentorMentees(); } else { go(x.$1); } }))]))])));}
+  Widget _drawer(BuildContext context){final c=Theme.of(context).colorScheme;final items=[(0,Icons.home_rounded,'Главное меню','Обзор'),(1,Icons.map_rounded,'Карта школы','Кабинеты и маршруты'),(2,Icons.calendar_month_rounded,'Расписание','Уроки и группы'),(3,Icons.auto_awesome_rounded,'ДОПы','Кружки и секции'),(4,Icons.settings_rounded,'Настройки','Профиль и кабинет'),(5,Icons.campaign_rounded,'Оповещения','Объявления школы'),(6,Icons.note_alt_rounded,'Мои заметки','Личные записи на устройстве'),(7,Icons.smart_toy_rounded,'ИИ-помощник','Локальный чат без облака'),if(_mentorMenuAllowed)(9,Icons.groups_rounded,'Мои подопечные','Локальный список наставника'),(10,Icons.apps_rounded,'Все функции','Разделы и поиск')];return Drawer(width: math.min(330, MediaQuery.sizeOf(context).width * .88).toDouble(),child:SafeArea(child:Column(children:[Padding(padding:const EdgeInsets.all(18),child:Row(children:[Container(width:50,height:50,decoration:BoxDecoration(gradient:LinearGradient(colors:AppPalette.gradient(widget.theme)),borderRadius:BorderRadius.circular(15)),child:const Icon(Icons.explore_rounded,color:Colors.white)),const SizedBox(width:12),const Expanded(child:Text('Поколение',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))])),const Divider(height:1),Expanded(child:ListView(padding:const EdgeInsets.all(12),children:[for(final x in items)Card(color:index==x.$1?c.primaryContainer:null,child:ListTile(leading:Icon(x.$2,color:index==x.$1?c.primary:null),title:Text(x.$3,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(x.$4),onTap: () { if (x.$1 == 5) { _openAnnouncements(); } else if (x.$1 == 6) { _openNotes(); } else if (x.$1 == 7) { _openAiChat(); } else if (x.$1 == 9) { _openMentorMentees(); } else if (x.$1 == 10) { _openAllFeatures(); } else { go(x.$1); } }))]))])));}
 }
 class _PokoleniePageTransitionsBuilder extends PageTransitionsBuilder {
   const _PokoleniePageTransitionsBuilder();
