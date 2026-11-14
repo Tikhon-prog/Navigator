@@ -42,6 +42,26 @@ class SchoolPositionTests(unittest.TestCase):
         self.db_patch.stop()
         self.tmp.cleanup()
 
+    def test_sso_login_syncs_only_a_students_class_never_roles(self):
+        claims = {"sub": "s-1", "class_id": "9В"}
+        with patch.dict(os.environ, {"NAVIGATOR_OIDC_CLASS_CLAIM": "class_id"}):
+            with core._db() as db:
+                student = db.execute("SELECT * FROM users WHERE id='student1'").fetchone()
+                teacher = db.execute("SELECT * FROM users WHERE id='teacher1'").fetchone()
+            moved = sso_api._sync_student_class(student, claims)
+            self.assertEqual(moved["class_id"], "9В")
+            with core._db() as db:
+                self.assertEqual(db.execute("SELECT class_id FROM users WHERE id='student1'").fetchone()[0], "9В")
+                self.assertEqual(db.execute("SELECT role FROM users WHERE id='student1'").fetchone()[0], "student")
+            # Same class in another spelling and a missing claim change nothing.
+            again = sso_api._sync_student_class(moved, {"class_id": "9B"})
+            self.assertEqual(again["class_id"], "9В")
+            self.assertEqual(sso_api._sync_student_class(moved, {})["class_id"], "9В")
+            # Staff accounts are never touched, whatever the claim says.
+            self.assertIs(sso_api._sync_student_class(teacher, {"class_id": "1А", "role": "admin"}), teacher)
+            with core._db() as db:
+                self.assertEqual(db.execute("SELECT class_id,role FROM users WHERE id='teacher1'").fetchone()[:], ("8A", "teacher"))
+
     def _install_director_and_deputy(self):
         with core._db() as db:
             db.execute(

@@ -243,6 +243,28 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
         return db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
 
 
+def _sync_student_class(identity, claims: dict[str, Any]):
+    """Keep an already linked student's class in step with the school IdP.
+
+    Classes change every school year; without this the student keeps seeing (and
+    being addressed as) the old class until an admin edits the account by hand.
+    Only the class of student accounts is synced. Roles and positions are never
+    changed from claims, so a claim cannot raise anyone's privileges.
+    """
+    if identity["role"] != "student":
+        return identity
+    class_claim = os.getenv("NAVIGATOR_OIDC_CLASS_CLAIM", "class_id").strip()
+    new_class = str(claims.get(class_claim) or "").strip()[:40]
+    if not new_class or core.normalize_class_id(new_class) == core.normalize_class_id(identity["class_id"]):
+        return identity
+    with core._db() as db:
+        db.execute("UPDATE users SET class_id=? WHERE id=? AND role='student'", (new_class, identity["id"]))
+        updated = db.execute("SELECT * FROM users WHERE id=?", (identity["id"],)).fetchone()
+    core._audit(identity["id"], "auth.sso_class_synced", identity["id"],
+                {"from": identity["class_id"], "to": new_class})
+    return updated
+
+
 @router.post("/auth/sso")
 def sso_login(body: SsoLoginBody) -> dict[str, Any]:
     issuer = os.getenv("NAVIGATOR_OIDC_ISSUER", "").strip()
@@ -266,7 +288,9 @@ def sso_login(body: SsoLoginBody) -> dict[str, Any]:
             "WHERE i.issuer=? AND i.subject=? AND u.active=1",
             (issuer, claims["sub"]),
         ).fetchone()
-    if not identity:
+    if identity:
+        identity = _sync_student_class(identity, claims)
+    else:
         # Auto-link/provision is opt-in and uses only claims returned by the trusted
         # configured IdP's HTTPS UserInfo endpoint, never a client-supplied profile.
         identity = _link_or_provision(claims, issuer)
