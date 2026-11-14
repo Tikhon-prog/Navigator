@@ -517,8 +517,13 @@ class SchoolAccountService {
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
-    final accessToken = await validAccessToken();
-    final refreshToken = (await _readToken(_refreshKey)) ?? '';
+    // Недоступное защищённое хранилище не должно мешать выходу из аккаунта.
+    String? accessToken;
+    var refreshToken = '';
+    try {
+      accessToken = await validAccessToken();
+      refreshToken = (await _readToken(_refreshKey)) ?? '';
+    } catch (_) {}
     final rawUser = prefs.getString(_userKey);
     var currentUserId = '';
     if (rawUser != null) {
