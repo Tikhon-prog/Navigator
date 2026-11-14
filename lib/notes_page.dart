@@ -183,6 +183,9 @@ class _PersonalNotesPageState extends State<PersonalNotesPage> {
   }
 
   Future<void> _editNote({_PersonalNote? note}) async {
+    // Пока заметки не загружены, ключ хранилища ещё не определён, а _load()
+    // очистит список и затрёт новую заметку.
+    if (_loading) return;
     final result = await showDialog<({String title, String body})>(
       context: context,
       builder: (_) => _NoteEditorDialog(note: note),
