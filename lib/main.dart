@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'bell_countdown.dart';
 import 'schedule_time.dart';
 import 'notes_page.dart';
+import 'polls_page.dart';
 import 'admin_panel.dart';
 import 'announcements_page.dart';
 import 'door_points.dart';
