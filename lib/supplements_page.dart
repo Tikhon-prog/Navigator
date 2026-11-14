@@ -179,11 +179,14 @@ class _SupplementsPageState extends State<SupplementsPage> {
     final prefs = await SharedPreferences.getInstance();
     var currentSchoolUserId = '';
     final rawSchoolUser = prefs.getString('school_user_v1');
-    if (rawSchoolUser != null) {
+    if (rawSchoolUser != null && rawSchoolUser.trim().isNotEmpty) {
       try {
         final account = jsonDecode(rawSchoolUser);
-        if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
-      } catch (_) {}
+        final id = account is Map ? (account['id'] ?? '').toString().trim() : '';
+        currentSchoolUserId = id.isNotEmpty ? id : 'invalid-school-session';
+      } catch (_) {
+        currentSchoolUserId = 'invalid-school-session';
+      }
     }
     final storageKey = studentProfilePreferenceKey('supplements_local', userId: currentSchoolUserId);
     await prefs.setString(
