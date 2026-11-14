@@ -96,6 +96,19 @@ Future<DesktopSsoTokens> authorizeAndExchangeCode({
       return;
     }
 
+    // Any local page can hit this loopback port. Only a request carrying our
+    // own state may finish the login; stray ones must not abort it.
+    if (request.uri.queryParameters['state'] != state) {
+      request.response.statusCode = HttpStatus.badRequest;
+      request.response.headers.contentType = ContentType.html;
+      request.response.write(
+        '<!doctype html><html><meta charset="utf-8"><title>Поколение</title>'
+        '<body><h2>Поколение</h2><p>Неверный ответ входа. Вернитесь в приложение.</p></body></html>',
+      );
+      await request.response.close();
+      return;
+    }
+
     request.response.statusCode = HttpStatus.ok;
     request.response.headers.contentType = ContentType.html;
     request.response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
