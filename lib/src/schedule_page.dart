@@ -224,7 +224,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
           if (classId.isNotEmpty) ...[
             IconButton(
               tooltip: SchoolScheduleCatalog.usesWholeClassSubgroup(classId)
-                  ? 'Выбрать подгруппу 8В'
+                  ? 'Выбрать подгруппу'
                   : 'Группы по предметам',
               onPressed: () async {
                 await showStudentGroupSelection(context, classId);
@@ -272,7 +272,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                       Text(
                         classId.isEmpty
                             ? 'Выбери класс, чтобы загрузить уроки'
-                            : '${wholeClassGroup == null ? '' : 'Подгруппа 8В/$wholeClassGroup • '}${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
+                            : '${wholeClassGroup == null ? '' : 'Подгруппа $wholeClassGroup • '}${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
                         style: TextStyle(
                           color: scheme.onSurfaceVariant,
                           fontSize: 12,
@@ -286,7 +286,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                           await _load();
                         },
                         tooltip: SchoolScheduleCatalog.usesWholeClassSubgroup(classId)
-                            ? 'Выбрать подгруппу 8В'
+                            ? 'Выбрать подгруппу'
                             : 'Настроить группы',
                         icon: const Icon(Icons.tune_rounded),
                       ),

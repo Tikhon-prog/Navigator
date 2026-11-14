@@ -96,20 +96,20 @@ class _StudentClassGroupDialogState extends State<_StudentClassGroupDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Твоя подгруппа 8В'),
+        title: const Text('Твоя подгруппа'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             RadioListTile<int>(
               value: 1,
               groupValue: selected,
-              title: const Text('8В/1'),
+              title: const Text('Подгруппа 1'),
               onChanged: (value) => setState(() => selected = value ?? selected),
             ),
             RadioListTile<int>(
               value: 2,
               groupValue: selected,
-              title: const Text('8В/2'),
+              title: const Text('Подгруппа 2'),
               onChanged: (value) => setState(() => selected = value ?? selected),
             ),
           ],
@@ -141,13 +141,8 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
     content: SizedBox(width: MediaQuery.sizeOf(context).width * .82, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
       final known = available[s];
       final groups = (known == null || known.isEmpty ? <int>{1} : known).toList()..sort();
-      String groupLabel(int group) {
-        final teacherNames = SchoolScheduleCatalog.variants(widget.className)
-            .where((e) => SchoolScheduleCatalog.baseSubject('${e['subject'] ?? ''}') == s && (int.tryParse('${e['group']}') ?? 1) == group)
-            .map((e) => SchoolScheduleCatalog.teacherFromSubject('${e['subject'] ?? ''}').split(' ').first)
-            .where((name) => name.isNotEmpty).toSet();
-        return teacherNames.isEmpty ? 'Группа $group' : teacherNames.join(' / ');
-      }
+      String groupLabel(int group) =>
+          SchoolScheduleCatalog.subgroupLabel(widget.className, s, group);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Column(
@@ -159,7 +154,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
             DropdownButtonFormField<int>(
               isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'Группа / преподаватель',
+                labelText: 'Подгруппа / преподаватель',
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),

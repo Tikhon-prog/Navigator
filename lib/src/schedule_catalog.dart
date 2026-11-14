@@ -283,6 +283,26 @@ class SchoolScheduleCatalog {
   static Set<String> splitSubjects(String className) =>
       subjectGroups(className).keys.toSet();
 
+  /// Builds a consistent subgroup label for every split subject and teacher.
+  static String subgroupLabel(String className, String subject, int group) {
+    final teachers = variants(className)
+        .where((row) => baseSubject('${row['subject'] ?? ''}') == subject)
+        .where((row) => (int.tryParse('${row['group']}') ?? 1) == group)
+        .map((row) {
+          final stored = '${row['teacher'] ?? ''}'.trim();
+          return stored.isNotEmpty
+              ? stored
+              : teacherFromSubject('${row['subject'] ?? ''}');
+        })
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return teachers.isEmpty
+        ? 'Подгруппа $group'
+        : 'Подгруппа $group • ${teachers.join(' / ')}';
+  }
+
   static bool isMathSubject(String subject) {
     final value = subject.toLowerCase();
     return value.contains('математик') || value.contains('алгебр') || value.contains('геометр') || value.contains('вероятност') || value.contains('статистик');

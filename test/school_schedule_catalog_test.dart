@@ -30,6 +30,25 @@ void main() {
       );
     });
 
+    test('subgroup choices expose the matching teacher for split subjects across classes', () {
+      expect(
+        SchoolScheduleCatalog.subgroupLabel('8А', 'Информатика', 1),
+        contains('Тимошенко'),
+      );
+      expect(
+        SchoolScheduleCatalog.subgroupLabel('8А', 'Информатика', 2),
+        contains('Золотухина'),
+      );
+      expect(
+        SchoolScheduleCatalog.subgroupLabel('5А', 'Математика', 1),
+        startsWith('Подгруппа 1'),
+      );
+      expect(
+        SchoolScheduleCatalog.subgroupLabel('5А', 'Математика', 2),
+        startsWith('Подгруппа 2'),
+      );
+    });
+
     test('personal schedule applies a group choice per subject and extracts teacher', () {
       final groupOne = SchoolScheduleCatalog.buildPersonal(
         '8А',

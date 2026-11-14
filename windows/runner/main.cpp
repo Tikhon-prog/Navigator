@@ -59,7 +59,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   Win32Window::Point origin(x, y);
   Win32Window::Size size(width, height);
-  if (!window.Create(L"Поколение", origin, size)) {
+  if (!window.Create(L"\x041F\x043E\x043A\x043E\x043B\x0435\x043D\x0438\x0435", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
