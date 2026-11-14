@@ -18,6 +18,7 @@ from .school_api import normalize_class_id, router as school_services_router
 from .sso_api import router as school_sso_router
 from .notification_api import router as notification_router
 from .rbac_api import router as school_rbac_router
+from .polls_api import router as polls_router
 
 PUBLIC_READ_SHEETS = frozenset({
     "Classes", "BaseSchedule", "Rooms", "Places", "Announcements",
@@ -33,6 +34,7 @@ app.include_router(school_services_router)
 app.include_router(school_sso_router)
 app.include_router(notification_router)
 app.include_router(school_rbac_router)
+app.include_router(polls_router)
 
 _cors_origins = [
     origin.strip()
