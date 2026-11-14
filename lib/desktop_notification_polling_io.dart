@@ -126,6 +126,7 @@ class _DesktopNotificationPolling {
           await LocalNotificationService().showIncomingNotification(
             title: title.isEmpty ? 'Школьное оповещение' : title,
             body: body,
+            scope: NotificationScope.fromData(item),
           );
         }
       }

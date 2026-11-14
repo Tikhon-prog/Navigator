@@ -356,7 +356,11 @@ class SchoolAccountService {
     _messageSubscription = FirebaseMessaging.onMessage.listen((message) async {
       final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Поколение';
       final body = message.notification?.body ?? message.data['body']?.toString() ?? 'Новое школьное уведомление';
-      await LocalNotificationService().showIncomingNotification(title: title, body: body);
+      await LocalNotificationService().showIncomingNotification(
+        title: title,
+        body: body,
+        scope: NotificationScope.fromData(message.data),
+      );
     });
     return true;
   }

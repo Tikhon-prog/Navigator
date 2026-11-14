@@ -1,8 +1,44 @@
+import 'dart:ui' show Color;
+
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 import 'schedule_time.dart';
+
+/// Вид входящего школьного уведомления: определяет цвет, канал и подпись.
+enum NotificationScope {
+  /// Общешкольное — красный.
+  school('Общешкольное', '🔴', Color(0xFFD32F2F)),
+  /// Для класса — зелёный.
+  classWide('Для класса', '🟢', Color(0xFF2E7D32)),
+  /// Личное — синий.
+  personal('Лично тебе', '🔵', Color(0xFF1565C0)),
+  /// Экстренное — тёмно-бордовый, всегда с максимальной важностью.
+  emergency('Срочно', '🚨', Color(0xFFB71C1C));
+
+  const NotificationScope(this.label, this.marker, this.color);
+  final String label;
+  final String marker;
+  final Color color;
+
+  /// Определяет вид по данным сервера или push-сообщения.
+  static NotificationScope fromData(Map<dynamic, dynamic> data) {
+    String read(String key) => (data[key] ?? '').toString().trim().toLowerCase();
+    final kind = read('kind');
+    final severity = read('severity');
+    final targetType = read('target_type');
+    final audience = read('audience');
+    if (kind == 'emergency' || severity == 'emergency') return emergency;
+    if (targetType == 'user' || audience == 'user') return personal;
+    if (targetType == 'class' || audience == 'class' ||
+        read('target_class_id').isNotEmpty) {
+      return classWide;
+    }
+    return school;
+  }
+}
 
 /// Надёжный локальный планировщик уведомлений «Поколение».
 /// Расписание школы хранится в локальном времени школы (Москва/Краснодар).
@@ -26,13 +62,27 @@ class LocalNotificationService {
   static const String schoolChannelId = 'pokolenie_school_alerts';
   static const String schoolChannelName = 'Школьные оповещения';
   static const String schoolChannelDescription = 'Общие, целевые и экстренные сообщения школы';
+  static const String classChannelId = 'pokolenie_class_alerts';
+  static const String classChannelName = 'Сообщения класса';
+  static const String classChannelDescription = 'Объявления для вашего класса';
   static const String tasksChannelId = 'pokolenie_student_tasks';
   static const String tasksChannelName = 'Домашние задания';
   static const String tasksChannelDescription = 'Напоминания о сроках домашних заданий, контрольных и проектов';
   static const String _taskNotificationIdsKey = 'pokolenie_student_task_notification_ids_v1';
 
+  Future<void>? _initFuture;
+
   Future<void> initialize({bool requestPermissions = true}) async {
+    // Параллельные вызовы ждут одну и ту же инициализацию плагина.
     if (!_initialized) {
+      await (_initFuture ??= _initializePlugin().whenComplete(() {
+        if (!_initialized) _initFuture = null;
+      }));
+    }
+    await _requestPermissionsOnce(requestPermissions);
+  }
+
+  Future<void> _initializePlugin() async {
 
     tz_data.initializeTimeZones();
     // Школа находится в Краснодаре; расписание работает по московскому времени.
@@ -87,6 +137,14 @@ class LocalNotificationService {
     );
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
+        classChannelId,
+        classChannelName,
+        description: classChannelDescription,
+        importance: Importance.high,
+      ),
+    );
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
         tasksChannelId,
         tasksChannelName,
         description: tasksChannelDescription,
@@ -95,8 +153,9 @@ class LocalNotificationService {
     );
 
     _initialized = true;
-    }
+  }
 
+  Future<void> _requestPermissionsOnce(bool requestPermissions) async {
     // Queue cleanup must not open a system permission prompt. Ask only when a
     // caller is actually scheduling notifications for the active profile.
     if (requestPermissions && !_permissionsRequested) {
@@ -123,33 +182,55 @@ class LocalNotificationService {
     await _cancelNotificationRange(2000, 2999);
   }
 
+  /// Показывает входящее школьное уведомление.
+  ///
+  /// На Android оно «закреплено» ([ongoing]): его нельзя смахнуть, пока
+  /// ученик не откроет его касанием. Цвет и подпись зависят от [scope].
   Future<void> showIncomingNotification({
     required String title,
     required String body,
+    NotificationScope scope = NotificationScope.school,
   }) async {
     await initialize();
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final channel = scope == NotificationScope.classWide
+        ? (classChannelId, classChannelName, classChannelDescription)
+        : (schoolChannelId, schoolChannelName, schoolChannelDescription);
     await plugin.show(
       id,
-      title,
+      // Android показывает цвет и подпись сам; на остальных платформах
+      // вид уведомления передаётся значком в заголовке.
+      isAndroid ? title : '${scope.marker} $title',
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          schoolChannelId,
-          schoolChannelName,
-          channelDescription: schoolChannelDescription,
-          importance: Importance.max,
+          channel.$1,
+          channel.$2,
+          channelDescription: channel.$3,
+          importance: scope == NotificationScope.classWide
+              ? Importance.high
+              : Importance.max,
           priority: Priority.high,
           category: AndroidNotificationCategory.message,
           ticker: 'Поколение',
+          subText: scope.label,
+          color: scope.color,
+          colorized: scope == NotificationScope.emergency,
+          styleInformation: BigTextStyleInformation(
+            body,
+            contentTitle: title,
+            summaryText: scope.label,
+          ),
+          ongoing: true,
           autoCancel: true,
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
         ),
-        windows: WindowsNotificationDetails(),
+        windows: const WindowsNotificationDetails(),
       ),
     );
   }
@@ -358,7 +439,7 @@ class LocalNotificationService {
       final taskLabel = entry.subject.trim().isEmpty
           ? entry.title
           : '${entry.subject}: ${entry.title}';
-      final body = 'Срок сдачи: ${dueAt.toLocal().toString().substring(0, 16)}';
+      final body = 'Срок сдачи: ${dueAt.toString().substring(0, 16)}';
 
       await _scheduleNotification(
         id: notificationId,
@@ -439,7 +520,7 @@ class LocalNotificationService {
         );
         final notifyAt = lessonStart.subtract(const Duration(minutes: 5));
 
-        if (notifyAt.isAfter(now)) {
+        if (notifyAt.isAfter(now) && notificationId <= 1999) {
           await scheduleNextLesson(
             id: notificationId++,
             start: notifyAt,
