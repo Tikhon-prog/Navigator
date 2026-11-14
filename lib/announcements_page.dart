@@ -357,7 +357,10 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 920),
-                child: ListView(
+                child: RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
                   children: [
                     Padding(
@@ -451,6 +454,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
                     ],
                   ],
                 ),
+                  ),
               ),
             ),
     );
