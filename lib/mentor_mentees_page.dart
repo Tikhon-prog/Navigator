@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'main.dart' show SchoolScheduleCatalog;
 import 'school_account_service.dart';
+import 'schedule_time.dart';
 
 const _mentorDays = <int, String>{
   1: 'Понедельник', 2: 'Вторник', 3: 'Среда',
@@ -170,6 +172,8 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
         setState(() { allowed = false; loading = false; mentees = []; });
         return;
       }
+      await SchoolScheduleCatalog.load();
+      if (!mounted) return;
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('mentor_mentees_local_v1_$id');
       final decoded = raw == null ? const [] : jsonDecode(raw);
@@ -341,6 +345,64 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
     );
   }
 
+  /// Расписание класса подопечного из школьных данных приложения: по выбранным
+  /// дням, а если дни не выбраны, то на всю неделю.
+  Widget _classSchedule(MentorMentee mentee, ColorScheme scheme) {
+    final rows = SchoolScheduleCatalog.variants(mentee.className);
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(
+          'Расписание класса ${mentee.className} не найдено в школьных данных.',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+      );
+    }
+    final days = mentee.selectedDays.isEmpty
+        ? const [1, 2, 3, 4, 5, 6]
+        : (mentee.selectedDays.toList()..sort());
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: EdgeInsets.zero,
+      title: Text(
+        'Расписание класса ${mentee.className}',
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      children: [for (final day in days) ..._scheduleDay(rows, day, scheme)],
+    );
+  }
+
+  List<Widget> _scheduleDay(List<Map<String, dynamic>> rows, int day, ColorScheme scheme) {
+    final dayRows = rows
+        .where((row) => (int.tryParse('${row['day']}') ?? 0) == day)
+        .where((row) => SchoolScheduleCatalog.baseSubject('${row['subject'] ?? ''}').toLowerCase() != 'обед')
+        .toList()
+      ..sort((a, b) => compareLessonTimes('${a['time'] ?? ''}', '${b['time'] ?? ''}'));
+    if (dayRows.isEmpty) return const [];
+    return [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 2),
+          child: Text(_mentorDays[day] ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ),
+      ),
+      for (final row in dayRows)
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(SchoolScheduleCatalog.baseSubject('${row['subject'] ?? ''}')),
+          subtitle: Text([
+            SchoolScheduleCatalog.teacherFromSubject('${row['subject'] ?? ''}'),
+            // The group is only worth showing when the same slot has several.
+            if (dayRows.where((other) => other['time'] == row['time']).length > 1)
+              'группа ${row['group'] ?? ''}',
+          ].where((part) => part.trim().isNotEmpty).join(' • ')),
+          trailing: Text('${row['time'] ?? ''}', style: TextStyle(color: scheme.onSurfaceVariant)),
+        ),
+    ];
+  }
+
   Widget _menteeCard(MentorMentee item, ColorScheme scheme) {
     final days = item.selectedDays.toList()..sort();
     return Card(
@@ -377,6 +439,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
               icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
             ),
           ]),
+          _classSchedule(item, scheme),
           _planSection(item, dop: false, scheme: scheme),
           _planSection(item, dop: true, scheme: scheme),
         ],
