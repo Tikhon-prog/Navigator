@@ -767,7 +767,8 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
   @override Widget build(BuildContext context) => AlertDialog(
     title: Text('Группы • ${widget.className}'),
     content: SizedBox(width: MediaQuery.sizeOf(context).width * .82, child: ListView(shrinkWrap: true, children: widget.subjects.map((s) {
-      final groups = (available[s] ?? <int>{1}).toList()..sort();
+      final known = available[s];
+      final groups = (known == null || known.isEmpty ? <int>{1} : known).toList()..sort();
       String groupLabel(int group) {
         final teacherNames = SchoolScheduleCatalog.variants(widget.className)
             .where((e) => SchoolScheduleCatalog.baseSubject('${e['subject'] ?? ''}') == s && (int.tryParse('${e['group']}') ?? 1) == group)
@@ -790,7 +791,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
                 isDense: true,
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
-              initialValue: values[s] ?? groups.first,
+              initialValue: groups.contains(values[s]) ? values[s] : groups.first,
               items: groups.map((g) => DropdownMenuItem(
                 value: g,
                 child: Text(groupLabel(g), maxLines: 1, overflow: TextOverflow.ellipsis),
