@@ -762,11 +762,11 @@ class DopParser {
   ) {
     if (program.subgroups.isEmpty) return null;
 
-    final teacher = choice.teacher.trim();
+    final teacher = _normalizeName(choice.teacher);
     final teacherMatches = teacher.isEmpty
         ? <DopSubgroup>[]
         : program.subgroups
-            .where((item) => item.teacher.trim() == teacher)
+            .where((item) => _normalizeName(item.teacher) == teacher)
             .toList();
 
     final scheduleMatches = choice.schedule.isEmpty
