@@ -138,6 +138,9 @@ def _serialize(db, row: Any, actor: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_poll_for(actor: dict[str, Any], body: PollCreate) -> dict[str, Any]:
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail='title must not be empty')
     options = [o.strip() for o in body.options if o.strip()]
     if len(options) != len(body.options) or len(set(x.lower() for x in options)) != len(options):
         raise HTTPException(status_code=422, detail="Options must be non-empty and unique")
@@ -156,7 +159,7 @@ def create_poll_for(actor: dict[str, Any], body: PollCreate) -> dict[str, Any]:
         db.execute(
             "INSERT INTO polls(id,title,description,scope,class_id,multiple,created_by,created_at,closes_at)"
             " VALUES(?,?,?,?,?,?,?,?,?)",
-            (poll_id, body.title.strip(), body.description.strip(), body.scope, class_id,
+            (poll_id, title, body.description.strip(), body.scope, class_id,
              int(body.multiple), actor["id"], _now(), closes.isoformat() if closes else None),
         )
         for position, text in enumerate(options):
