@@ -122,7 +122,7 @@ class _SchoolAnnouncementsPageState extends State<SchoolAnnouncementsPage> {
           currentUserId = (schoolUser['id'] ?? '').toString().trim();
           schoolClass = (schoolUser['class_id'] ?? '').toString().trim();
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('announcements_page: ${error.runtimeType}'); }
     }
 
     // A clean/offline installation has no school session, so it must not

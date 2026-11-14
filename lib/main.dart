@@ -71,8 +71,8 @@ Future<void> main() async {
       // This is a mobile-only system UI preference; desktop startup must proceed.
     }
   }
-  try { await _seedOnlineSettings(); } catch (_) {}
-  try { await LocalNotificationService().initialize(); } catch (_) {}
+  try { await _seedOnlineSettings(); } catch (error) { debugPrint('main: ${error.runtimeType}'); }
+  try { await LocalNotificationService().initialize(); } catch (error) { debugPrint('main: ${error.runtimeType}'); }
   runApp(const PokolenieApp());
   // Re-register FCM token/listeners in the background after a prior SSO login.
   unawaited(SchoolAccountService().restoreSession());

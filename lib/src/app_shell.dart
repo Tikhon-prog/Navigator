@@ -364,7 +364,7 @@ class _AppShellState extends State<AppShell>{
         if (account is Map) {
           schoolUserId = (account['id'] ?? '').toString().trim();
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('app_shell: ${error.runtimeType}'); }
     }
 
     final rawSupplements = prefs.getString(
@@ -504,7 +504,7 @@ class _AppShellState extends State<AppShell>{
     try {
       final account = jsonDecode(raw);
       if (account is Map) return (account['id'] ?? '').toString().trim();
-    } catch (_) {}
+    } catch (error) { debugPrint('app_shell: ${error.runtimeType}'); }
     return '';
   }
 

@@ -142,9 +142,9 @@ class _SupplementsPageState extends State<SupplementsPage> {
       await prefs.remove('school_supplements_user_id_v1_$currentSchoolUserId');
     }
     if (mounted) setState(() => loading = false);
-    try { await _refreshServerSupplements(); } catch (_) {}
+    try { await _refreshServerSupplements(); } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     if (remindersEnabled) {
-      try { await _refreshDopReminders(); } catch (_) {}
+      try { await _refreshDopReminders(); } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     }
   }
 
@@ -159,7 +159,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       try {
         final account = jsonDecode(rawSchoolUser);
         if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
-      } catch (_) {}
+      } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     }
     if (currentSchoolUserId.isEmpty) return;
     final raw = prefs.getString('school_supplements_cache_v1_$currentSchoolUserId');
@@ -172,7 +172,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       items = [...localItems, ...serverItems];
       if (mounted) setState(() {});
       await _save();
-    } catch (_) {}
+    } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
   }
 
   Future<void> _save() async {
@@ -194,7 +194,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
     if (remindersEnabled) {
-      try { await _refreshDopReminders(); } catch (_) {}
+      try { await _refreshDopReminders(); } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     }
   }
 
@@ -243,7 +243,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       await _refreshDopReminders(clearWhenDisabled: !value);
       // When a school account is connected, mirror the preference to the server
       // so server-side reminders can also be delivered while the app is closed.
-      try { await SchoolAccountService().setDopRemindersEnabled(value); } catch (_) {}
+      try { await SchoolAccountService().setDopRemindersEnabled(value); } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -269,7 +269,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       try {
         final account = jsonDecode(rawSchoolUser);
         if (account is Map) currentSchoolUserId = (account['id'] ?? '').toString().trim();
-      } catch (_) {}
+      } catch (error) { debugPrint('supplements_page: ${error.runtimeType}'); }
     }
     for (final entry in <String, String>{
       'student_last_name': result.lastName,

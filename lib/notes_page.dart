@@ -151,7 +151,7 @@ class _PersonalNotesPageState extends State<PersonalNotesPage> {
         if (account is Map && account['id'] != null) {
           accountId = account['id'].toString().trim();
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('notes_page: ${error.runtimeType}'); }
     }
     final safeId = accountId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     _storageKey = '${_baseStorageKey}_${safeId.isEmpty ? 'local' : safeId}';

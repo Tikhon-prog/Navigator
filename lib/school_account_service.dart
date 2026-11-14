@@ -146,7 +146,7 @@ class SchoolAccountService {
         final name = (raw['name'] ?? raw['class_name'] ?? raw['title'] ?? raw['класс'] ?? '').toString().trim();
         if (name.isNotEmpty) return name;
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     return classId;
   }
 
@@ -188,7 +188,7 @@ class SchoolAccountService {
           await http.post(_endpoint(baseUrl, 'auth/logout'),
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode({'refresh_token': refresh}));
-        } catch (_) {}
+        } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
       }
       throw Exception('Резервный вход разрешён только техническому администратору. Используй школьный SSO.');
     }
@@ -213,7 +213,7 @@ class SchoolAccountService {
     var pushRegistered = false;
     try {
       pushRegistered = await _initializePush(await _getConfig(baseUrl), baseUrl, payload['access_token'] as String);
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     return {'user': user, 'push_registered': pushRegistered};
   }
 
@@ -312,7 +312,7 @@ class SchoolAccountService {
     // Keep server-side reminder scheduling aligned with the user's local choice.
     try {
       await setDopRemindersEnabled(prefs.getBool('dop_reminders_enabled') ?? false);
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
 
     var pushRegistered = false;
     try {
@@ -463,7 +463,7 @@ class SchoolAccountService {
         if (user is Map && user['id'] != null) {
           await prefs.setBool('dop_reminders_enabled_${user['id']}', enabled);
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     }
     final accessToken = await validAccessToken();
     if (accessToken == null || accessToken.isEmpty || baseUrl.isEmpty) return false;
@@ -527,7 +527,7 @@ class SchoolAccountService {
     try {
       accessToken = await validAccessToken();
       refreshToken = (await _readToken(_refreshKey)) ?? '';
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     final rawUser = prefs.getString(_userKey);
     var currentUserId = '';
     if (rawUser != null) {
@@ -536,7 +536,7 @@ class SchoolAccountService {
         if (user is Map && user['id'] != null) {
           currentUserId = user['id'].toString().trim();
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     }
     await prefs.setBool('dop_reminders_enabled', false);
     await _clearScheduledTaskReminders(profileId: currentUserId);
@@ -544,7 +544,7 @@ class SchoolAccountService {
     String? deviceToken;
     try {
       deviceToken = Firebase.apps.isEmpty ? null : await FirebaseMessaging.instance.getToken();
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     if (accessToken != null && accessToken.isNotEmpty && baseUrl.isNotEmpty && deviceToken != null && deviceToken.isNotEmpty) {
       try {
         await http.delete(
@@ -552,7 +552,7 @@ class SchoolAccountService {
           headers: {'Authorization': 'Bearer $accessToken', 'Accept': 'application/json', 'Content-Type': 'application/json'},
           body: jsonEncode({'token': deviceToken}),
         ).timeout(const Duration(seconds: 5));
-      } catch (_) {}
+      } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     }
     if (refreshToken.isNotEmpty && baseUrl.isNotEmpty) {
       try {
@@ -568,7 +568,7 @@ class SchoolAccountService {
             if (deviceToken != null && deviceToken.isNotEmpty) 'device_token': deviceToken,
           }),
         ).timeout(const Duration(seconds: 5));
-      } catch (_) {}
+      } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     }
     await _tokenSubscription?.cancel();
     await _messageSubscription?.cancel();
@@ -592,7 +592,7 @@ class SchoolAccountService {
                 final map = Map<String, dynamic>.from(item);
                 byId[(map['id'] ?? '').toString()] = map;
               }
-            } catch (_) {}
+            } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
           }
           for (final item in rawRows.whereType<Map>()) {
             final map = Map<String, dynamic>.from(item);
@@ -603,7 +603,7 @@ class SchoolAccountService {
           await prefs.setString(scopedKey, jsonEncode(byId.values.toList()));
         }
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
     await prefs.remove('supplements_local');
     // Keep account-isolated manual/intranet entries, but drop stale server rows
     // which will be refreshed after the same account signs in again.
@@ -615,7 +615,7 @@ class SchoolAccountService {
           final rows = (jsonDecode(scopedDops) as List).where((item) =>
               item is Map && !((item['id']?.toString() ?? '').startsWith('server_'))).toList();
           await prefs.setString(scopedDopKey, jsonEncode(rows));
-        } catch (_) {}
+        } catch (error) { debugPrint('school_account_service: ${error.runtimeType}'); }
       }
       await prefs.remove('school_announcements_cache_v2_$currentUserId');
       await prefs.remove('school_supplements_cache_v1_$currentUserId');

@@ -150,7 +150,7 @@ class SettingsPage extends StatelessWidget {
           );
           return;
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('settings_page: ${error.runtimeType}'); }
     }
     await SchoolScheduleCatalog.load();
     if (!context.mounted) return;

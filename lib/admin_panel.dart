@@ -188,7 +188,7 @@ class AdminRepository {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_auditKey);
     List<dynamic> items = [];
-    try { if (raw != null) items = jsonDecode(raw) as List<dynamic>; } catch (_) {}
+    try { if (raw != null) items = jsonDecode(raw) as List<dynamic>; } catch (error) { debugPrint('admin_panel: ${error.runtimeType}'); }
     items.insert(0, {
       'time': DateTime.now().toIso8601String(),
       'login': account?.login ?? 'system',

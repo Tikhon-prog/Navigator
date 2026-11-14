@@ -27,7 +27,7 @@ String _studentScopedPreferenceKey(SharedPreferences prefs, String key) {
       if (account is Map && account['id'] != null) {
         userId = account['id'].toString().trim();
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('student_dialogs: ${error.runtimeType}'); }
   }
   // Keeps the old keys for offline-only installs, while separating group
   // choices for signed-in students sharing the same device.

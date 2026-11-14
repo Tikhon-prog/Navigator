@@ -107,7 +107,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       try {
         final payload = jsonDecode(response.body);
         if (payload is Map && payload['detail'] != null) message = payload['detail'].toString();
-      } catch (_) {}
+      } catch (error) { debugPrint('school_portal_page: ${error.runtimeType}'); }
       throw Exception(message);
     }
     if (response.body.trim().isEmpty) return <String, dynamic>{};

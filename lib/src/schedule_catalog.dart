@@ -21,7 +21,7 @@ class SchoolScheduleCatalog {
           _data = Map<String, dynamic>.from(decoded);
           return;
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('schedule_catalog: ${error.runtimeType}'); }
     }
 
     final raw = await rootBundle.loadString(
@@ -138,7 +138,7 @@ class SchoolScheduleCatalog {
           if (id.isNotEmpty && name.isNotEmpty) classNames[id] = name;
         }
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('schedule_catalog: ${error.runtimeType}'); }
     final variantsByClass = <String, List<Map<String, dynamic>>>{};
     for (final raw in rawRows) {
       if (raw is! Map) continue;

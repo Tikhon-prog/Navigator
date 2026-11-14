@@ -68,7 +68,7 @@ class _PollsPageState extends State<PollsPage> {
             _role = '${user['role'] ?? ''}';
             _classId = '${user['class_id'] ?? ''}';
           }
-        } catch (_) {}
+        } catch (error) { debugPrint('polls_page: ${error.runtimeType}'); }
       }
       if (_base.isEmpty || !isSecureApiBaseUrl(_base)) {
         throw 'Сервер школы не настроен. Войди в школьный аккаунт в настройках.';
@@ -116,7 +116,7 @@ class _PollsPageState extends State<PollsPage> {
         try {
           final body = jsonDecode(utf8.decode(response.bodyBytes));
           if (body is Map && body['detail'] is String) detail = '$failure ${body['detail']}';
-        } catch (_) {}
+        } catch (error) { debugPrint('polls_page: ${error.runtimeType}'); }
         _message(detail);
         return;
       }

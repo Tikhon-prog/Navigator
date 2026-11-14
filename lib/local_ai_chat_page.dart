@@ -143,14 +143,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         _rooms = (rooms['rooms'] as List).whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e)).toList();
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
     try {
       final places = jsonDecode(await rootBundle.loadString('assets/data/places.json'));
       if (places is Map && places['places'] is List) {
         _places = (places['places'] as List).whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e)).toList();
       }
-    } catch (_) {}
+    } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
   }
 
   Future<File> _modelFile() async {
@@ -375,12 +375,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       debugPrint('[Поколение AI] Ошибка загрузки модели: $error');
       try {
         await writer?.close();
-      } catch (_) {}
+      } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
       try {
         if (partialFile != null && await partialFile.exists()) {
           await partialFile.delete();
         }
-      } catch (_) {}
+      } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
       if (mounted) {
         setState(() {
           _statusError = 'Не удалось скачать модель. Проверь подключение и повтори загрузку.';
