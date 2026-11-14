@@ -2156,7 +2156,7 @@ class _AppShellState extends State<AppShell>{
           }
         }
         if (actualSubject == null || !(groups[actualSubject] ?? <int>{}).contains(group)) {
-          return 'Для предмета «$subject» в классе $className нет группы №$group. Доступные группы: ${groups[subject]?.join(', ') ?? 'не найдены'}.';
+          return 'Для предмета «$subject» в классе $className нет группы №$group. Доступные группы: ${groups[actualSubject ?? subject]?.join(', ') ?? 'не найдены'}.';
         }
         await prefs.setInt(
           _studentScopedPreferenceKey(prefs, 'student_group_${className}_$actualSubject'),
@@ -3766,9 +3766,13 @@ class SettingsPage extends StatelessWidget {
         ),
       );
       if (action == 'signout') {
-        await service.signOut();
-        await desktop_polling.stopDesktopNotificationPolling();
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
+        try {
+          await service.signOut();
+          await desktop_polling.stopDesktopNotificationPolling();
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы вышли из школьной учётной записи.')));
+        } catch (error) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось выйти: ${error.toString().replaceFirst('Exception: ', '')}')));
+        }
       } else if (action == 'portal' && context.mounted) {
         if (current['role'] == 'student') {
           await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SchoolAnnouncementsPage()));
