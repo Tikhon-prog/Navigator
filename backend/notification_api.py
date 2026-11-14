@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import secrets
@@ -13,6 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import school_api as core
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2", tags=["targeted notifications"])
 
@@ -102,8 +105,9 @@ async def _worker_loop() -> None:
             await asyncio.to_thread(_enqueue_dop_reminders)
             await asyncio.to_thread(_dispatch_due_notifications)
         except Exception:
-            # The loop must survive a transient database/provider error.
-            pass
+            # The loop must survive a transient database/provider error, but the
+            # failure must not be invisible: log it (no payloads, no tokens).
+            logger.exception("Notification worker iteration failed")
         try:
             poll_seconds = int(os.getenv("NAVIGATOR_NOTIFICATION_POLL_SECONDS", "10"))
         except ValueError:
