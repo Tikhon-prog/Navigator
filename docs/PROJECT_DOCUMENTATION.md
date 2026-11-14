@@ -550,7 +550,7 @@ python -m unittest discover -s backend/tests -v
 
 ### 13.3 CI
 
-GitHub Actions в проекте не используются: workflow-файлы удалены, потому что у владельца нет подписки на минуты сборки. Android и Windows собираются локально на компьютере (см. `docs/BUILD_INSTRUCTIONS.md`, раздел «Локальная сборка на Windows 10/11»), проверки запускаются вручную: `flutter analyze`, `flutter test`, `python -m unittest discover -s backend/tests`. Сборка iOS без macOS-раннера не выполняется; если она понадобится, workflow можно вернуть из истории git (каталог `.github/workflows` до коммита «Drop unused GitHub Actions config»).
+В текущей ветке GitHub Actions workflow-файлы отсутствуют, поэтому автоматические проверки на push/PR и сборка артефактов через Actions не выполняются. Android и Windows проверяются и собираются локально (см. `docs/BUILD_INSTRUCTIONS.md`); проверки запускаются вручную: `python backend/security_check.py`, `python -m unittest discover -s backend/tests`, `flutter analyze` и `flutter test`. Сборка iOS без macOS с Xcode не выполняется; при необходимости workflow можно восстановить из истории git.
 
 **При выпуске сохраняй evidence:** commit SHA, конфигурацию без секретов, результаты тестов/analyze, артефакт, его SHA-256 и запись о ручной проверке. Не делай вывод «всё прошло» только по наличию workflow.
 
