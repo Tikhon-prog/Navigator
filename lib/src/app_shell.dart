@@ -822,7 +822,10 @@ class _AppShellState extends State<AppShell>{
       NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: 'Расписание'),
       NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: 'ДОПы'),
       NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'Настройки'),
+      NavigationDestination(icon: Icon(Icons.smart_toy_outlined), selectedIcon: Icon(Icons.smart_toy_rounded), label: 'ИИ'),
     ];
+    // Последний пункт открывает чат поверх вкладок и не меняет выбранную вкладку.
+    void select(int i) => i == 5 ? unawaited(_openAiChat()) : go(i);
     return Scaffold(
       key: key,
       drawer: _drawer(context),
@@ -835,13 +838,14 @@ class _AppShellState extends State<AppShell>{
                 selectedIndex: index,
                 labelType: NavigationRailLabelType.all,
                 backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
-                onDestinationSelected: go,
+                onDestinationSelected: select,
                 destinations: const [
                   NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: Text('Главная')),
                   NavigationRailDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: Text('Карта')),
                   NavigationRailDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month_rounded), label: Text('Расписание')),
                   NavigationRailDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome_rounded), label: Text('ДОПы')),
                   NavigationRailDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: Text('Настройки')),
+                  NavigationRailDestination(icon: Icon(Icons.smart_toy_outlined), selectedIcon: Icon(Icons.smart_toy_rounded), label: Text('ИИ')),
                 ],
               ),
               VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant),
@@ -851,7 +855,7 @@ class _AppShellState extends State<AppShell>{
         },
       ),
       bottomNavigationBar: MediaQuery.sizeOf(context).width < 900
-          ? NavigationBar(animationDuration: const Duration(milliseconds: 320), selectedIndex: index, onDestinationSelected: go, destinations: destinations)
+          ? NavigationBar(animationDuration: const Duration(milliseconds: 320), selectedIndex: index, onDestinationSelected: select, destinations: destinations)
           : null,
     );
   }

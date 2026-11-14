@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -73,6 +74,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   static Future<void>? _sharedLoadFuture;
 
   static String _friendlyModelError(Object error) {
+    if (error is StateError) return error.message;
     final details = error.toString().toLowerCase();
     if (details.contains('out of memory') ||
         details.contains('not enough memory') ||
@@ -817,12 +819,30 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       ];
       final repo = _chatRepository!;
       String? rawAssistantTurn;
+      final nativeProblem = await _nativeEngineProblem();
+      if (nativeProblem != null) throw StateError(nativeProblem);
+      var gotChunk = false;
+      // Первый запуск на процессоре бывает долгим; если ответа нет совсем,
+      // объясняем, что проверить, вместо бесконечного «думаю».
+      final watchdog = Timer(const Duration(seconds: 60), () {
+        if (!gotChunk && mounted) {
+          setState(() => _statusError =
+              'Модель всё ещё запускается. На слабом компьютере первый запуск '
+              'может занять до нескольких минут. Если ответа нет, проверь, что '
+              'рядом с .exe лежат файлы llama*.dll, и пересобери приложение.');
+        }
+      });
+      try {
       await for (final chunk in repo.streamChat(
         _modelPath!,
         messages: messages,
         tools: _buildTools(),
         options: const LLMChatOptions(toolAttempts: 4),
       ).timeout(const Duration(minutes: 3))) {
+        if (!gotChunk) {
+          gotChunk = true;
+          if (mounted && _statusError != null) setState(() => _statusError = null);
+        }
         final message = chunk.message;
         final rawContent = message?.rawContent;
         if (rawContent != null && rawContent.isNotEmpty) {
@@ -834,6 +854,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           setState(() {});
           _scrollToBottom();
         }
+      }
+      } finally {
+        watchdog.cancel();
       }
       if (answerLine.text.trim().isEmpty) {
         answerLine.text = 'Модель не вернула ответ. Попробуй сформулировать вопрос короче.';
@@ -883,6 +906,24 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         setState(() => _busy = false);
         _scrollToBottom();
       }
+    }
+  }
+
+  /// На Windows нативная библиотека llama должна лежать рядом с .exe.
+  /// Возвращает понятное описание проблемы или null, если всё на месте.
+  Future<String?> _nativeEngineProblem() async {
+    if (!Platform.isWindows) return null;
+    try {
+      final dir = File(Platform.resolvedExecutable).parent;
+      await for (final entity in dir.list(followLinks: false)) {
+        final name = entity.path.split(Platform.pathSeparator).last.toLowerCase();
+        if (name.contains('llama') && name.endsWith('.dll')) return null;
+      }
+      return 'В папке приложения нет llama.dll. Собери приложение заново '
+          '(flutter clean, затем flutter build windows --release) и запускай '
+          'из папки Release целиком.';
+    } catch (_) {
+      return null;
     }
   }
 
