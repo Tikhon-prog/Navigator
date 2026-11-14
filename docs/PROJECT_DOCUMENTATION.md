@@ -548,7 +548,7 @@ python -m unittest discover -s backend/tests -v
 
 ### 13.3 CI
 
-Смотри `.github/workflows/flutter-ci.yml`, `.github/workflows/ios-build.yml`, `.github/workflows/ios-sign.yml` и `.github/workflows/publish-release.yml`. В workflow могут требоваться Repository Variables/Secrets. Сборка Android, сборка Windows, неподписанная iOS-сборка и подписанная IPA — разные сценарии. Секреты Apple signing, OIDC, backend и Firebase нельзя подменять публичным URL.
+GitHub Actions в проекте не используются: workflow-файлы удалены, потому что у владельца нет подписки на минуты сборки. Android и Windows собираются локально на компьютере (см. `docs/BUILD_INSTRUCTIONS.md`, раздел «Локальная сборка на Windows 10/11»), проверки запускаются вручную: `flutter analyze`, `flutter test`, `python -m unittest discover -s backend/tests`. Сборка iOS без macOS-раннера не выполняется; если она понадобится, workflow можно вернуть из истории git (каталог `.github/workflows` до коммита «Drop unused GitHub Actions config»).
 
 **При выпуске сохраняй evidence:** commit SHA, конфигурацию без секретов, результаты тестов/analyze, артефакт, его SHA-256 и запись о ручной проверке. Не делай вывод «всё прошло» только по наличию workflow.
 
