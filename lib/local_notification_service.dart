@@ -199,7 +199,7 @@ class LocalNotificationService {
     await _scheduleNotification(
       id: id,
       title: 'Следующий урок',
-      body: '$subject → кабинет $room',
+      body: room.trim().isEmpty ? subject : '$subject → кабинет $room',
       scheduled: scheduled,
       details: const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -417,6 +417,8 @@ class LocalNotificationService {
         ..sort((a, b) => compareLessonTimes(a.time, b.time));
 
       for (final e in dayEntries) {
+        // Обед — не урок: напоминание «Следующий урок: Обед» бессмысленно.
+        if (e.subject.trim().toLowerCase().startsWith('обед')) continue;
         // Встроенное расписание хранит время как «08:30 - 09:10».
         // Берём первое HH:mm — это фактическое начало урока.
         final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(e.time);
