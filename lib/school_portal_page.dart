@@ -852,13 +852,13 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Сопоставить имя учителя в расписании'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Аккаунт: ${account['display_name'] ?? account['username'] ?? ''}'),
           const SizedBox(height: 8),
           TextField(controller: sourceName, decoration: const InputDecoration(
             labelText: 'Имя из BaseSchedule', helperText: 'Точное значение столбца «Учитель»',
           )),
-        ]),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
@@ -1120,13 +1120,13 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Связать школьный SSO'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Аккаунт: ${account['username'] ?? ''}'),
           const SizedBox(height: 8),
           TextField(controller: subject, decoration: const InputDecoration(
             labelText: 'OIDC subject (sub)', helperText: 'Стабильный идентификатор из школьного UserInfo, не email',
           )),
-        ]),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
