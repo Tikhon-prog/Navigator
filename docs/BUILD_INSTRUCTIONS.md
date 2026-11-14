@@ -109,7 +109,7 @@ $env:POKOLENIE_API_BASE_URL = "https://api.example.school"
 
 `api.example.school` — только пример, не настоящий адрес школы. Не помещай в клиентскую сборку пароли, access/refresh tokens, `.env` или Firebase service-account JSON. Клиентский APK/EXE можно исследовать и извлечь из него конфигурацию.
 
-Сборка приложения не разворачивает backend, не создаёт школьные аккаунты и не настраивает OIDC/SSO, источник расписания или Firebase. Для этих действий смотри [инструкцию серверной интеграции](SERVER_INTEGRATION.md), [серверные функции](SERVER_FEATURES.md) и [документацию backend](backend/README.md).
+Сборка приложения не разворачивает backend, не создаёт школьные аккаунты и не настраивает OIDC/SSO, источник расписания или Firebase. Для этих действий смотри [инструкцию серверной интеграции](SERVER_INTEGRATION.md), [серверные функции](SERVER_FEATURES.md) .
 
 ## 7. Ручная сборка Windows installer
 
