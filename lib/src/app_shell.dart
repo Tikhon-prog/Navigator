@@ -31,7 +31,7 @@ class _PokolenieAppState extends State<PokolenieApp>{
     final border = BorderSide(color: colors.outlineVariant.withValues(alpha: .8));
     return ThemeData(
       useMaterial3: true,
-      fontFamily: 'Inter',
+      fontFamily: 'Onest',
       brightness: dark ? Brightness.dark : Brightness.light,
       colorScheme: colors,
       scaffoldBackgroundColor: colors.surface,
@@ -44,7 +44,7 @@ class _PokolenieAppState extends State<PokolenieApp>{
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         toolbarHeight: 64,
-        titleTextStyle: TextStyle(fontFamily: 'Inter', color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.35),
+        titleTextStyle: TextStyle(fontFamily: 'Onest', color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.35),
       ),
       cardTheme: CardThemeData(
         color: colors.surfaceContainer,
@@ -79,7 +79,7 @@ class _PokolenieAppState extends State<PokolenieApp>{
         height: 72,
         backgroundColor: colors.surfaceContainer,
         indicatorColor: colors.primary.withValues(alpha: dark ? .24 : .13),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w500)),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(fontFamily: 'Onest', fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w500)),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
@@ -95,7 +95,7 @@ class _PokolenieAppState extends State<PokolenieApp>{
         backgroundColor: colors.surfaceContainer,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-        titleTextStyle: TextStyle(fontFamily: 'Inter', color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.3),
+        titleTextStyle: TextStyle(fontFamily: 'Onest', color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.3),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: colors.surfaceContainer,

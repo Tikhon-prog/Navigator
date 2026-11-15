@@ -29,14 +29,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   fonts:
-    - family: Inter
+    - family: Onest
       fonts:
-        - asset: assets/fonts/Inter-Regular.otf
-        - asset: assets/fonts/Inter-Medium.otf
+        - asset: assets/fonts/Onest-Regular.ttf
+        - asset: assets/fonts/Onest-Medium.ttf
           weight: 500
-        - asset: assets/fonts/Inter-Bold.otf
+        - asset: assets/fonts/Onest-Bold.ttf
           weight: 700
-        - asset: assets/fonts/Inter-ExtraBold.otf
+        - asset: assets/fonts/Onest-ExtraBold.ttf
           weight: 800
   assets:
     - assets/maps/floor1.webp
