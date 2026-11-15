@@ -215,7 +215,7 @@ class _PollsPageState extends State<PollsPage> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 40),
                       child: Center(
-                        child: Text('Активных голосований пока нет',
+                        child: Text('Голосований пока нет',
                             style: TextStyle(color: scheme.onSurfaceVariant)),
                       ),
                     ),
