@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dop_parser.dart';
 import 'main.dart' show SchoolScheduleCatalog;
 import 'school_account_service.dart';
 import 'schedule_time.dart';
@@ -148,7 +149,26 @@ class MentorMenteesPage extends StatefulWidget {
   State<MentorMenteesPage> createState() => _MentorMenteesPageState();
 }
 
+/// Подставляет данные подопечного вместо профиля самого пользователя,
+/// чтобы парсер ДОПов загрузил занятия именно этого ученика.
+class _MenteeStudentProvider extends NavigatorStudentProvider {
+  final DopStudent student;
+  const _MenteeStudentProvider(this.student);
+
+  @override
+  Future<DopStudent?> load() async => student;
+}
+
+class _SiteDops {
+  final List<DopSubgroup> items;
+  final DateTime loadedAt;
+  const _SiteDops(this.items, this.loadedAt);
+}
+
 class _MentorMenteesPageState extends State<MentorMenteesPage> {
+  final Map<String, _SiteDops> _siteDops = {};
+  final Map<String, String> _siteErrors = {};
+  final Set<String> _siteLoading = {};
   List<MentorMentee> mentees = [];
   bool loading = true, allowed = false;
   String ownerId = '', query = '', error = '';
@@ -347,6 +367,96 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
 
   /// Расписание класса подопечного из школьных данных приложения: по выбранным
   /// дням, а если дни не выбраны, то на всю неделю.
+  Future<void> _loadSiteDops(MentorMentee mentee) async {
+    if (_siteLoading.contains(mentee.id)) return;
+    setState(() {
+      _siteLoading.add(mentee.id);
+      _siteErrors.remove(mentee.id);
+    });
+    try {
+      final student = DopStudent(
+        lastName: mentee.lastName,
+        firstName: mentee.firstName,
+        classNumber: mentee.grade,
+        classLetter: mentee.letter,
+        profile: mentee.profile,
+      );
+      final result = await DopParser(studentProvider: _MenteeStudentProvider(student)).parse();
+      if (!mounted) return;
+      setState(() => _siteDops[mentee.id] = _SiteDops(result.application.disciplines, DateTime.now()));
+    } catch (error) {
+      debugPrint('mentor_mentees_page: ${error.runtimeType}');
+      if (!mounted) return;
+      setState(() => _siteErrors[mentee.id] = error is DopParserException
+          ? error.message
+          : 'Не удалось связаться с сайтом ДОПов. Проверь интернет и повтори.');
+    } finally {
+      if (mounted) setState(() => _siteLoading.remove(mentee.id));
+    }
+  }
+
+  String _siteDopSchedule(DopSubgroup item) {
+    const days = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    if (item.schedule.isEmpty) return 'Расписание не указано';
+    return item.schedule.map((slot) {
+      final day = slot.day >= 1 && slot.day <= 6 ? days[slot.day] : '?';
+      final lessons = slot.start == slot.end ? 'урок ${slot.start}' : 'уроки ${slot.start}–${slot.end}';
+      final room = slot.room.trim().isEmpty ? '' : ' · каб. ${slot.room.trim()}';
+      return '$day · $lessons$room';
+    }).join('\n');
+  }
+
+  Widget _siteDopSection(MentorMentee mentee, ColorScheme scheme) {
+    final loading = _siteLoading.contains(mentee.id);
+    final data = _siteDops[mentee.id];
+    final failure = _siteErrors[mentee.id];
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text('ДОПы с сайта', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            loading
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                : TextButton.icon(
+                    onPressed: () => _loadSiteDops(mentee),
+                    icon: const Icon(Icons.cloud_download_rounded, size: 18),
+                    label: Text(data == null ? 'Загрузить' : 'Обновить'),
+                  ),
+          ]),
+          if (failure != null)
+            Text(failure, style: TextStyle(color: scheme.error)),
+          if (data != null && data.items.isEmpty)
+            Text('На сайте у ученика нет выбранных ДОПов.', style: TextStyle(color: scheme.onSurfaceVariant)),
+          if (data != null)
+            for (final item in data.items)
+              Card(
+                margin: const EdgeInsets.only(top: 6),
+                child: ListTile(
+                  dense: true,
+                  title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text([
+                    if (item.teacher.trim().isNotEmpty) item.teacher.trim(),
+                    _siteDopSchedule(item),
+                  ].join('\n')),
+                ),
+              ),
+          if (data != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Обновлено ${data.loadedAt.hour.toString().padLeft(2, '0')}:${data.loadedAt.minute.toString().padLeft(2, '0')}',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _classSchedule(MentorMentee mentee, ColorScheme scheme) {
     final rows = SchoolScheduleCatalog.variants(mentee.className);
     if (rows.isEmpty) {
@@ -440,6 +550,7 @@ class _MentorMenteesPageState extends State<MentorMenteesPage> {
             ),
           ]),
           _classSchedule(item, scheme),
+          _siteDopSection(item, scheme),
           _planSection(item, dop: false, scheme: scheme),
           _planSection(item, dop: true, scheme: scheme),
         ],
