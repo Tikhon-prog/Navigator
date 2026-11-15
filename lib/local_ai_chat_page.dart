@@ -800,6 +800,13 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         }
       }
       if (!mounted) return;
+      // Контекст модели — 4096 токенов, кириллица занимает много токенов.
+      // Недельное расписание целиком переполняло его, и модель зависала.
+      const maxContextChars = 2200;
+      if (schoolContext.length > maxContextChars) {
+        schoolContext =
+            '${schoolContext.substring(0, maxContextChars)}\n(данные сокращены)';
+      }
 
       _history.add(LLMMessage(role: LLMRole.user, content: text));
       _trimConversationHistory();
