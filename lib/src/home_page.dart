@@ -4,7 +4,9 @@ class HomePage extends StatelessWidget {
   final String userName;
   final AppThemeType theme;
   final VoidCallback onMenu, onMap, onSchedule, onDop, onAnnouncements, onAiChat;
-  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop, required this.onAnnouncements, required this.onAiChat});
+  final Future<List<ScheduleEntry>?> Function() todayLoader;
+  final void Function(String roomId) onOpenRoom;
+  const HomePage({super.key, required this.userName, required this.theme, required this.onMenu, required this.onMap, required this.onSchedule, required this.onDop, required this.onAnnouncements, required this.onAiChat, required this.todayLoader, required this.onOpenRoom});
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +50,8 @@ class HomePage extends StatelessWidget {
                   ]),
                 ]),
               ),
+              const SizedBox(height: 20),
+              _TodayCard(loader: todayLoader, onOpenRoom: onOpenRoom, onSchedule: onSchedule),
               const SizedBox(height: 28),
               Row(children: [
                 Expanded(child: Text('Быстрый доступ', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -.4))),
@@ -120,6 +124,140 @@ class _DashboardCard extends StatelessWidget {
             Icon(Icons.arrow_outward_rounded, size: 18, color: colors.onSurfaceVariant),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+
+/// Карточка «Сегодня»: уроки с кабинетами, подсветка текущего урока и
+/// обратный отсчёт до звонка. Нажатие на кабинет открывает его на карте.
+class _TodayCard extends StatefulWidget {
+  final Future<List<ScheduleEntry>?> Function() loader;
+  final void Function(String roomId) onOpenRoom;
+  final VoidCallback onSchedule;
+  const _TodayCard({required this.loader, required this.onOpenRoom, required this.onSchedule});
+
+  @override
+  State<_TodayCard> createState() => _TodayCardState();
+}
+
+class _TodayCardState extends State<_TodayCard> {
+  List<ScheduleEntry>? _lessons;
+  bool _loaded = false;
+  Timer? _ticker;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+    // Раз в 30 секунд обновляем отсчёт и перечитываем расписание
+    // (класс или группа могли смениться в настройках).
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+      _reload();
+    });
+  }
+
+  Future<void> _reload() async {
+    try {
+      final lessons = await widget.loader();
+      if (!mounted) return;
+      setState(() {
+        _lessons = lessons;
+        _loaded = true;
+      });
+    } catch (error) {
+      debugPrint('home_page: ${error.runtimeType}');
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  bool _isCurrent(ScheduleEntry lesson) {
+    final match = RegExp(r'(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})').firstMatch(lesson.time);
+    if (match == null) return false;
+    final minutes = _now.hour * 60 + _now.minute;
+    final start = int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+    final end = int.parse(match.group(3)!) * 60 + int.parse(match.group(4)!);
+    return minutes >= start && minutes < end;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const days = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+    final lessons = _lessons;
+    final countdown = lessons == null || lessons.isEmpty
+        ? null
+        : SchoolBellCountdown.describe(
+            selectedDay: _now.weekday,
+            now: _now,
+            lessons: [for (final l in lessons) (time: l.time, subject: l.subject)],
+          );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.today_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Сегодня · ${days[_now.weekday]}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(onPressed: widget.onSchedule, child: const Text('Всё расписание')),
+            ]),
+            if (countdown != null) ...[
+              const SizedBox(height: 6),
+              Text(countdown, style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700)),
+            ],
+            const SizedBox(height: 10),
+            if (!_loaded)
+              const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+            else if (lessons == null)
+              Text('Выбери класс и группы в расписании, и здесь появятся твои уроки с кабинетами.',
+                  style: TextStyle(color: scheme.onSurfaceVariant))
+            else if (lessons.isEmpty)
+              Text('Сегодня уроков нет.', style: TextStyle(color: scheme.onSurfaceVariant))
+            else
+              for (final lesson in lessons) _row(context, lesson, scheme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, ScheduleEntry lesson, ColorScheme scheme) {
+    final current = _isCurrent(lesson);
+    final canOpen = lesson.room.isNotEmpty && SchoolData.tryRoom(lesson.room) != null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: current ? scheme.primaryContainer : scheme.surfaceContainerHighest.withValues(alpha: .5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ListTile(
+        dense: true,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(lesson.subject, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(lesson.time),
+        trailing: lesson.room.isEmpty
+            ? null
+            : ActionChip(
+                avatar: Icon(canOpen ? Icons.place_rounded : Icons.meeting_room_outlined, size: 18),
+                label: Text(lesson.room),
+                onPressed: canOpen ? () => widget.onOpenRoom(lesson.room) : null,
+              ),
       ),
     );
   }

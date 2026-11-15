@@ -410,6 +410,44 @@ class _AppShellState extends State<AppShell>{
     return contextLines.join('\n');
   }
 
+  /// Уроки ученика на сегодня (для карточки на главной).
+  /// Возвращает null, если класс ещё не выбран.
+  Future<List<ScheduleEntry>?> _loadTodayLessons() async {
+    final prefs = await SharedPreferences.getInstance();
+    await SchoolScheduleCatalog.load();
+    final className = (prefs.getString(_studentScopedPreferenceKey(prefs, 'student_class_name')) ??
+            prefs.getString('student_class_name') ??
+            '')
+        .trim();
+    if (className.isEmpty) return null;
+    final groups = <String, int>{
+      for (final subject in SchoolScheduleCatalog.splitSubjects(className))
+        subject: prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_group_${className}_$subject')) ?? 1,
+    };
+    final mathNamesByDay = <int, List<String>>{
+      for (var day = 1; day <= 6; day++)
+        day: [
+          for (var slot = 0; slot < 6; slot++)
+            prefs.getString(_studentScopedPreferenceKey(prefs, 'math_subject_${className}_${day}_$slot')) ?? '',
+        ],
+    };
+    int? wholeClassGroup;
+    if (SchoolScheduleCatalog.usesWholeClassSubgroup(className)) {
+      final stored = prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_class_group_8В'));
+      if (stored == 1 || stored == 2) wholeClassGroup = stored;
+      if (wholeClassGroup == null) return null;
+    }
+    final today = DateTime.now().weekday;
+    final lessons = SchoolScheduleCatalog.buildPersonal(
+      className,
+      groups,
+      mathNamesByDay: mathNamesByDay,
+      wholeClassGroup: wholeClassGroup,
+    ).where((lesson) => lesson.day == today && !lesson.subject.toLowerCase().contains('обед')).toList()
+      ..sort((a, b) => compareLessonTimes(a.time, b.time));
+    return lessons;
+  }
+
   void _selectLocationFromAi(String locationId) {
     final room = SchoolData.tryRoom(locationId);
     if (room == null) return;
@@ -810,7 +848,7 @@ class _AppShellState extends State<AppShell>{
       key.currentState?.openDrawer();
     }
     final pages = <Widget>[
-      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat),
+      HomePage(userName: widget.userName, theme: widget.theme, onMenu: menu, onMap: () => go(1), onSchedule: () => go(2), onDop: () => go(3), onAnnouncements: _openAnnouncements, onAiChat: _openAiChat, todayLoader: _loadTodayLessons, onOpenRoom: _selectLocationFromAi),
       MapPage(initialRoom: selectedRoom, onMenu: menu),
       SchedulePage(onMenu: menu, onNotes: _openNotes),
       SupplementsPage(onMenu: menu),
