@@ -55,7 +55,7 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 28),
               Row(children: [
                 Expanded(child: Text('Быстрый доступ', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -.4))),
-                Text('5 разделов', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+                Text('4 раздела', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 14),
               GridView.count(
