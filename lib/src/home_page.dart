@@ -161,10 +161,14 @@ class _TodayCardState extends State<_TodayCard> {
     });
   }
 
+  int _requestId = 0;
+
   Future<void> _reload() async {
+    final requestId = ++_requestId;
     try {
       final lessons = await widget.loader();
-      if (!mounted) return;
+      // Устаревший ответ не должен перезаписать более новый.
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _lessons = lessons;
         _loaded = true;

@@ -108,7 +108,7 @@ class _PollsPageState extends State<PollsPage> {
       ..showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> _send(Future<http.Response> Function() request, String failure) async {
+  Future<bool> _send(Future<http.Response> Function() request, String failure) async {
     try {
       final response = await request().timeout(const Duration(seconds: 10));
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -118,11 +118,13 @@ class _PollsPageState extends State<PollsPage> {
           if (body is Map && body['detail'] is String) detail = '$failure ${body['detail']}';
         } catch (error) { debugPrint('polls_page: ${error.runtimeType}'); }
         _message(detail);
-        return;
+        return false;
       }
       await _load();
+      return true;
     } catch (_) {
       _message(failure);
+      return false;
     }
   }
 
@@ -130,7 +132,7 @@ class _PollsPageState extends State<PollsPage> {
     final id = '${poll['id']}';
     final chosen = _selected[id] ?? <String>{};
     if (chosen.isEmpty) return;
-    await _send(
+    final sent = await _send(
       () => http.post(
         _uri('polls/$id/vote'),
         headers: _headers,
@@ -138,7 +140,8 @@ class _PollsPageState extends State<PollsPage> {
       ),
       'Не удалось отправить голос.',
     );
-    _selected.remove(id);
+    // При ошибке выбор сохраняется, чтобы можно было повторить.
+    if (sent) _selected.remove(id);
   }
 
   Future<void> _close(Map<String, dynamic> poll) => _send(
