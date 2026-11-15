@@ -647,7 +647,7 @@ class _PlanEditorState extends State<_PlanEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final orderedDays = widget.days.toList()..sort();
+    final orderedDays = (widget.days.isEmpty ? <int>{1, 2, 3, 4, 5, 6} : widget.days).toList()..sort();
     return AlertDialog(
       title: Text(widget.dop ? 'ДОП' : 'Урок'),
       scrollable: true,
