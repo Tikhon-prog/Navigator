@@ -561,7 +561,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
-            if (title.text.trim().isEmpty) return;
+            if (title.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажи название занятия.')));
+              return;
+            }
             final timeValue = time.text.trim();
             if (timeValue.isNotEmpty && !RegExp(r'^([01]?\d|2[0-3]):[0-5]\d$').hasMatch(timeValue)) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажи время в формате ЧЧ:ММ, например 15:30.')));
@@ -780,7 +783,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
-            if (title.text.trim().isEmpty || body.text.trim().isEmpty || (targetType != 'all' && targetId.text.trim().isEmpty)) return;
+            if (title.text.trim().isEmpty || body.text.trim().isEmpty || (targetType != 'all' && targetId.text.trim().isEmpty)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заполни заголовок, текст и получателя.')));
+              return;
+            }
             if (scheduleMessage && scheduledAt == null) return;
             if (expireMessage && expiresAt == null) return;
             if (scheduledAt != null && expiresAt != null && !expiresAt!.isAfter(scheduledAt!)) {
@@ -962,7 +968,10 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
           FilledButton(onPressed: () {
-            if (name.text.trim().isEmpty || login.text.trim().length < 3 || password.text.length < 14 || (role == 'student' && classId.text.trim().isEmpty)) return;
+            if (name.text.trim().isEmpty || login.text.trim().length < 3 || password.text.length < 14 || (role == 'student' && classId.text.trim().isEmpty)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заполни имя, логин (от 3 символов), пароль (от 14 символов) и класс для ученика.')));
+              return;
+            }
             if (role == 'student' && staffPosition.isNotEmpty) return;
             if (staffPosition == 'homeroom_teacher' && scopeClass.text.trim().isEmpty) return;
             Navigator.pop(dialogContext, {'display_name': name.text.trim(), 'username': login.text.trim(),
@@ -1429,7 +1438,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
       subtitle: Text('${account['role']} • ${account['position'] ?? 'без должности'}${account['class_id'] == null ? '' : ' • ${account['class_id']}'}'),
       trailing: Wrap(children: [
         if (isAdmin)
-          IconButton(tooltip: 'Связать с школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
+          IconButton(tooltip: 'Связать со школьным SSO', onPressed: busy ? null : () => _linkSsoIdentity(account), icon: const Icon(Icons.key_rounded)),
         if ((permissions.contains('*') || permissions.contains('assignments.manage')) && account['role'] == 'teacher')
           IconButton(tooltip: 'Сопоставить имя в расписании', onPressed: busy ? null : () => _linkScheduleTeacherName(account), icon: const Icon(Icons.badge_outlined)),
         if (canManageUsers && account['id']?.toString() != user['id']?.toString() &&

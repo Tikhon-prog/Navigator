@@ -213,6 +213,10 @@ def _link_or_provision(claims: dict[str, Any], issuer: str):
 
         if not auto_provision or not mapped_role:
             return None
+        # A deactivated account keeps its username (UNIQUE); never try to provision
+        # a duplicate for it, which would end in an unhandled IntegrityError (HTTP 500).
+        if db.execute("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (username,)).fetchone():
+            return None
         if mapped_role == "admin" and os.getenv("NAVIGATOR_OIDC_ALLOW_ADMIN_PROVISION", "false").strip().lower() not in {"1", "true", "yes", "on"}:
             return None
         if mapped_role == "student" and not class_id:

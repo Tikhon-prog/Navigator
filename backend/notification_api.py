@@ -466,8 +466,10 @@ def create_notification(body: NotificationBody,
                 raise HTTPException(status_code=403, detail="Staff without school-wide leadership may notify only student accounts")
             if actor["role"] == "teacher" and not is_school_leadership and position != "dop_coordinator":
                 if position == "homeroom_teacher":
-                    linked = db.execute("SELECT 1 FROM users WHERE id=? AND role='student' AND class_id=?",
-                                        (body.target_id, scope_class)).fetchone()
+                    student_class = db.execute("SELECT class_id FROM users WHERE id=? AND role='student'",
+                                               (body.target_id,)).fetchone()
+                    linked = bool(student_class) and bool(core.normalize_class_id(scope_class)) and \
+                        core.normalize_class_id(student_class["class_id"]) == core.normalize_class_id(scope_class)
                 else:
                     linked = db.execute("SELECT 1 FROM teacher_subject_assignments WHERE student_id=? AND staff_id=?",
                                         (body.target_id, actor["id"])).fetchone()
