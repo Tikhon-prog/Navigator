@@ -47,6 +47,8 @@ class _DesktopNotificationPolling {
       _accountScope = scope;
       _baseUrl = baseUrl;
       await _poll(showNew: false);
+      // Первичный опрос мог остановить поллер (нет токена / 401).
+      if (_accountScope != scope) return;
     }
 
     _timer ??= Timer.periodic(
