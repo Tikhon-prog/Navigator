@@ -942,10 +942,18 @@ def sync_teacher_assignments(actor: dict[str, Any] = Depends(require_permission(
             for student in students:
                 if _class_key(str(student.get("class_id") or "")) != class_key:
                     continue
-                db.execute(
-                    "DELETE FROM teacher_subject_assignments WHERE student_id=? AND lower(subject)=? AND source_key LIKE 'schedule:%'",
-                    (student["id"], subject_key)
-                )
+                # SQLite lower() does not fold Cyrillic, so compare in Python.
+                for stale in db.execute(
+                    "SELECT staff_id,subject FROM teacher_subject_assignments "
+                    "WHERE student_id=? AND source_key LIKE 'schedule:%'",
+                    (student["id"],),
+                ).fetchall():
+                    if str(stale["subject"]).strip().casefold() == subject_key:
+                        db.execute(
+                            "DELETE FROM teacher_subject_assignments "
+                            "WHERE student_id=? AND staff_id=? AND subject=? AND source_key LIKE 'schedule:%'",
+                            (student["id"], stale["staff_id"], stale["subject"]),
+                        )
         for student_id, teacher_id, subject in sorted(assignment_keys):
             key_data = json.dumps([student_id, teacher_id, subject], ensure_ascii=False, separators=(",", ":"))
             source_key = "schedule:" + hashlib.sha256(key_data.encode()).hexdigest()

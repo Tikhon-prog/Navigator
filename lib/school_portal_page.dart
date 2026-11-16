@@ -651,6 +651,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
+            key: ValueKey('target-type-$targetType'),
             initialValue: targetType,
             decoration: const InputDecoration(labelText: 'Кому'),
             items: [
@@ -668,6 +669,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           ),
           if (targetType == 'group' && notificationGroups.isNotEmpty)
             DropdownButtonFormField<String>(
+              key: const ValueKey('target-group'),
               initialValue: notificationGroups.any((group) => group['id']?.toString() == targetId.text)
                   ? targetId.text : null,
               isExpanded: true,
@@ -681,6 +683,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             )
           else if (targetType == 'class' && classOptions.isNotEmpty)
             DropdownButtonFormField<String>(
+              key: const ValueKey('target-class'),
               initialValue: classOptions.contains(targetId.text) ? targetId.text : null,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Класс-получатель'),
@@ -690,6 +693,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
             )
           else if (targetType == 'user' && students.isNotEmpty)
             DropdownButtonFormField<String>(
+              key: const ValueKey('target-user'),
               initialValue: students.any((student) => student['id']?.toString() == targetId.text)
                   ? targetId.text : null,
               isExpanded: true,
@@ -933,6 +937,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
           if (role == 'student') TextField(controller: classId, decoration: const InputDecoration(labelText: 'Класс ученика')),
           if (role != 'student') ...[
             DropdownButtonFormField<String>(
+              key: ValueKey('staff-position-$role'),
               initialValue: staffPosition,
               decoration: const InputDecoration(labelText: 'Должность / дополнительные права'),
               items: [
