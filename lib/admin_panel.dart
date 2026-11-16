@@ -233,10 +233,11 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   Future<void> _load() async {
     final list = await AdminRepository().list();
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     apiController.text = prefs.getString('navigator_api_url') ?? '';
     apiEnabled = prefs.getBool('navigator_api_enabled') ?? false;
-    audit = await AdminRepository().auditLog();
-    if (mounted) setState(() => admins = list);
+    final log = await AdminRepository().auditLog();
+    if (mounted) setState(() { admins = list; audit = log; });
   }
 
   Future<void> _addAdmin() async {
@@ -531,6 +532,7 @@ class _AdminEditorState extends State<_AdminEditor> {
   final password = TextEditingController();
   String role = 'admin';
   bool active = true;
+  String? error;
   final selected = <String>{};
 
   @override void initState() {
@@ -593,13 +595,20 @@ class _AdminEditorState extends State<_AdminEditor> {
         title: Text(AdminPermissions.labels[p] ?? p),
       )),
       SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, value: active, onChanged: (v) => setState(() => active = v), title: const Text('Аккаунт активен')),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
     ])),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
       FilledButton(onPressed: () {
         final l = login.text.trim();
-        if (l.length < 3) return;
-        if ((widget.existing == null || password.text.isNotEmpty) && password.text.length < 12) return;
+        if (l.length < 3) {
+          setState(() => error = 'Логин должен содержать минимум 3 символа');
+          return;
+        }
+        if ((widget.existing == null || password.text.isNotEmpty) && password.text.length < 12) {
+          setState(() => error = 'Пароль должен быть не короче 12 символов');
+          return;
+        }
         final hash = password.text.isEmpty && widget.existing != null
             ? widget.existing!.passwordHash
             : PasswordHasher.secureDigest(password.text);
