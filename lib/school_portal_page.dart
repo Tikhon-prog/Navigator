@@ -323,7 +323,7 @@ class _SchoolPortalPageState extends State<SchoolPortalPage> with SingleTickerPr
                     try {
                       await _request('DELETE', 'admin/notification-groups/${group['id']}/members/${member['id']}');
                       members.removeWhere((item) => item['id'] == member['id']);
-                      setMemberState(() {});
+                      if (dialogContext.mounted) setMemberState(() {});
                       await _loadGroups();
                       refreshDialog(() {});
                     } catch (e) {
