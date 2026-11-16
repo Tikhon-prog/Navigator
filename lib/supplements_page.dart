@@ -506,7 +506,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
                                     const SizedBox(height: 15),
                                     const Text('На этот день занятий нет', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
                                     const SizedBox(height: 6),
-                                    Text('Обнови список с intranet или добавь занятие вручную.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
+                                    Text('Обнови список с intranet или выбери другой день.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
                                     const SizedBox(height: 16),
                                     Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
                                       OutlinedButton.icon(onPressed: syncing ? null : _syncFromIntranet, icon: const Icon(Icons.sync_rounded), label: const Text('Обновить')),
