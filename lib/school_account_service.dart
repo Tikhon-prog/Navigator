@@ -399,9 +399,9 @@ class SchoolAccountService {
     final baseUrl = (prefs.getString('school_api_base_url_v1') ?? '').trim();
     final savedUser = await currentUser();
     if (baseUrl.isEmpty || savedUser == null) return false;
-    final token = await validAccessToken();
-    if (token == null || token.isEmpty) return false;
     try {
+      final token = await validAccessToken();
+      if (token == null || token.isEmpty) return false;
       final config = await _getConfig(baseUrl);
       return await _initializePush(config, baseUrl, token);
     } catch (_) {
