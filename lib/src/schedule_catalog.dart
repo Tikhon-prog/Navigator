@@ -1,7 +1,7 @@
 part of '../main.dart';
 
 class SchoolScheduleCatalog {
-  static const int _bundledScheduleRevision = 2;
+  static const int _bundledScheduleRevision = 3;
   static const String _cacheKey = 'school_schedule_cache_v1';
   static const String _cacheRevisionKey = 'school_schedule_cache_revision_v1';
   static Map<String, dynamic>? _data;
