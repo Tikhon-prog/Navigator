@@ -103,6 +103,7 @@ class LocalNotificationService {
       android: android,
       iOS: darwin,
       windows: windows,
+      linux: LinuxInitializationSettings(defaultActionName: 'Открыть'),
     );
     await plugin.initialize(settings);
 
@@ -236,6 +237,7 @@ class LocalNotificationService {
   }
 
   Future<void> _cancelNotificationRange(int from, int to) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) return;
     final pending = await plugin.pendingNotificationRequests();
     for (final notification in pending) {
       if (notification.id >= from && notification.id <= to) {
@@ -253,6 +255,8 @@ class LocalNotificationService {
   }) async {
     final now = tz.TZDateTime.now(tz.local);
     if (!scheduled.isAfter(now)) return;
+    // На Linux плагин не умеет отложенные уведомления.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) return;
 
     // Delegate to the operating system scheduler on every native platform.
     // In particular, Windows uses ScheduledToastNotification instead of a Dart
