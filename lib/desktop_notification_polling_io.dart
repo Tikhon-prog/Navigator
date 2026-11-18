@@ -12,6 +12,7 @@ import 'school_account_service.dart';
 /// in-app feed while the desktop app is running and convert only newly observed
 /// notifications to Windows toast notifications.
 class _DesktopNotificationPolling {
+  static bool get _supported => Platform.isWindows || Platform.isLinux;
   static Timer? _timer;
   static bool _polling = false;
   static String _accountScope = '';
@@ -20,7 +21,7 @@ class _DesktopNotificationPolling {
   static bool _seeded = false;
 
   static Future<void> start() async {
-    if (!Platform.isWindows) return;
+    if (!_supported) return;
 
     final prefs = await SharedPreferences.getInstance();
     final user = await SchoolAccountService().currentUser();
@@ -79,7 +80,7 @@ class _DesktopNotificationPolling {
   }
 
   static Future<void> _poll({required bool showNew}) async {
-    if (!Platform.isWindows || _polling || _accountScope.isEmpty || _baseUrl.isEmpty) {
+    if (!_supported || _polling || _accountScope.isEmpty || _baseUrl.isEmpty) {
       return;
     }
     _polling = true;

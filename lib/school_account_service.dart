@@ -232,11 +232,12 @@ class SchoolAccountService {
 
     late final String? providerToken;
     late final String? providerIdToken;
-    if (defaultTargetPlatform == TargetPlatform.windows) {
+    if (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux) {
       final desktopRedirectUri = '${sso['desktop_redirect_uri'] ?? ''}'.trim();
       if (desktopRedirectUri.isEmpty) {
         throw Exception(
-          'Для Windows не настроен NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI на сервере. '
+          'Для Windows и Linux не настроен NAVIGATOR_OIDC_DESKTOP_REDIRECT_URI на сервере. '
           'Добавь http://127.0.0.1:43827/oauth/callback в разрешённые адреса школьного OIDC.',
         );
       }
