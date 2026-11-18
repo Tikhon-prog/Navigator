@@ -84,7 +84,7 @@ void main() {
   });
 
 
-  test('расписание 8В обновлено на вторую четверть без изменения остальных классов', () async {
+  test('расписание 8В обновлено по расписанию с 16.11.2026', () async {
     final raw = await rootBundle.loadString(
       'assets/data/school_schedule_2026-10-05.json',
     );
@@ -93,11 +93,11 @@ void main() {
     final class8v = classes['8В'] as Map<String, dynamic>;
     final variants = (class8v['variants'] as List).cast<Map<String, dynamic>>();
 
-    expect(class8v['period'], '2 четверть');
+    expect(class8v['period'], 'с 16.11.2026');
     expect(class8v['local_override'], isTrue);
     expect(variants, hasLength(64));
     expect(classes['8А'], isNot(class8v));
-    expect((classes['8А'] as Map<String, dynamic>)['period'], isNull);
+    expect((classes['8А'] as Map<String, dynamic>)['period'], 'с 16.11.2026');
 
     bool hasLesson({
       required int day,
