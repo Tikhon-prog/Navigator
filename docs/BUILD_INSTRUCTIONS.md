@@ -134,3 +134,21 @@ New-Item -ItemType Directory -Force -Path dist | Out-Null
 - Сохранены commit SHA, логи проверок, артефакты и SHA-256.
 
 Наличие тестовых файлов в репозитории не означает, что тесты прошли. В этой инструкции нет заявления о том, что текущий commit уже собран или проверен на устройствах.
+
+## Linux (Ubuntu, Lubuntu и др.)
+
+```bash
+sudo apt install -y git curl clang cmake ninja-build pkg-config libgtk-3-dev
+flutter clean
+flutter pub get
+flutter build linux --release
+```
+
+Готовая программа лежит в `build/linux/x64/release/bundle/` — запускать файл `pokolenie` оттуда, папки `data` и `lib` должны оставаться рядом с ним.
+
+Локальная нейросеть:
+
+- Нативные библиотеки (`libllama.so`, `libggml*.so`) скачивает сама сборка из GitHub, поэтому при `flutter build linux` нужен интернет.
+- У этих библиотек SONAME вида `libggml.so.0`, а файлы кладутся без `.0`. `linux/cmake/link_sonames.cmake` на этапе сборки создаёт недостающие ссылки `*.so.0` в `bundle/lib`, а приложение дополнительно заранее подгружает библиотеки по полному пути. Ничего вручную делать не нужно.
+- Проверка: `ls -l build/linux/x64/release/bundle/lib | grep -E "llama|ggml"` — рядом с `libllama.so` и `libggml.so` должны быть ссылки `libllama.so.0`, `libggml.so.0`, `libggml-base.so.0`.
+- Модель (`.gguf`, около 490 МБ) скачивается из приложения в папку данных приложения. Если загрузка или запуск не удались, в тексте ошибки показаны причина и путь к журналу `ai.log` (лежит рядом с моделью).

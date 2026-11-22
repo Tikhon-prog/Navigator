@@ -112,6 +112,13 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
    COMPONENT Runtime)
 
+# У библиотек llama/ggml SONAME вида libggml.so.0, а в bundle они лежат без
+# «.0». Создаём недостающие ссылки, иначе libllama.so не находит зависимости.
+install(CODE "
+  set(BUNDLE_LIB_DIR \"${INSTALL_BUNDLE_LIB_DIR}\")
+  include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/link_sonames.cmake\")
+  " COMPONENT Runtime)
+
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.
 set(FLUTTER_ASSET_DIR_NAME "flutter_assets")

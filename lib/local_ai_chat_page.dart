@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' show DynamicLibrary;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -503,7 +504,50 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
   }
 
+  /// На Linux ggml-библиотеки имеют SONAME вида libggml.so.0, а в bundle лежат
+  /// под именем libggml.so. Загружаем их заранее по полному пути в порядке
+  /// зависимостей: загрузчик узнаёт уже загруженную библиотеку по SONAME, и
+  /// libllama.so открывается без LD_LIBRARY_PATH и ручных ссылок. Видеодрайверные
+  /// бэкенды (vulkan, cuda) не трогаем — их подключает сам llm_llamacpp.
+  static Future<void> _preloadLinuxLibraries() async {
+    if (!Platform.isLinux) return;
+    try {
+      final libDir = Directory('${File(Platform.resolvedExecutable).parent.path}/lib');
+      if (!await libDir.exists()) return;
+      final names = <String>[];
+      await for (final entity in libDir.list()) {
+        final name = entity.path.split(Platform.pathSeparator).last;
+        if (name.endsWith('.so') &&
+            (name == 'libllama.so' || name.startsWith('libggml'))) {
+          names.add(name);
+        }
+      }
+      int rank(String name) {
+        if (name == 'libggml-base.so') return 0;
+        if (name == 'libggml.so') return 1;
+        if (name.startsWith('libggml-cpu')) return 2;
+        if (name == 'libllama.so') return 4;
+        return 3;
+      }
+      names.sort((a, b) {
+        final byRank = rank(a).compareTo(rank(b));
+        return byRank != 0 ? byRank : a.compareTo(b);
+      });
+      for (final name in names) {
+        if (rank(name) == 3) continue; // GPU-бэкенды не нужны для CPU-запуска.
+        try {
+          DynamicLibrary.open('${libDir.path}/$name');
+        } catch (error) {
+          debugPrint('[Поколение AI] Не удалось заранее загрузить $name: $error');
+        }
+      }
+    } catch (error) {
+      debugPrint('[Поколение AI] Предзагрузка библиотек Linux: $error');
+    }
+  }
+
   static Future<void> _loadSharedModel(String modelPath) async {
+    await _preloadLinuxLibraries();
     final oldChat = _sharedChatRepository;
     _sharedChatRepository = null;
     _sharedModelPath = null;
