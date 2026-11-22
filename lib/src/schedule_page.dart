@@ -153,8 +153,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     if (!mounted) return; await showStudentGroupSelection(context, selected); await _load();
   }
   void _route(ScheduleEntry e) {
-    if (e.room.isEmpty) return;
-    final destination = SchoolData.tryRoom(e.room);
+    final destination = SchoolData.locationForLesson(e.subject, e.room);
     if (destination == null) return;
     final sameDay = entries.where((x) => x.day == e.day).toList()..sort((a, b) => compareLessonTimes(a.time, b.time));
     final currentIndex = sameDay.indexWhere((x) => x.id == e.id);
@@ -162,8 +161,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     if (currentIndex > 0) {
       for (var i = currentIndex - 1; i >= 0; i--) {
         final candidate = sameDay[i];
-        if (candidate.room.isEmpty) continue;
-        previousRoom = SchoolData.tryRoom(candidate.room);
+        previousRoom = SchoolData.locationForLesson(candidate.subject, candidate.room);
         if (previousRoom != null) break;
       }
     }
@@ -325,7 +323,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                                   separatorBuilder: (_, _) => const SizedBox(height: 9),
                                   itemBuilder: (context, index) {
                                     final e = list[index];
-                                    final room = e.room.isEmpty ? null : SchoolData.tryRoom(e.room);
+                                    final room = SchoolData.locationForLesson(e.subject, e.room);
                                     final times = RegExp(r'\d{1,2}:\d{2}').allMatches(e.time).map((m) => m.group(0)!).toList();
                                     final startTime = times.isNotEmpty ? times.first : e.time;
                                     final endTime = times.length > 1 ? times[1] : '';
@@ -352,7 +350,9 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                                             const SizedBox(height: 6),
                                             Wrap(spacing: 8, runSpacing: 5, children: [
                                               if (e.room.isNotEmpty)
-                                                _ScheduleTag(icon: Icons.meeting_room_outlined, label: 'Каб. ${e.room}'),
+                                                _ScheduleTag(icon: Icons.meeting_room_outlined, label: 'Каб. ${e.room}')
+                                              else if (room != null)
+                                                _ScheduleTag(icon: Icons.restaurant_rounded, label: room.name),
                                               if (e.teacher.isNotEmpty)
                                                 _ScheduleTag(icon: Icons.person_outline_rounded, label: e.teacher),
                                               if (e.group > 0)
@@ -361,7 +361,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                                           ])),
                                           IconButton(
                                             onPressed: room == null ? null : () => _route(e),
-                                            tooltip: room == null ? 'Маршрут для кабинета недоступен' : 'Как пройти',
+                                            tooltip: room == null ? 'Для этого урока нет точки на карте' : 'Как пройти',
                                             icon: const Icon(Icons.directions_rounded),
                                           ),
                                         ]),

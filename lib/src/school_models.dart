@@ -18,6 +18,7 @@ enum SchoolLocationCategory {
   workshops('Мастерские и творчество', Icons.palette_rounded),
   sports('Спорт и здоровье', Icons.sports_basketball_rounded),
   administration('Администрация', Icons.badge_rounded),
+  teachers('Учительские', Icons.groups_rounded),
   common('Общие пространства', Icons.meeting_room_rounded);
 
   const SchoolLocationCategory(this.label, this.icon);

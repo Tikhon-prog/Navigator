@@ -173,7 +173,7 @@ class SettingsPage extends StatelessWidget {
     final c = Theme.of(context).colorScheme;
     return Scaffold(appBar: AppBar(leading: IconButton(onPressed: onMenu, tooltip: 'Меню', icon: const Icon(Icons.menu_rounded)), title: const Text('Настройки', style: TextStyle(fontWeight: FontWeight.w900))), body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: ListView(padding: const EdgeInsets.fromLTRB(18, 8, 18, 30), children: [
       const Text('Профиль', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
-      Card(child: ListTile(leading: Icon(Icons.person_rounded, color: c.primary), title: const Text('Имя'), subtitle: Text(userName.isEmpty ? 'Не задано' : userName), trailing: const Icon(Icons.edit_rounded), onTap: () => _editName(context))),
+      Card(child: ListTile(leading: Icon(Icons.person_rounded, color: c.primary), title: const Text('Имя'), subtitle: Text(userName.isEmpty ? 'Не задано — подставится из профиля ДОП' : userName), trailing: const Icon(Icons.edit_rounded), onTap: () => _editName(context))),
       Card(child: ListTile(leading: Icon(Icons.school_rounded, color: c.primary), title: const Text('Мой класс'), subtitle: const Text('Класс используется как источник базового расписания'), trailing: const Icon(Icons.edit_rounded), onTap: () => _editClass(context))),
       Card(child: ListTile(leading: Icon(Icons.groups_rounded, color: c.primary), title: const Text('Группы по предметам'), subtitle: const Text('Например: английский — 1, математика — 2'), trailing: const Icon(Icons.tune_rounded), onTap: () async { final p = await SharedPreferences.getInstance(); final cls = p.getString('student_class_name') ?? ''; if (cls.isNotEmpty && context.mounted) { await showStudentGroupSelection(context, cls); notifySchoolLocalDataChanged(); } })),
       const SizedBox(height: 18), const Text('Оформление', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
@@ -375,7 +375,7 @@ class AboutPage extends StatelessWidget {
                 _AboutFeature(
                   icon: Icons.calendar_month_rounded,
                   title: 'Учебный день',
-                  description: 'Расписание, дополнительные занятия и домашние задания.',
+                  description: 'Расписание, дополнительные занятия и заметки.',
                 ),
                 _AboutFeature(
                   icon: Icons.notifications_active_rounded,
@@ -389,7 +389,7 @@ class AboutPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Для школьного сообщества «Поколение».',
+                  'Школа «Поколение» · приложение для учеников и учителей',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,

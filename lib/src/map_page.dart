@@ -122,7 +122,9 @@ class _MapPageState extends State<MapPage>{
     final normalizedQuery = query.trim().toLowerCase();
     final matchesQuery = normalizedQuery.isEmpty ||
         room.id.toLowerCase().contains(normalizedQuery) ||
-        SchoolData.title(room).toLowerCase().contains(normalizedQuery);
+        room.name.toLowerCase().contains(normalizedQuery) ||
+        SchoolData.title(room).toLowerCase().contains(normalizedQuery) ||
+        SchoolData.category(room).label.toLowerCase().contains(normalizedQuery);
     final matchesCategory = activeCategory == null ||
         SchoolData.category(room) == activeCategory;
     final matchesFavorites = !showFavoritesOnly || favoriteIds.contains(room.id);
@@ -228,7 +230,7 @@ class _MapPageState extends State<MapPage>{
                   leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .10), borderRadius: BorderRadius.circular(13)), child: Icon(SchoolData.isPlace(r) ? Icons.place_rounded : Icons.meeting_room_rounded, color: scheme.primary)),
                   title: Text(SchoolData.title(r), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                   subtitle: Text(
-                    '${SchoolData.category(r).label} · этаж ${r.floor}',
+                    '${SchoolData.isPlace(r) || SchoolData.category(r) != SchoolLocationCategory.classrooms ? SchoolData.category(r).label : r.name} · этаж ${r.floor}',
                     style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                   ),
                   trailing: Row(
@@ -266,7 +268,6 @@ class _MapPageState extends State<MapPage>{
         actions: [
           IconButton(onPressed: _start, tooltip: 'Начало маршрута', icon: const Icon(Icons.my_location_rounded)),
           IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenMapPage(floor: floor, selectedRoom: selected, routeRoom: null, startFloor: startFloor, startLocationId: startId))), tooltip: 'Полноэкранная карта', icon: const Icon(Icons.fullscreen_rounded)),
-          IconButton(onPressed: () => setState(() { query = ''; search.clear(); }), tooltip: 'Очистить поиск', icon: const Icon(Icons.clear_all_rounded)),
         ],
       ),
       body: LayoutBuilder(
@@ -275,7 +276,21 @@ class _MapPageState extends State<MapPage>{
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Row(children: [
-                Expanded(child: TextField(controller: search, onChanged: (v) => setState(() => query = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Кабинет, бассейн, библиотека…'))),
+                Expanded(child: TextField(
+                  controller: search,
+                  onChanged: (v) => setState(() => query = v),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    hintText: 'Кабинет, бассейн, библиотека…',
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Очистить поиск',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => setState(() { query = ''; search.clear(); }),
+                          ),
+                  ),
+                )),
                 const SizedBox(width: 10),
                 SegmentedButton<int>(
                   segments: const [ButtonSegment(value: 1, label: Text('1')), ButtonSegment(value: 2, label: Text('2')), ButtonSegment(value: 3, label: Text('3'))],
@@ -371,20 +386,25 @@ class _MathByDayDialogState extends State<_MathByDayDialog> {
     content: SizedBox(width: MediaQuery.sizeOf(context).width * .82, child: ListView(shrinkWrap: true, children: [
       const Text('Настрой названия математических уроков отдельно для каждого дня. Если уроков несколько, они идут по времени: первый, второй и далее.'),
       const SizedBox(height: 10),
-      for (var d = 1; d <= 6; d++) ...[
-        Padding(padding: const EdgeInsets.only(top: 10, bottom: 4), child: Text(days[d - 1], style: const TextStyle(fontWeight: FontWeight.w800))),
-        for (var slot = 0; slot < SchoolScheduleCatalog.mathLessonCount(widget.className, d); slot++)
-          DropdownButtonFormField<String>(
-            // initialValue is read once; re-key so values loaded from prefs after the
-            // first frame are actually shown.
-            key: ValueKey('$d|$slot|${selected['$d|$slot']}'),
-            isExpanded: true,
-            decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
-            initialValue: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
-            items: subjects.map((x) => DropdownMenuItem(value: x, child: Text(x.isEmpty ? 'Не переименовывать' : x))).toList(),
-            onChanged: (v) => setState(() => selected['$d|$slot'] = v ?? ''),
-          ),
-      ],
+      for (var d = 1; d <= 6; d++)
+        if (SchoolScheduleCatalog.mathLessonCount(widget.className, d) > 0) ...[
+          Padding(padding: const EdgeInsets.only(top: 14, bottom: 8), child: Text(days[d - 1], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+          for (var slot = 0; slot < SchoolScheduleCatalog.mathLessonCount(widget.className, d); slot++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: DropdownButtonFormField<String>(
+                // initialValue is read once; re-key so values loaded from prefs after the
+                // first frame are actually shown.
+                key: ValueKey('$d|$slot|${selected['$d|$slot']}'),
+                isExpanded: true,
+                decoration: InputDecoration(labelText: 'Математика — урок ${slot + 1}', isDense: true),
+                initialValue: subjects.contains(selected['$d|$slot'] ?? '') ? selected['$d|$slot'] : '',
+                items: subjects.map((x) => DropdownMenuItem(value: x, child: Text(x.isEmpty ? 'Не переименовывать' : x))).toList(),
+                onChanged: (v) => setState(() => selected['$d|$slot'] = v ?? ''),
+              ),
+            ),
+          const Divider(height: 8),
+        ],
     ])),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),

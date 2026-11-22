@@ -353,8 +353,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     final sections = <({String title, IconData icon, String permission})>[
       (title: 'Администраторы', icon: Icons.manage_accounts_rounded, permission: AdminPermissions.manageAdmins),
       (title: 'Синхронизация', icon: Icons.cloud_sync_rounded, permission: AdminPermissions.manageSync),
-      (title: 'Данные', icon: Icons.table_chart_rounded, permission: AdminPermissions.manageData),
-      (title: 'Безопасность', icon: Icons.security_rounded, permission: AdminPermissions.manageSecurity),
       (title: 'Аудит', icon: Icons.history_rounded, permission: AdminPermissions.viewAudit),
     ].where((s) => can(s.permission)).toList();
     if (sections.isEmpty) return const Scaffold(body: Center(child: Text('Нет доступных разделов')));
@@ -371,8 +369,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           for (final s in sections)
             s.permission == AdminPermissions.manageAdmins ? _admins() :
             s.permission == AdminPermissions.manageSync ? _sync() :
-            s.permission == AdminPermissions.manageSecurity ? _security() :
-            s.permission == AdminPermissions.viewAudit ? _audit() : _data(),
+            _audit(),
         ]);
         if (constraints.maxWidth < 760) {
           return Column(children: [
@@ -388,7 +385,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                     label: switch (s.title) {
                       'Администраторы' => 'Аккаунты',
                       'Синхронизация' => 'Сервер',
-                      'Безопасность' => 'Защита',
                       _ => s.title,
                     },
                   ),
@@ -463,26 +459,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     Card(color: Theme.of(context).colorScheme.surfaceContainerHighest, child: Padding(padding: const EdgeInsets.all(14), child: Text(apiStatus))),
   ]);
 
-  Widget _data() => ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Управление данными', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-    const SizedBox(height: 8),
-    const Text('Разделы доступны только администраторам с соответствующими правами.'),
-    const SizedBox(height: 12),
-    _DataTile('Classes', 'Классы и профили', can(AdminPermissions.manageData)),
-    _DataTile('BaseSchedule', 'Базовое расписание каждого класса', can(AdminPermissions.manageSchedule)),
-    _DataTile('Supplements', 'ДОПы: время, учитель, кабинет, место и маршрут', can(AdminPermissions.manageData)),
-    _DataTile('Rooms / Places', 'Кабинеты и специализированные пространства', can(AdminPermissions.manageRooms) || can(AdminPermissions.managePlaces)),
-    _DataTile('Announcements', 'Объявления по классу или всей школе', can(AdminPermissions.manageAnnouncements)),
-  ]);
-
-  Widget _security() => ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Безопасность', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-    const SizedBox(height: 12),
-    _SecurityTile(Icons.lock_clock_rounded, 'Защита от перебора', 'После 5 неверных попыток логин блокируется на 5 минут.'),
-    _SecurityTile(Icons.password_rounded, 'Пароли', 'Новые и успешно используемые старые пароли переходят на солёное многократное хеширование.'),
-    _SecurityTile(Icons.shield_rounded, 'Права', 'Каждая административная операция проверяет разрешение текущего аккаунта.'),
-  ]);
-
   Widget _audit() => ListView(padding: const EdgeInsets.all(20), children: [
     Row(children: [const Expanded(child: Text('Журнал аудита', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))), IconButton(tooltip: 'Обновить', onPressed: _refresh, icon: const Icon(Icons.refresh_rounded))]),
     const SizedBox(height: 8),
@@ -503,22 +479,6 @@ String _roleName(String role) {
     case 'content': return 'Контент-администратор';
     default: return 'Администратор';
   }
-}
-
-class _DataTile extends StatelessWidget {
-  final String title; final String subtitle; final bool enabled;
-  const _DataTile(this.title, this.subtitle, this.enabled);
-  @override Widget build(BuildContext context) => Card(child: ListTile(
-    leading: Icon(enabled ? Icons.table_rows_rounded : Icons.lock_outline_rounded, color: enabled ? null : Theme.of(context).colorScheme.outline),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-    subtitle: Text(enabled ? subtitle : 'Нет права на изменение этого раздела'),
-  ));
-}
-
-class _SecurityTile extends StatelessWidget {
-  final IconData icon; final String title; final String subtitle;
-  const _SecurityTile(this.icon, this.title, this.subtitle);
-  @override Widget build(BuildContext context) => Card(child: ListTile(leading: Icon(icon), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(subtitle)));
 }
 
 class _AdminEditor extends StatefulWidget {

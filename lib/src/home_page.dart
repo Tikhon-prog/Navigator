@@ -58,13 +58,15 @@ class HomePage extends StatelessWidget {
                 Text('4 раздела', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 14),
-              GridView.count(
-                crossAxisCount: columns,
+              GridView(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  mainAxisExtent: 108,
+                ),
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: columns == 1 ? 3.0 : 1.55,
                 children: [
                   _DashboardCard(icon: Icons.map_rounded, title: 'Карта школы', subtitle: 'Найди кабинет и построй маршрут', accent: const Color(0xFF3284F5), onTap: onMap),
                   _DashboardCard(icon: Icons.calendar_month_rounded, title: 'Расписание', subtitle: 'Уроки, группы и кабинеты', accent: const Color(0xFF13A88A), onTap: onSchedule),
@@ -243,7 +245,9 @@ class _TodayCardState extends State<_TodayCard> {
 
   Widget _row(BuildContext context, ScheduleEntry lesson, ColorScheme scheme) {
     final current = _isCurrent(lesson);
-    final canOpen = lesson.room.isNotEmpty && SchoolData.tryRoom(lesson.room) != null;
+    final location = SchoolData.locationForLesson(lesson.subject, lesson.room);
+    final canOpen = location != null;
+    final chipLabel = lesson.room.isNotEmpty ? lesson.room : (location?.name ?? '');
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -255,12 +259,12 @@ class _TodayCardState extends State<_TodayCard> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(lesson.subject, style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text(lesson.time),
-        trailing: lesson.room.isEmpty
+        trailing: chipLabel.isEmpty
             ? null
             : ActionChip(
                 avatar: Icon(canOpen ? Icons.place_rounded : Icons.meeting_room_outlined, size: 18),
-                label: Text(lesson.room),
-                onPressed: canOpen ? () => widget.onOpenRoom(lesson.room) : null,
+                label: Text(chipLabel),
+                onPressed: location == null ? null : () => widget.onOpenRoom(location.id),
               ),
       ),
     );

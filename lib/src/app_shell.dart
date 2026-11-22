@@ -6,8 +6,11 @@ class PokolenieApp extends StatefulWidget {
 }
 class _PokolenieAppState extends State<PokolenieApp>{
   AppThemeType theme=AppThemeType.turquoise; String userName=''; bool ready=false;
-  @override void initState(){super.initState();_load();}
-  Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();userName=p.getString('user_name')??'';final t=p.getString('theme');theme=AppThemeType.values.firstWhere((x)=>x.name==t,orElse:()=>AppThemeType.turquoise);if(mounted)setState(()=>ready=true);}
+  @override void initState(){super.initState();studentProfileRevision.addListener(_refreshProfileName);_load();}
+  @override void dispose(){studentProfileRevision.removeListener(_refreshProfileName);super.dispose();}
+  Future<String> _profileName()async{try{final s=await const NavigatorStudentProvider().load();return s?.firstName.trim()??'';}catch(_){return '';}}
+  Future<void> _refreshProfileName()async{final p=await SharedPreferences.getInstance();final saved=(p.getString('user_name')??'').trim();final v=saved.isNotEmpty?saved:await _profileName();if(mounted&&v!=userName)setState(()=>userName=v);}
+  Future<void> _load()async{final p=await SharedPreferences.getInstance();await SchoolScheduleCatalog.load();userName=(p.getString('user_name')??'').trim();if(userName.isEmpty)userName=await _profileName();final t=p.getString('theme');theme=AppThemeType.values.firstWhere((x)=>x.name==t,orElse:()=>AppThemeType.turquoise);if(mounted)setState(()=>ready=true);}
   Future<void> setName(String v)async{v=v.trim();if(v.isEmpty)return;final p=await SharedPreferences.getInstance();await p.setString('user_name',v);if(mounted)setState(()=>userName=v);}
   Future<void> setTheme(AppThemeType v)async{final p=await SharedPreferences.getInstance();await p.setString('theme',v.name);if(mounted)setState(()=>theme=v);}
   @override Widget build(BuildContext context){if(!ready)return MaterialApp(debugShowCheckedModeBanner:false,scrollBehavior:const _PokolenieScrollBehavior(),home:Scaffold(body:Center(child:CircularProgressIndicator(color:AppPalette.gradient(theme).first))));return MaterialApp(debugShowCheckedModeBanner:false,title:'Поколение',scrollBehavior:const _PokolenieScrollBehavior(),theme:_theme(theme),home:AppShell(userName:userName,theme:theme,onThemeChanged:setTheme,onNameChanged:setName));}
@@ -542,6 +545,8 @@ class _AppShellState extends State<AppShell>{
         if (query.isEmpty) return 'Укажи номер кабинета или название места.';
         final matches = SchoolData.locations.where((room) =>
             room.id.toLowerCase().contains(query) ||
+            'кабинет ${room.id}'.contains(query) ||
+            room.name.toLowerCase().contains(query) ||
             SchoolData.title(room).toLowerCase().contains(query)).take(10).toList();
         if (matches.isEmpty) {
           return 'На встроенной карте не найдено место по запросу «$query».';

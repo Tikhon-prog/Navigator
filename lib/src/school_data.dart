@@ -110,9 +110,12 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
     final name = room.name.toLowerCase();
     final id = room.id.toLowerCase();
 
+    if (name.contains('учительск')) {
+      return SchoolLocationCategory.teachers;
+    }
+
     if (name.contains('административ') ||
         name.contains('директор') ||
-        name.contains('учительская') ||
         name.contains('приёмная') ||
         name.contains('приемная')) {
       return SchoolLocationCategory.administration;
@@ -175,7 +178,28 @@ RoomInfo('331', 3, 'Лаборатория генетики и наук о жи�
     return SchoolLocationCategory.classrooms;
   }
 
-  static String title(RoomInfo r) => isPlace(r) ? r.name : 'Кабинет ${r.id}';
+  /// Название для списков и маршрутов. Для обычных кабинетов — «Кабинет 102»,
+  /// для особых помещений — по назначению: «Лекторий 108», «Учительская 104».
+  static String title(RoomInfo r) {
+    if (isPlace(r)) return r.name;
+    return category(r) == SchoolLocationCategory.classrooms
+        ? 'Кабинет ${r.id}'
+        : '${r.name} ${r.id}';
+  }
+
+  /// Точка на карте для урока: кабинет, а для обеда — столовая.
+  static RoomInfo? locationForLesson(String subject, String room) {
+    final id = room.trim();
+    if (id.isNotEmpty) {
+      final found = tryRoom(id);
+      if (found != null) return found;
+    }
+    final name = subject.toLowerCase();
+    if (name.contains('обед') || name.contains('завтрак') || name.contains('полдник')) {
+      return tryRoom('place_canteen');
+    }
+    return null;
+  }
   static String typeLabel(RoomInfo r) =>
       isPlace(r) ? category(r).label : 'Кабинет';
   static Offset point(RoomInfo r) => DoorPoints.of(r.id, r.point);

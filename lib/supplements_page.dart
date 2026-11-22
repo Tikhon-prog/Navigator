@@ -285,6 +285,7 @@ class _SupplementsPageState extends State<SupplementsPage> {
       );
     }
     student = result;
+    notifyStudentProfileChanged();
     if (mounted) setState(() {});
   }
 

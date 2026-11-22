@@ -88,6 +88,14 @@ void notifySchoolLocalDataChanged() {
   schoolLocalDataRevision.value++;
 }
 
+/// Меняется, когда ученик сохраняет профиль ДОП (имя, класс): по нему
+/// приложение подхватывает имя для приветствия и настроек.
+final ValueNotifier<int> studentProfileRevision = ValueNotifier<int>(0);
+
+void notifyStudentProfileChanged() {
+  studentProfileRevision.value++;
+}
+
 /// Desktop users can scroll with the wheel/trackpad and also drag scrollable
 /// lists with the mouse, matching the expected Windows interaction.
 class _PokolenieScrollBehavior extends MaterialScrollBehavior {
