@@ -106,6 +106,15 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     COMPONENT Runtime)
 endforeach(bundled_library)
 
+# Удаляем прежние llama/ggml из bundle, чтобы install всегда копировал свежие
+# оригиналы (а не оставлял библиотеки, изменённые прошлой сборкой).
+install(CODE "
+  file(GLOB _old_native \"${INSTALL_BUNDLE_LIB_DIR}/libllama*\" \"${INSTALL_BUNDLE_LIB_DIR}/libggml*\")
+  if(_old_native)
+    file(REMOVE \${_old_native})
+  endif()
+  " COMPONENT Runtime)
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
@@ -116,6 +125,7 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
 # загружается (libcudart.so.12 not found). Выполняется до создания ссылок.
 install(CODE "
   set(BUNDLE_LIB_DIR \"${INSTALL_BUNDLE_LIB_DIR}\")
+  set(CXX_COMPILER \"${CMAKE_CXX_COMPILER}\")
   include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_cuda.cmake\")
   " COMPONENT Runtime)
 
