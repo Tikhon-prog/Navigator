@@ -74,6 +74,11 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   static String? _sharedModelPath;
   static Future<void>? _sharedLoadFuture;
 
+  // Загрузка модели живёт на уровне приложения, а не экрана: её можно
+  // закрыть и вернуться — прогресс продолжится, а при обрыве докачается.
+  static Future<String?>? _sharedDownload;
+  static final ValueNotifier<double?> _sharedProgress = ValueNotifier<double?>(0);
+
   static String _friendlyModelError(Object error) {
     if (error is StateError) return error.message;
     final details = error.toString().toLowerCase();
@@ -112,7 +117,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     return 'нативная библиотека llama не найдена, пересобери приложение.';
   }
 
-  Future<String> _logPath() async {
+  static Future<String> _logPath() async {
     try {
       final model = await _modelFile();
       return '${model.parent.path}${Platform.pathSeparator}ai.log';
@@ -123,7 +128,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   /// Пишет техническую причину сбоя в ai.log рядом с моделью, чтобы её можно
   /// было найти и прислать, даже если окно приложения уже закрыто.
-  Future<void> _writeLog(String message) async {
+  static Future<void> _writeLog(String message) async {
     try {
       final path = await _logPath();
       if (path.isEmpty) return;
@@ -191,6 +196,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     super.initState();
     _catalogLoadFuture = _loadSchoolCatalog();
     _findExistingModel();
+    final activeDownload = _sharedDownload;
+    if (activeDownload != null) unawaited(_watchDownload(activeDownload));
   }
 
   Future<void> _loadSchoolCatalog() async {
@@ -210,7 +217,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
   }
 
-  Future<File> _modelFile() async {
+  static Future<File> _modelFile() async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
       '${support.path}${Platform.pathSeparator}local_ai_models',
@@ -227,7 +234,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     );
   }
 
-  Future<void> _writeModelVerificationMarker(File file) async {
+  static Future<void> _writeModelVerificationMarker(File file) async {
     final stat = await file.stat();
     final marker = File('${file.path}.verified');
     final value =
@@ -289,143 +296,200 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 
   Future<void> _downloadModel() async {
     if (_downloading || _busy || !mounted) return;
-
-    setState(() {
-      _downloading = true;
-      _downloadProgress = 0;
-      _statusError = null;
+    final future = _sharedDownload ??= _runDownload().whenComplete(() {
+      _sharedDownload = null;
     });
+    await _watchDownload(future);
+  }
 
-    File? modelFile;
-    File? partialFile;
-    File? backupFile;
-    RandomAccessFile? writer;
+  void _onDownloadProgress() {
+    if (mounted) setState(() => _downloadProgress = _sharedProgress.value);
+  }
+
+  Future<void> _watchDownload(Future<String?> future) async {
+    if (mounted) {
+      setState(() {
+        _downloading = true;
+        _downloadProgress = _sharedProgress.value;
+        _statusError = null;
+      });
+    }
+    _sharedProgress.addListener(_onDownloadProgress);
+    String? error;
+    try {
+      error = await future;
+    } finally {
+      _sharedProgress.removeListener(_onDownloadProgress);
+    }
+    if (!mounted) return;
+    setState(() {
+      _downloading = false;
+      if (error == null) {
+        _downloadProgress = 1;
+      } else {
+        _statusError = error;
+      }
+    });
+    if (error == null) await _findExistingModel();
+  }
+
+  /// Открывает поток модели. Если уже скачана часть файла, просит сервер
+  /// продолжить с этого места (Range). Перебирает основной адрес и зеркало.
+  static Future<HttpClientResponse> _openModelStream(
+    HttpClient client,
+    int offset,
+  ) async {
+    Object? lastError;
+    for (final url in _modelUrls) {
+      try {
+        final request = await client
+            .getUrl(Uri.parse(url))
+            .timeout(const Duration(seconds: 30));
+        request
+          ..followRedirects = true
+          ..maxRedirects = 5
+          ..headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+        if (offset > 0) {
+          request.headers.set(HttpHeaders.rangeHeader, 'bytes=$offset-');
+        }
+        final response = await request.close().timeout(
+              const Duration(minutes: 2),
+            );
+        if (response.statusCode == HttpStatus.ok ||
+            response.statusCode == HttpStatus.partialContent) {
+          return response;
+        }
+        await response.drain<void>();
+        if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
+          throw const _RestartDownload();
+        }
+        throw HttpException(
+          'Сервер модели вернул HTTP ${response.statusCode} для $url.',
+        );
+      } on _RestartDownload {
+        rethrow;
+      } catch (error) {
+        lastError = error;
+        await _writeLog('Не удалось открыть $url: $error');
+      }
+    }
+    throw lastError ??
+        const HttpException('Не удалось подключиться к серверу модели.');
+  }
+
+  /// Скачивает модель в фоне. Возвращает null при успехе или текст ошибки.
+  static Future<String?> _runDownload() async {
+    const minimumModelSize = 400 * 1024 * 1024;
+    const maxAttempts = 5;
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30)
       ..userAgent = 'PokolenieSchoolApp/0.2';
-
+    File? partialFile;
     try {
-      modelFile = await _modelFile();
+      final modelFile = await _modelFile();
       partialFile = File('${modelFile.path}.part');
-      backupFile = File('${modelFile.path}.backup');
-
-      // Explicitly create the parent and the temporary file. This avoids
-      // asking File.length() about a path that was never materialized.
+      final backupFile = File('${modelFile.path}.backup');
       await partialFile.parent.create(recursive: true);
-      if (await partialFile.exists()) {
-        await partialFile.delete();
-      }
-      await partialFile.create(recursive: true);
-      writer = await partialFile.open(mode: FileMode.write);
+      _sharedProgress.value = 0;
 
-      HttpClientResponse? opened;
-      Object? lastConnectError;
-      for (final url in _modelUrls) {
+      Object? lastError;
+      var complete = false;
+      for (var attempt = 0; attempt < maxAttempts && !complete; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(Duration(seconds: 3 * attempt));
+        }
+        RandomAccessFile? writer;
         try {
-          final request = await client
-              .getUrl(Uri.parse(url))
-              .timeout(const Duration(seconds: 30));
-          request
-            ..followRedirects = true
-            ..maxRedirects = 5
-            ..headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
-          final candidate = await request.close().timeout(
-                const Duration(minutes: 2),
-              );
-          if (candidate.statusCode != HttpStatus.ok) {
-            await candidate.drain<void>();
-            throw HttpException(
-              'Сервер модели вернул HTTP ${candidate.statusCode} для $url.',
+          var offset = await partialFile.exists() ? await partialFile.length() : 0;
+          final response = await _openModelStream(client, offset);
+          final resumed = response.statusCode == HttpStatus.partialContent;
+          if (!resumed) offset = 0;
+
+          final contentLength = response.contentLength;
+          if (!resumed &&
+              (contentLength == 0 ||
+                  (contentLength > 0 && contentLength < minimumModelSize))) {
+            throw const FormatException(
+              'Сервер вернул пустой или слишком маленький файл модели. '
+              'Проверь доступ к Hugging Face и повтори загрузку.',
             );
           }
-          opened = candidate;
-          break;
+          final totalBytes = contentLength > 0 ? offset + contentLength : -1;
+
+          writer = await partialFile.open(
+            mode: resumed ? FileMode.append : FileMode.write,
+          );
+          var received = offset;
+          await for (final chunk in response.timeout(const Duration(minutes: 3))) {
+            if (chunk.isEmpty) continue;
+            await writer.writeFrom(chunk);
+            received += chunk.length;
+            _sharedProgress.value = totalBytes > 0
+                ? (received / totalBytes).clamp(0.0, 1.0).toDouble()
+                : null;
+          }
+          await writer.flush();
+          await writer.close();
+          writer = null;
+
+          if (totalBytes > 0 && received != totalBytes) {
+            throw HttpException(
+              'Соединение оборвалось: получено $received из $totalBytes байт.',
+            );
+          }
+          complete = true;
+        } on _RestartDownload {
+          if (await partialFile.exists() &&
+              await partialFile.length() >= minimumModelSize) {
+            // Сервер говорит, что докачивать нечего: файл уже целиком на диске.
+            // Целостность проверит SHA-256 ниже.
+            complete = true;
+          } else {
+            if (await partialFile.exists()) await partialFile.delete();
+            lastError = const HttpException('Файл докачки устарел, качаем заново.');
+          }
+        } on FormatException {
+          rethrow;
         } catch (error) {
-          lastConnectError = error;
-          await _writeLog('Не удалось открыть $url: $error');
+          lastError = error;
+          await _writeLog('Попытка загрузки ${attempt + 1} из $maxAttempts: $error');
+        } finally {
+          try {
+            await writer?.close();
+          } catch (_) {}
         }
       }
-      final response = opened;
-      if (response == null) {
-        throw lastConnectError ??
-            const HttpException('Не удалось подключиться к серверу модели.');
-      }
-
-      final expectedLength = response.contentLength;
-      const minimumModelSize = 400 * 1024 * 1024;
-      if (expectedLength == 0 ||
-          (expectedLength > 0 && expectedLength < minimumModelSize)) {
-        throw const FormatException(
-          'Сервер вернул пустой или слишком маленький файл модели. '
-          'Проверь доступ к Hugging Face и повтори загрузку.',
-        );
-      }
-      if (mounted) {
-        setState(() => _downloadProgress = expectedLength > 0 ? 0 : null);
-      }
-
-      var received = 0;
-      await for (final chunk in response.timeout(
-        const Duration(minutes: 3),
-      )) {
-        if (chunk.isEmpty) continue;
-        await writer.writeFrom(chunk);
-        received += chunk.length;
-
-        if (mounted && expectedLength > 0) {
-          setState(() {
-            _downloadProgress =
-                (received / expectedLength).clamp(0.0, 1.0).toDouble();
-          });
-        }
-      }
-
-      await writer.flush();
-      await writer.close();
-      writer = null;
-
-      if (!await partialFile.exists()) {
-        throw FileSystemException(
-          'Временный файл модели не был создан после загрузки.',
-          partialFile.path,
-        );
+      if (!complete) {
+        throw lastError ??
+            const HttpException('Не удалось скачать модель.');
       }
 
       final actualLength = await partialFile.length();
-      if (received == 0 ||
-          actualLength < minimumModelSize ||
-          actualLength != received ||
-          (expectedLength > 0 && actualLength != expectedLength)) {
+      if (actualLength < minimumModelSize) {
+        await partialFile.delete();
         throw FormatException(
-          'Загрузка модели неполная: получено ${actualLength} байт'
-          '${expectedLength > 0 ? ' из $expectedLength' : ''}.',
+          'Загрузка модели неполная: получено $actualLength байт.',
         );
       }
-
+      _sharedProgress.value = 1;
       final digest = await crypto.sha256.bind(partialFile.openRead()).first;
       if (digest.toString() != _modelSha256) {
+        await partialFile.delete();
         throw const FormatException(
-          'Контрольная сумма модели не совпадает. Файл повреждён.',
+          'Контрольная сумма модели не совпадает. Файл повреждён, повтори загрузку.',
         );
       }
 
-      // Keep the previous file recoverable until the verified download is in
-      // place. Never replace a working model with an unverified download.
-      if (await backupFile.exists()) {
-        await backupFile.delete();
-      }
+      // Прежняя рабочая модель остаётся на месте, пока новая не встала.
+      if (await backupFile.exists()) await backupFile.delete();
       final hadPreviousModel = await modelFile.exists();
-      if (hadPreviousModel) {
-        await modelFile.rename(backupFile.path);
-      }
-
+      if (hadPreviousModel) await modelFile.rename(backupFile.path);
       try {
         await partialFile.rename(modelFile.path);
         try {
           await _writeModelVerificationMarker(modelFile);
         } catch (_) {
-          // The download was already hash-verified. Without a marker, the next
-          // app launch safely rechecks the checksum once.
+          // Файл уже проверен по SHA-256; без метки он будет проверен ещё раз.
         }
         if (hadPreviousModel && await backupFile.exists()) {
           await backupFile.delete();
@@ -436,38 +500,16 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         }
         rethrow;
       }
-
-      if (mounted) {
-        setState(() {
-          _modelPath = modelFile!.path;
-          _downloadProgress = 1;
-          _statusError = null;
-        });
-      }
+      return null;
     } catch (error) {
       debugPrint('[Поколение AI] Ошибка загрузки модели: $error');
       await _writeLog('Ошибка загрузки модели: $error');
-      final downloadLogPath = await _logPath();
-      try {
-        await writer?.close();
-      } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
-      try {
-        if (partialFile != null && await partialFile.exists()) {
-          await partialFile.delete();
-        }
-      } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
-      if (mounted) {
-        setState(() {
-          _statusError = 'Не удалось скачать модель: ${_shortError(error)}\n'
-              'Проверь подключение и повтори загрузку.'
-              '${downloadLogPath.isEmpty ? '' : '\nЖурнал: $downloadLogPath'}';
-        });
-      }
+      final logPath = await _logPath();
+      return 'Не удалось скачать модель: ${_shortError(error)}\n'
+          'Уже скачанная часть сохранена, повторная загрузка продолжит с этого места.'
+          '${logPath.isEmpty ? '' : '\nЖурнал: $logPath'}';
     } finally {
       client.close(force: true);
-      if (mounted) {
-        setState(() => _downloading = false);
-      }
     }
   }
 
@@ -1308,4 +1350,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       ),
     );
   }
+}
+
+/// Сервер не принял докачку: файл-остаток нужно удалить и начать заново.
+class _RestartDownload implements Exception {
+  const _RestartDownload();
 }
