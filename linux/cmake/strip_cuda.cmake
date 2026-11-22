@@ -10,23 +10,33 @@
 #
 # Вход: BUNDLE_LIB_DIR — папка bundle/lib, CXX_COMPILER — компилятор C++.
 
-set(_cuda_found FALSE)
-
-execute_process(
-  COMMAND ldconfig -p
-  OUTPUT_VARIABLE _ldconfig
-  ERROR_QUIET
-  RESULT_VARIABLE _ldconfig_result)
-if(_ldconfig_result EQUAL 0 AND _ldconfig MATCHES "libcudart\\.so\\.12")
-  set(_cuda_found TRUE)
+# Настоящая проверка: может ли загрузчик найти зависимости CUDA-бэкенда.
+set(_cuda_found TRUE)
+file(GLOB _cuda_probe "${BUNDLE_LIB_DIR}/libggml-cuda*")
+if(NOT _cuda_probe)
+  message(STATUS "CUDA-бэкенд ggml в bundle не найден, ничего не меняю")
+  return()
 endif()
-
-if(NOT _cuda_found)
+list(GET _cuda_probe 0 _probe_lib)
+find_program(_ldd ldd)
+if(_ldd)
+  execute_process(
+    COMMAND "${_ldd}" "${_probe_lib}"
+    OUTPUT_VARIABLE _ldd_out
+    ERROR_VARIABLE _ldd_err
+    RESULT_VARIABLE _ldd_result)
+  message(STATUS "ldd ${_probe_lib}:\n${_ldd_out}${_ldd_err}")
+  if(_ldd_out MATCHES "libcudart[^\n]*not found" OR _ldd_out MATCHES "libcu[a-z]*\\.so[^\n]*not found")
+    set(_cuda_found FALSE)
+  endif()
+else()
+  message(STATUS "ldd не найден, проверяю CUDA по файлам")
   file(GLOB _cuda_runtime
     "/usr/local/cuda*/lib64/libcudart.so.12*"
-    "/usr/lib/x86_64-linux-gnu/libcudart.so.12*")
-  if(_cuda_runtime)
-    set(_cuda_found TRUE)
+    "/usr/lib/x86_64-linux-gnu/libcudart.so.12*"
+    "/usr/lib64/libcudart.so.12*")
+  if(NOT _cuda_runtime)
+    set(_cuda_found FALSE)
   endif()
 endif()
 
@@ -46,7 +56,7 @@ set(_stub_name "")
 set(_stub_soname "")
 file(GLOB _cuda_backends "${BUNDLE_LIB_DIR}/libggml-cuda*")
 foreach(_file IN LISTS _cuda_backends)
-  if(NOT IS_SYMLINK "${_file}" AND _file MATCHES "\\.so$")
+  if(_file MATCHES "\\.so$")
     get_filename_component(_stub_name "${_file}" NAME)
     execute_process(
       COMMAND readelf -d "${_file}"
