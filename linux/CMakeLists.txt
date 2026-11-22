@@ -112,6 +112,13 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
    COMPONENT Runtime)
 
+# Без CUDA-toolkit убираем CUDA-бэкенд из llama/ggml: иначе libggml.so не
+# загружается (libcudart.so.12 not found). Выполняется до создания ссылок.
+install(CODE "
+  set(BUNDLE_LIB_DIR \"${INSTALL_BUNDLE_LIB_DIR}\")
+  include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_cuda.cmake\")
+  " COMPONENT Runtime)
+
 # У библиотек llama/ggml SONAME вида libggml.so.0, а в bundle они лежат без
 # «.0». Создаём недостающие ссылки, иначе libllama.so не находит зависимости.
 install(CODE "
