@@ -40,24 +40,6 @@ Future<void> showStudentGroupSelection(BuildContext context, String className) a
   final prefs = await SharedPreferences.getInstance();
   if (!context.mounted) return;
 
-  if (SchoolScheduleCatalog.usesWholeClassSubgroup(className)) {
-    final key = _studentScopedPreferenceKey(prefs, 'student_class_group_8В');
-    final storedGroup = prefs.getInt(key);
-    final savedGroup = storedGroup == 1 || storedGroup == 2
-        ? storedGroup
-        : null;
-    final selected = await showDialog<int>(
-      context: context,
-      barrierDismissible: savedGroup != null,
-      builder: (_) => _StudentClassGroupDialog(
-        initialGroup: savedGroup ?? 1,
-        requiredChoice: savedGroup == null,
-      ),
-    );
-    if (selected != null) await prefs.setInt(key, selected);
-    return;
-  }
-
   final subjects = SchoolScheduleCatalog.splitSubjects(className).toList()..sort();
   if (subjects.isEmpty) return;
   final values = <String, int>{
@@ -76,56 +58,6 @@ Future<void> showStudentGroupSelection(BuildContext context, String className) a
       values: values,
     ),
   );
-}
-
-class _StudentClassGroupDialog extends StatefulWidget {
-  final int initialGroup;
-  final bool requiredChoice;
-
-  const _StudentClassGroupDialog({
-    required this.initialGroup,
-    this.requiredChoice = false,
-  });
-
-  @override
-  State<_StudentClassGroupDialog> createState() => _StudentClassGroupDialogState();
-}
-
-class _StudentClassGroupDialogState extends State<_StudentClassGroupDialog> {
-  late int selected = widget.initialGroup;
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Твоя подгруппа'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<int>(
-              value: 1,
-              groupValue: selected,
-              title: const Text('Подгруппа 1'),
-              onChanged: (value) => setState(() => selected = value ?? selected),
-            ),
-            RadioListTile<int>(
-              value: 2,
-              groupValue: selected,
-              title: const Text('Подгруппа 2'),
-              onChanged: (value) => setState(() => selected = value ?? selected),
-            ),
-          ],
-        ),
-        actions: [
-          if (!widget.requiredChoice)
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, selected),
-            child: const Text('Сохранить'),
-          ),
-        ],
-      );
 }
 
 class _StudentGroupsDialog extends StatefulWidget {
@@ -149,7 +81,7 @@ class _StudentGroupsDialogState extends State<_StudentGroupsDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(s, softWrap: true, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(SchoolScheduleCatalog.choiceTitle(s), softWrap: true, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 5),
             DropdownButtonFormField<int>(
               isExpanded: true,

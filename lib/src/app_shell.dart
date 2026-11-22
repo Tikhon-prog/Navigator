@@ -303,54 +303,36 @@ class _AppShellState extends State<AppShell>{
                   '',
           ],
       };
-      final storedWholeClassGroup = SchoolScheduleCatalog.usesWholeClassSubgroup(className)
-          ? prefs.getInt(
-              _studentScopedPreferenceKey(prefs, 'student_class_group_8В'),
-            )
-          : null;
-      final wholeClassGroup =
-          storedWholeClassGroup == 1 || storedWholeClassGroup == 2
-              ? storedWholeClassGroup
-              : null;
+      final lessons = SchoolScheduleCatalog.buildPersonal(
+        className,
+        groups,
+        mathNamesByDay: mathNamesByDay,
+      ).where((lesson) => selectedWeekdays.contains(lesson.day)).toList()
+        ..sort((a, b) {
+          final dayOrder = a.day.compareTo(b.day);
+          return dayOrder != 0
+              ? dayOrder
+              : compareLessonTimes(a.time, b.time);
+        });
 
-      if (SchoolScheduleCatalog.usesWholeClassSubgroup(className) &&
-          wholeClassGroup == null) {
-        contextLines.add(
-          'Подгруппа 8В ещё не выбрана. Попроси ученика выбрать 8В/1 или 8В/2 в разделе «Расписание»; не показывай расписание обеих подгрупп одновременно.',
-        );
-      } else {
-        final lessons = SchoolScheduleCatalog.buildPersonal(
-          className,
-          groups,
-          mathNamesByDay: mathNamesByDay,
-          wholeClassGroup: wholeClassGroup,
-        ).where((lesson) => selectedWeekdays.contains(lesson.day)).toList()
-          ..sort((a, b) {
-            final dayOrder = a.day.compareTo(b.day);
-            return dayOrder != 0
-                ? dayOrder
-                : compareLessonTimes(a.time, b.time);
-          });
-
-        contextLines.add('Локальное расписание на запрошенные даты:');
-        for (final date in orderedDates) {
-          final dayLessons = lessons.where((lesson) =>
-              lesson.day == date.weekday);
-          contextLines.add('${dateLabel(date)}:');
-          for (final lesson in dayLessons) {
-            final details = <String>[
-              lesson.time,
-              lesson.subject,
-              if (lesson.group > 0) 'группа ${lesson.group}',
-              if (lesson.room.isNotEmpty) 'кабинет ${lesson.room}',
-              if (lesson.teacher.isNotEmpty) 'педагог ${lesson.teacher}',
-            ];
-            contextLines.add('- ${details.join(' • ')}');
-          }
+      contextLines.add('Локальное расписание на запрошенные даты:');
+      for (final date in orderedDates) {
+        final dayLessons = lessons.where((lesson) =>
+            lesson.day == date.weekday);
+        contextLines.add('${dateLabel(date)}:');
+        for (final lesson in dayLessons) {
+          final details = <String>[
+            lesson.time,
+            lesson.subject,
+            if (lesson.group > 0) 'группа ${lesson.group}',
+            if (lesson.room.isNotEmpty) 'кабинет ${lesson.room}',
+            if (lesson.teacher.isNotEmpty) 'педагог ${lesson.teacher}',
+          ];
+          contextLines.add('- ${details.join(' • ')}');
         }
-        if (lessons.isEmpty) {
-          contextLines.add('Для выбранного периода занятий по этому классу не найдено.');
-        }
+      }
+      if (lessons.isEmpty) {
+        contextLines.add('Для выбранного периода занятий по этому классу не найдено.');
       }
     } else {
       contextLines.add('Класс ученика ещё не выбран; не придумывай его расписание.');
@@ -431,18 +413,11 @@ class _AppShellState extends State<AppShell>{
             prefs.getString(_studentScopedPreferenceKey(prefs, 'math_subject_${className}_${day}_$slot')) ?? '',
         ],
     };
-    int? wholeClassGroup;
-    if (SchoolScheduleCatalog.usesWholeClassSubgroup(className)) {
-      final stored = prefs.getInt(_studentScopedPreferenceKey(prefs, 'student_class_group_8В'));
-      if (stored == 1 || stored == 2) wholeClassGroup = stored;
-      if (wholeClassGroup == null) return null;
-    }
     final today = DateTime.now().weekday;
     final lessons = SchoolScheduleCatalog.buildPersonal(
       className,
       groups,
       mathNamesByDay: mathNamesByDay,
-      wholeClassGroup: wholeClassGroup,
     ).where((lesson) => lesson.day == today && !lesson.subject.toLowerCase().contains('обед')).toList()
       ..sort((a, b) => compareLessonTimes(a.time, b.time));
     return lessons;
@@ -749,9 +724,6 @@ class _AppShellState extends State<AppShell>{
                 prefs.getString('student_class_name') ?? '')
             .trim();
         if (className.isEmpty) return 'Сначала выбери класс в разделе «Расписание».';
-        if (SchoolScheduleCatalog.usesWholeClassSubgroup(className)) {
-          return 'В 8В выбирается общая подгруппа целиком. Открой раздел «Расписание» и выбери 8В/1 или 8В/2.';
-        }
         final subject = arg('subject');
         final group = integer('group');
         if (subject.isEmpty || group == null || group < 1) {
@@ -760,7 +732,9 @@ class _AppShellState extends State<AppShell>{
         final groups = SchoolScheduleCatalog.subjectGroups(className);
         String? actualSubject;
         for (final name in groups.keys) {
-          if (name.toLowerCase() == subject.toLowerCase()) {
+          final lowered = name.toLowerCase();
+          if (lowered == subject.toLowerCase() ||
+              lowered.split(' / ').contains(subject.toLowerCase())) {
             actualSubject = name;
             break;
           }

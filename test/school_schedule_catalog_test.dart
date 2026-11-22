@@ -24,9 +24,10 @@ void main() {
         SchoolScheduleCatalog.splitSubjects('8А'),
         containsAll(['Иностранный язык', 'Информатика']),
       );
+      // В 10Б делятся только параллельные занятия «НВП / Первая помощь».
       expect(
         SchoolScheduleCatalog.splitSubjects('10Б'),
-        isEmpty,
+        {'Начальная военная подготовка / Первая помощь, основы ухода за больными'},
       );
     });
 
@@ -75,16 +76,18 @@ void main() {
       expect(hasParallelDuplicate(groupOne), isFalse);
       expect(hasParallelDuplicate(groupTwo), isFalse);
     });
-    test('8В keeps parallel lessons by subgroup and shares lone afternoon lessons', () {
-      final groupOne = SchoolScheduleCatalog.buildPersonal(
-        '8В',
-        const {},
-        wholeClassGroup: 1,
+    test('8В: группа выбирается отдельно по каждому предмету', () {
+      const parallel =
+          'Введение в искусственный интеллект / Великие достижения соотечественников';
+      expect(
+        SchoolScheduleCatalog.splitSubjects('8В'),
+        containsAll(['Информатика', 'Математика', 'Иностранный язык', 'Технология', parallel]),
       );
+
+      final groupOne = SchoolScheduleCatalog.buildPersonal('8В', const {});
       final groupTwo = SchoolScheduleCatalog.buildPersonal(
         '8В',
-        const {},
-        wholeClassGroup: 2,
+        const {parallel: 2, 'Информатика': 2},
       );
 
       bool hasLesson(
@@ -100,100 +103,78 @@ void main() {
               entry.subject.contains(subject) &&
               (room == null || entry.room == room));
 
-      // A merged cell must appear for both students.
+      // Общий урок виден всем.
       for (final entries in [groupOne, groupTwo]) {
         expect(
-          hasLesson(
-            entries,
-            day: 1,
-            time: '08:00 - 08:40',
-            subject: 'Разговоры о важном',
-            room: '125',
-          ),
+          hasLesson(entries,
+              day: 1, time: '08:00 - 08:40', subject: 'Разговоры о важном', room: '125'),
           isTrue,
         );
       }
 
-      // The same lesson slot contains different subjects for the two subgroups.
+      // Параллельные разные предметы: каждому ученику — по его выбору.
       expect(
-        hasLesson(
-          groupOne,
-          day: 3,
-          time: '16:30 - 17:10',
-          subject: 'Великие достижения',
-          room: '323',
-        ),
+        hasLesson(groupOne,
+            day: 3, time: '16:30 - 17:10', subject: 'Великие достижения', room: '323'),
         isTrue,
       );
       expect(
-        hasLesson(
-          groupOne,
-          day: 3,
-          time: '16:30 - 17:10',
-          subject: 'Введение в искусственный интеллект',
-        ),
+        hasLesson(groupOne,
+            day: 3, time: '16:30 - 17:10', subject: 'Введение в искусственный интеллект'),
         isFalse,
       );
       expect(
-        hasLesson(
-          groupTwo,
-          day: 3,
-          time: '16:30 - 17:10',
-          subject: 'Введение в искусственный интеллект',
-          room: '130',
-        ),
+        hasLesson(groupTwo,
+            day: 3,
+            time: '16:30 - 17:10',
+            subject: 'Введение в искусственный интеллект',
+            room: '130'),
         isTrue,
       );
       expect(
-        hasLesson(
-          groupTwo,
-          day: 3,
-          time: '16:30 - 17:10',
-          subject: 'Великие достижения',
-        ),
+        hasLesson(groupTwo, day: 3, time: '16:30 - 17:10', subject: 'Великие достижения'),
         isFalse,
       );
 
-      // A lone subgroup-labelled lesson after lunch is shared by both
-      // 8В subgroups instead of disappearing from 8В/1.
+      // Одинокий урок после обеда идёт всему классу и не помечен группой.
       for (final entries in [groupOne, groupTwo]) {
-        expect(
-          hasLesson(
-            entries,
-            day: 4,
-            time: '14:40 - 15:20',
-            subject: 'Алгоритмизация и программирование',
-            room: '130',
-          ),
-          isTrue,
-        );
         final algorithmization = entries.singleWhere((entry) =>
             entry.day == 4 &&
             entry.time == '14:40 - 15:20' &&
             entry.subject.contains('Алгоритмизация и программирование'));
+        expect(algorithmization.room, '130');
         expect(algorithmization.group, 0);
       }
 
+      // Информатика делится на подгруппы с разными кабинетами.
       expect(
-        hasLesson(
-          groupOne,
-          day: 4,
-          time: '10:20 - 11:00',
-          subject: 'Информатика',
-          room: '312',
-        ),
+        hasLesson(groupOne,
+            day: 4, time: '10:20 - 11:00', subject: 'Информатика', room: '312'),
         isTrue,
       );
       expect(
-        hasLesson(
-          groupTwo,
-          day: 4,
-          time: '10:20 - 11:00',
-          subject: 'Информатика',
-          room: '311',
-        ),
+        hasLesson(groupTwo,
+            day: 4, time: '10:20 - 11:00', subject: 'Информатика', room: '311'),
         isTrue,
       );
+    });
+
+    test('двойная фамилия учителя не мешает определить предмет и преподавателя', () {
+      expect(
+        SchoolScheduleCatalog.baseSubject('Технология Захарова-Медицкая Н.И.'),
+        'Технология',
+      );
+      expect(
+        SchoolScheduleCatalog.teacherFromSubject('Технология Захарова-Медицкая Н.И.'),
+        'Захарова-Медицкая Н.И.',
+      );
+    });
+
+    test('практикумы и наглядная геометрия не считаются основной математикой', () {
+      expect(SchoolScheduleCatalog.isMathSubject('Математика'), isTrue);
+      expect(SchoolScheduleCatalog.isMathSubject('Практикум по алгебре'), isFalse);
+      expect(SchoolScheduleCatalog.isMathSubject('Практикум по геометрии'), isFalse);
+      expect(SchoolScheduleCatalog.isMathSubject('Наглядная геометрия'), isFalse);
     });
 
   });

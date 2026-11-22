@@ -217,9 +217,6 @@ class SchoolScheduleCatalog {
   static String periodForClass(String className) =>
       (classDetails(className)?['period'] ?? '').toString().trim();
 
-  static bool usesWholeClassSubgroup(String className) =>
-      _normalizeClassName(className) == _normalizeClassName('8В');
-
   static List<Map<String, dynamic>> variants(String className) {
     final raw = classDetails(className)?['variants'];
     return raw is List
@@ -248,34 +245,51 @@ class SchoolScheduleCatalog {
 
   static String baseSubject(String value) {
     var subject = value.trim();
-    subject = subject.replaceFirst(RegExp(r'\s+[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'), '');
+    subject = subject.replaceFirst(RegExp(r'\s+[А-ЯЁ][А-Яа-яЁё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][А-Яа-яЁё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?,?$'), '');
     return subject.trim().replaceFirst(RegExp(r',$'), '').trim();
   }
   static RegExp get _teacherSuffix => RegExp(
-        r'\s+([А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][а-яё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?)\s*$',
+        r'\s+([А-ЯЁ][А-Яа-яЁё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.(?:,\s*[А-ЯЁ][А-Яа-яЁё-]+\s+[А-ЯЁ]\.[А-ЯЁ]\.)?)\s*$',
       );
   static String teacherFromSubject(String value) =>
       _teacherSuffix.firstMatch(value.trim())?.group(1)?.trim() ?? '';
 
-  /// Возвращает варианты групп только для предметов, у которых в одном
-  /// и том же временном слоте реально присутствуют разные группы.
-  static Map<String, Set<int>> subjectGroups(String className) {
-    final result = <String, Set<int>>{};
+  static const String _choiceSeparator = ' / ';
+
+  /// День|время → предмет → группы (только реальные подгруппы, group > 0).
+  static Map<String, Map<String, Set<int>>> _slotIndex(String className) {
     final slots = <String, Map<String, Set<int>>>{};
     for (final e in variants(className)) {
       final subject = baseSubject('${e['subject'] ?? ''}');
       if (subject.isEmpty) continue;
-      final slot = '${e['day']}|${e['time']}|$subject';
-      (slots[slot] ??= <String, Set<int>>{})
-          .putIfAbsent(subject, () => <int>{})
-          .add(int.tryParse('${e['group']}') ?? 1);
+      final group = int.tryParse('${e['group']}') ?? 1;
+      if (group <= 0) continue;
+      final day = int.tryParse('${e['day']}') ?? 1;
+      final slot = '$day|${canonicalLessonTimeKey('${e['time'] ?? ''}')}';
+      ((slots[slot] ??= <String, Set<int>>{})[subject] ??= <int>{}).add(group);
     }
-    for (final slot in slots.values) {
-      for (final entry in slot.entries) {
-        if (entry.value.length > 1) {
-          (result[entry.key] ??= <int>{}).addAll(entry.value);
-        }
-      }
+    return slots;
+  }
+
+  /// Ключ выбора группы для временного слота. Если в слоте одновременно идут
+  /// разные подгруппы одного предмета — ключ это название предмета. Если
+  /// параллельно идут разные предметы (например, «Великие достижения» и
+  /// «Введение в ИИ») — названия через « / ». Слот без подгрупп даёт null.
+  static String? _choiceKey(Map<String, Set<int>> slot) {
+    final groups = <int>{for (final value in slot.values) ...value};
+    if (groups.length < 2) return null;
+    return (slot.keys.toList()..sort()).join(_choiceSeparator);
+  }
+
+  /// Варианты групп для каждого выбора, где в одном и том же временном слоте
+  /// реально присутствуют разные группы. Группа выбирается отдельно для
+  /// каждого предмета (или набора параллельных предметов).
+  static Map<String, Set<int>> subjectGroups(String className) {
+    final result = <String, Set<int>>{};
+    for (final slot in _slotIndex(className).values) {
+      final key = _choiceKey(slot);
+      if (key == null) continue;
+      (result[key] ??= <int>{}).addAll({for (final value in slot.values) ...value});
     }
     return result;
   }
@@ -283,28 +297,41 @@ class SchoolScheduleCatalog {
   static Set<String> splitSubjects(String className) =>
       subjectGroups(className).keys.toSet();
 
-  /// Builds a consistent subgroup label for every split subject and teacher.
+  /// Подпись для выбора группы: номер подгруппы и преподаватель. Для набора
+  /// параллельных предметов вместо преподавателя показывается «предмет (педагог)».
   static String subgroupLabel(String className, String subject, int group) {
-    final teachers = variants(className)
-        .where((row) => baseSubject('${row['subject'] ?? ''}') == subject)
-        .where((row) => (int.tryParse('${row['group']}') ?? 1) == group)
-        .map((row) {
-          final stored = '${row['teacher'] ?? ''}'.trim();
-          return stored.isNotEmpty
-              ? stored
-              : teacherFromSubject('${row['subject'] ?? ''}');
-        })
-        .where((name) => name.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
-    return teachers.isEmpty
+    final members = subject.split(_choiceSeparator).map((e) => e.trim()).toSet();
+    final parallel = members.length > 1;
+    final parts = <String>{};
+    for (final row in variants(className)) {
+      final rowSubject = baseSubject('${row['subject'] ?? ''}');
+      if (!members.contains(rowSubject)) continue;
+      if ((int.tryParse('${row['group']}') ?? 1) != group) continue;
+      final stored = '${row['teacher'] ?? ''}'.trim();
+      final teacher = stored.isNotEmpty
+          ? stored
+          : teacherFromSubject('${row['subject'] ?? ''}');
+      if (parallel) {
+        parts.add(teacher.isEmpty ? rowSubject : '$rowSubject ($teacher)');
+      } else if (teacher.isNotEmpty) {
+        parts.add(teacher);
+      }
+    }
+    final sorted = parts.toList()..sort();
+    return sorted.isEmpty
         ? 'Подгруппа $group'
-        : 'Подгруппа $group • ${teachers.join(' / ')}';
+        : 'Подгруппа $group • ${sorted.join(' / ')}';
   }
+
+  /// Заголовок выбора в диалоге групп.
+  static String choiceTitle(String key) =>
+      key.contains(_choiceSeparator) ? 'Параллельно: $key' : key;
 
   static bool isMathSubject(String subject) {
     final value = subject.toLowerCase();
+    // «Практикум по алгебре/геометрии/математике» и «Наглядная геометрия» —
+    // самостоятельные предметы, а не уроки основной математики.
+    if (value.contains('практикум') || value.contains('наглядн')) return false;
     return value.contains('математик') || value.contains('алгебр') || value.contains('геометр') || value.contains('вероятност') || value.contains('статистик');
   }
 
@@ -317,52 +344,23 @@ class SchoolScheduleCatalog {
     String className,
     Map<String, int> selected, {
     Map<int, List<String>> mathNamesByDay = const {},
-    int? wholeClassGroup,
   }) {
     final all = variants(className);
     final result = <ScheduleEntry>[];
     final seen = <String>{};
     final mathSlots = <int, List<String>>{};
-    final groupsBySlot = <String, Set<int>>{};
-    final groupsByTimeSlot = <String, Set<int>>{};
-    final lunchEndByDay = <int, int>{};
+    final slotIndex = _slotIndex(className);
+    final choiceBySlot = <String, String?>{
+      for (final entry in slotIndex.entries) entry.key: _choiceKey(entry.value),
+    };
 
-    int? lessonStartMinutes(String value) {
-      final match = RegExp(r'^\s*(\d{1,2}):(\d{2})').firstMatch(value);
-      if (match == null) return null;
-      return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
-    }
-
-    int? lessonEndMinutes(String value) {
-      final match = RegExp(r'-\s*(\d{1,2}):(\d{2})').firstMatch(value);
-      if (match == null) return null;
-      return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
-    }
-
-    // Build the slot/group index and each day's lunch end once. This keeps
-    // subgroup selection linear and lets us identify genuinely shared
-    // afternoon lessons in the 8В timetable.
     for (final row in all) {
       final rowSubject = baseSubject('${row['subject'] ?? ''}');
-      if (rowSubject.isEmpty) continue;
+      if (rowSubject.isEmpty || !isMathSubject(rowSubject)) continue;
       final rowDay = int.tryParse('${row['day']}') ?? 1;
-      final rawTime = '${row['time'] ?? ''}';
-      final rowTime = canonicalLessonTimeKey(rawTime);
-      final rowGroup = int.tryParse('${row['group']}') ?? 1;
-      final slotKey = '$rowDay|$rowTime|$rowSubject';
-      (groupsBySlot[slotKey] ??= <int>{}).add(rowGroup);
-      final timeSlotKey = '$rowDay|$rowTime';
-      (groupsByTimeSlot[timeSlotKey] ??= <int>{}).add(rowGroup);
-
-      if (rowSubject.toLowerCase() == 'обед') {
-        final lunchEnd = lessonEndMinutes(rawTime);
-        if (lunchEnd != null) lunchEndByDay[rowDay] = lunchEnd;
-      }
-
-      if (isMathSubject(rowSubject)) {
-        final slots = mathSlots.putIfAbsent(rowDay, () => <String>[]);
-        if (!slots.contains(rowTime)) slots.add(rowTime);
-      }
+      final rowTime = canonicalLessonTimeKey('${row['time'] ?? ''}');
+      final slots = mathSlots.putIfAbsent(rowDay, () => <String>[]);
+      if (!slots.contains(rowTime)) slots.add(rowTime);
     }
     for (final slots in mathSlots.values) {
       slots.sort(compareLessonTimes);
@@ -375,31 +373,23 @@ class SchoolScheduleCatalog {
       final group = int.tryParse('${e['group']}') ?? 1;
       final day = int.tryParse('${e['day']}') ?? 1;
       final time = '${e['time'] ?? ''}'.trim();
-      var displayGroup = group;
+      var displayGroup = 0;
 
       if (group > 0) {
-        final slotKey = '$day|${canonicalLessonTimeKey(time)}|$subject';
-        final slotGroups = groupsBySlot[slotKey] ?? const <int>{};
-
-        if (wholeClassGroup != null) {
-          final lunchEnd = lunchEndByDay[day];
-          final startsAfterLunch =
-              lunchEnd != null &&
-              (lessonStartMinutes(time) ?? -1) >= lunchEnd;
-          final timeSlotKey = '$day|${canonicalLessonTimeKey(time)}';
-          final timeSlotGroups =
-              groupsByTimeSlot[timeSlotKey] ?? const <int>{};
-          final isSharedAfternoonLesson =
-              timeSlotGroups.length == 1 && startsAfterLunch;
-
-          // Keep real parallel lessons tied to the selected subgroup. A lone
-          // group-labelled lesson after lunch (e.g. Algorithmization) is
-          // common to the whole class, so include it for both 8В subgroups.
-          if (group != wholeClassGroup && !isSharedAfternoonLesson) continue;
-          if (isSharedAfternoonLesson) displayGroup = 0;
-        } else {
-          final wanted = selected[subject] ?? 1;
-          if (slotGroups.length > 1 && group != wanted) continue;
+        final slotId = '$day|${canonicalLessonTimeKey(time)}';
+        final choice = choiceBySlot[slotId];
+        final slotMap = slotIndex[slotId];
+        // Одинокий урок с пометкой группы (без параллельной подгруппы) идёт
+        // всему классу. Если же в слоте есть выбор — берём выбранную группу,
+        // а если такой группы в слоте нет, то первую из имеющихся.
+        if (choice != null && slotMap != null) {
+          final slotGroups = <int>{for (final value in slotMap.values) ...value};
+          final wanted = selected[choice] ?? 1;
+          final effective = slotGroups.contains(wanted)
+              ? wanted
+              : (slotGroups.toList()..sort()).first;
+          if (group != effective) continue;
+          displayGroup = group;
         }
       }
 

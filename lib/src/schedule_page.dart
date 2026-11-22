@@ -10,7 +10,6 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
   int day = DateTime.now().weekday > 6 ? 1 : DateTime.now().weekday;
   List<ScheduleEntry> entries = [];
   String classId = '';
-  int? wholeClassGroup;
   bool loading = true;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
@@ -86,8 +85,6 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     }
 
     classId = p.getString('student_class_name') ?? '';
-    wholeClassGroup = null;
-    var needsWholeClassGroupSelection = false;
     final groups = <String, int>{};
     if (classId.isNotEmpty) {
       for (final subject in SchoolScheduleCatalog.splitSubjects(classId)) {
@@ -98,17 +95,6 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
               ),
             ) ??
             1;
-      }
-
-      if (SchoolScheduleCatalog.usesWholeClassSubgroup(classId)) {
-        final storedGroup = p.getInt(
-          _studentScopedPreferenceKey(p, 'student_class_group_8В'),
-        );
-        if (storedGroup == 1 || storedGroup == 2) {
-          wholeClassGroup = storedGroup;
-        } else {
-          needsWholeClassGroupSelection = true;
-        }
       }
 
       final mathNames = <int, List<String>>{};
@@ -128,25 +114,13 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
         mathNames[d] = dayNames;
       }
 
-      entries = needsWholeClassGroupSelection
-          ? <ScheduleEntry>[]
-          : SchoolScheduleCatalog.buildPersonal(
-              classId,
-              groups,
-              mathNamesByDay: mathNames,
-              wholeClassGroup: wholeClassGroup,
-            );
+      entries = SchoolScheduleCatalog.buildPersonal(
+        classId,
+        groups,
+        mathNamesByDay: mathNames,
+      );
     } else {
       entries = [];
-    }
-
-    if (needsWholeClassGroupSelection && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        await showStudentGroupSelection(context, classId);
-        if (mounted) await _load();
-      });
-      return;
     }
 
     if (mounted) setState(() => loading = false);
@@ -205,7 +179,6 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
     final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final schedulePeriod = SchoolScheduleCatalog.periodForClass(classId);
-    final splitSubjects = SchoolScheduleCatalog.splitSubjects(classId);
     final breakCountdown = _breakCountdown(list);
     const dayNames = ['', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
@@ -223,9 +196,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
           IconButton(tooltip: 'Выбрать класс', onPressed: () => _chooseClass(), icon: const Icon(Icons.school_rounded)),
           if (classId.isNotEmpty) ...[
             IconButton(
-              tooltip: SchoolScheduleCatalog.usesWholeClassSubgroup(classId)
-                  ? 'Выбрать подгруппу'
-                  : 'Группы по предметам',
+              tooltip: 'Группы по предметам',
               onPressed: () async {
                 await showStudentGroupSelection(context, classId);
                 await _load();
@@ -272,7 +243,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                       Text(
                         classId.isEmpty
                             ? 'Выбери класс, чтобы загрузить уроки'
-                            : '${wholeClassGroup == null ? '' : 'Подгруппа $wholeClassGroup • '}${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
+                            : '${dayNames[day]} • ${list.length} ${list.length == 1 ? 'урок' : (list.length >= 2 && list.length <= 4 ? 'урока' : 'уроков')}',
                         style: TextStyle(
                           color: scheme.onSurfaceVariant,
                           fontSize: 12,
@@ -285,9 +256,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                           await showStudentGroupSelection(context, classId);
                           await _load();
                         },
-                        tooltip: SchoolScheduleCatalog.usesWholeClassSubgroup(classId)
-                            ? 'Выбрать подгруппу'
-                            : 'Настроить группы',
+                        tooltip: 'Настроить группы',
                         icon: const Icon(Icons.tune_rounded),
                       ),
                   ]),
@@ -386,7 +355,7 @@ class _SchedulePageState extends State<SchedulePage> with WidgetsBindingObserver
                                                 _ScheduleTag(icon: Icons.meeting_room_outlined, label: 'Каб. ${e.room}'),
                                               if (e.teacher.isNotEmpty)
                                                 _ScheduleTag(icon: Icons.person_outline_rounded, label: e.teacher),
-                                              if (splitSubjects.contains(e.subject) && e.group > 0)
+                                              if (e.group > 0)
                                                 _ScheduleTag(icon: Icons.groups_2_outlined, label: 'Группа ${e.group}'),
                                             ]),
                                           ])),
