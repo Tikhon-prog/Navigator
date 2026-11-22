@@ -90,10 +90,64 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     return 'Не удалось запустить локальную модель. Попробуй повторить запрос.';
   }
 
+  static String _shortError(Object error) {
+    final text = error.toString().replaceAll('\n', ' ').trim();
+    return text.length > 400 ? '${text.substring(0, 400)}…' : text;
+  }
+
+  /// Где лежит нативная библиотека llama и как её восстановить — по платформе.
+  static String _nativeLibHint() {
+    if (Platform.isWindows) {
+      return 'рядом с .exe должны лежать файлы llama*.dll. Если их нет, '
+          'пересобери приложение (flutter clean, затем flutter build windows '
+          '--release) и запускай из папки Release целиком.';
+    }
+    if (Platform.isLinux) {
+      return 'в папке lib рядом с программой должны лежать файлы libllama*.so '
+          'и libggml*.so. Их скачивает сама сборка (нужен интернет во время '
+          'flutter build linux --release). Если их нет, выполни flutter clean '
+          'и собери заново.';
+    }
+    return 'нативная библиотека llama не найдена, пересобери приложение.';
+  }
+
+  Future<String> _logPath() async {
+    try {
+      final model = await _modelFile();
+      return '${model.parent.path}${Platform.pathSeparator}ai.log';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Пишет техническую причину сбоя в ai.log рядом с моделью, чтобы её можно
+  /// было найти и прислать, даже если окно приложения уже закрыто.
+  Future<void> _writeLog(String message) async {
+    try {
+      final path = await _logPath();
+      if (path.isEmpty) return;
+      final log = File(path);
+      final line = '${DateTime.now().toIso8601String()} $message\n';
+      if (await log.exists() && await log.length() > 200 * 1024) {
+        await log.writeAsString(line, flush: true);
+      } else {
+        await log.writeAsString(line, mode: FileMode.append, flush: true);
+      }
+    } catch (_) {
+      // Журнал вспомогательный: его сбой не должен ломать чат.
+    }
+  }
+
   static const _modelFileName = 'qwen2.5-0.5b-instruct-q4_k_m.gguf';
   // Pin the model revision so the checksum always matches the downloaded file.
   static const _modelUrl =
       'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/12145bd1d629190a4d44254073650877954d02c9/qwen2.5-0.5b-instruct-q4_k_m.gguf';
+  // Зеркало на случай, если Hugging Face недоступен. Целостность файла
+  // в любом случае проверяется по SHA-256.
+  static const _modelUrls = <String>[
+    _modelUrl,
+    'https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/12145bd1d629190a4d44254073650877954d02c9/qwen2.5-0.5b-instruct-q4_k_m.gguf',
+  ];
   static const _modelSha256 =
       '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db';
   static const _systemPrompt = '''
@@ -263,21 +317,37 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       await partialFile.create(recursive: true);
       writer = await partialFile.open(mode: FileMode.write);
 
-      final request = await client
-          .getUrl(Uri.parse(_modelUrl))
-          .timeout(const Duration(seconds: 30));
-      request
-        ..followRedirects = true
-        ..maxRedirects = 5
-        ..headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
-
-      final response = await request.close().timeout(
-            const Duration(minutes: 2),
-          );
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'Сервер модели вернул HTTP ${response.statusCode} для $_modelUrl.',
-        );
+      HttpClientResponse? opened;
+      Object? lastConnectError;
+      for (final url in _modelUrls) {
+        try {
+          final request = await client
+              .getUrl(Uri.parse(url))
+              .timeout(const Duration(seconds: 30));
+          request
+            ..followRedirects = true
+            ..maxRedirects = 5
+            ..headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+          final candidate = await request.close().timeout(
+                const Duration(minutes: 2),
+              );
+          if (candidate.statusCode != HttpStatus.ok) {
+            await candidate.drain<void>();
+            throw HttpException(
+              'Сервер модели вернул HTTP ${candidate.statusCode} для $url.',
+            );
+          }
+          opened = candidate;
+          break;
+        } catch (error) {
+          lastConnectError = error;
+          await _writeLog('Не удалось открыть $url: $error');
+        }
+      }
+      final response = opened;
+      if (response == null) {
+        throw lastConnectError ??
+            const HttpException('Не удалось подключиться к серверу модели.');
       }
 
       final expectedLength = response.contentLength;
@@ -375,6 +445,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
     } catch (error) {
       debugPrint('[Поколение AI] Ошибка загрузки модели: $error');
+      await _writeLog('Ошибка загрузки модели: $error');
+      final downloadLogPath = await _logPath();
       try {
         await writer?.close();
       } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
@@ -385,7 +457,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       } catch (error) { debugPrint('local_ai_chat_page: ${error.runtimeType}'); }
       if (mounted) {
         setState(() {
-          _statusError = 'Не удалось скачать модель. Проверь подключение и повтори загрузку.';
+          _statusError = 'Не удалось скачать модель: ${_shortError(error)}\n'
+              'Проверь подключение и повтори загрузку.'
+              '${downloadLogPath.isEmpty ? '' : '\nЖурнал: $downloadLogPath'}';
         });
       }
     } finally {
@@ -835,8 +909,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
         if (!gotChunk && mounted) {
           setState(() => _statusError =
               'Модель всё ещё запускается. На слабом компьютере первый запуск '
-              'может занять до нескольких минут. Если ответа нет, проверь, что '
-              'рядом с .exe лежат файлы llama*.dll, и пересобери приложение.');
+              'может занять до нескольких минут. Если ответа нет, проверь: '
+              '${_nativeLibHint()}');
         }
       });
       try {
@@ -892,6 +966,8 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       }
     } catch (error) {
       debugPrint('[Поколение AI] Ошибка локальной модели: $error');
+      await _writeLog('Ошибка локальной модели: $error');
+      final runLogPath = await _logPath();
       // Не открывать карту/маршрут от прерванного запроса при следующем ответе.
       _pendingOpenMapLocationId = null;
       _pendingOpenSchoolRouteId = null;
@@ -905,7 +981,10 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       _trimConversationHistory();
       if (mounted) {
         setState(() {
-          _statusError = _friendlyModelError(error);
+          _statusError = error is StateError
+              ? _friendlyModelError(error)
+              : '${_friendlyModelError(error)}\n\nПричина: ${_shortError(error)}'
+                  '${runLogPath.isEmpty ? '' : '\nЖурнал: $runLogPath'}';
         });
       }
     } finally {
@@ -916,19 +995,28 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
   }
 
-  /// На Windows нативная библиотека llama должна лежать рядом с .exe.
-  /// Возвращает понятное описание проблемы или null, если всё на месте.
+  /// Нативная библиотека llama должна лежать рядом с программой: на Windows
+  /// рядом с .exe, на Linux в папке lib. Возвращает описание проблемы или null.
   Future<String?> _nativeEngineProblem() async {
-    if (!Platform.isWindows) return null;
+    if (!Platform.isWindows && !Platform.isLinux) return null;
     try {
-      final dir = File(Platform.resolvedExecutable).parent;
-      await for (final entity in dir.list(followLinks: false)) {
-        final name = entity.path.split(Platform.pathSeparator).last.toLowerCase();
-        if (name.contains('llama') && name.endsWith('.dll')) return null;
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final dirs = Platform.isLinux
+          ? <Directory>[exeDir, Directory('${exeDir.path}/lib')]
+          : <Directory>[exeDir];
+      for (final dir in dirs) {
+        if (!await dir.exists()) continue;
+        await for (final entity in dir.list(followLinks: false)) {
+          final name = entity.path.split(Platform.pathSeparator).last.toLowerCase();
+          final isLibrary = Platform.isWindows
+              ? name.endsWith('.dll')
+              : (name.endsWith('.so') || name.contains('.so.'));
+          if (isLibrary && (name.contains('llama') || name.contains('ggml'))) {
+            return null;
+          }
+        }
       }
-      return 'В папке приложения нет llama.dll. Собери приложение заново '
-          '(flutter clean, затем flutter build windows --release) и запускай '
-          'из папки Release целиком.';
+      return 'Не найдена нативная библиотека ИИ: ${_nativeLibHint()}';
     } catch (_) {
       return null;
     }
@@ -1011,7 +1099,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
                       ),
                     if (_statusError != null) ...[
                       const SizedBox(height: 8),
-                      Text(_statusError!, style: TextStyle(color: colors.error)),
+                      SelectableText(_statusError!, style: TextStyle(color: colors.error)),
                     ],
                   ],
                 ),
