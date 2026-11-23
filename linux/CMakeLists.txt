@@ -121,6 +121,15 @@ install(DIRECTORY "${NATIVE_ASSETS_DIR}"
    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
    COMPONENT Runtime)
 
+# Если собрана своя llama.cpp без AVX (tool/build_llama_cpu.sh), подставляем её
+# вместо готовой: та падает с «illegal instruction» на CPU без AVX (Celeron).
+file(GLOB NATIVE_CPU_LIBS "${CMAKE_CURRENT_SOURCE_DIR}/native_cpu/lib*.so")
+if(NATIVE_CPU_LIBS)
+  install(FILES ${NATIVE_CPU_LIBS}
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
+
 # Без CUDA-toolkit убираем CUDA-бэкенд из llama/ggml: иначе libggml.so не
 # загружается (libcudart.so.12 not found). Выполняется до создания ссылок.
 install(CODE "
