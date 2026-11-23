@@ -551,6 +551,12 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   /// зависимостей: загрузчик узнаёт уже загруженную библиотеку по SONAME, и
   /// libllama.so открывается без LD_LIBRARY_PATH и ручных ссылок. Видеодрайверные
   /// бэкенды (vulkan, cuda) не трогаем — их подключает сам llm_llamacpp.
+  /// Заглушки CUDA-библиотек (libcudart.so.12, libcublas.so.12 и т.п.), которые
+  /// сборка кладёт в bundle, если CUDA-toolkit в системе нет.
+  static bool _isCudaStub(String name) =>
+      (name.startsWith('libcu') || name.startsWith('libnv')) &&
+      name.contains('.so.');
+
   static Future<void> _preloadLinuxLibraries() async {
     if (!Platform.isLinux) return;
     try {
@@ -559,14 +565,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       final names = <String>[];
       await for (final entity in libDir.list()) {
         final name = entity.path.split(Platform.pathSeparator).last;
-        if (name == 'libcudart.so.12' ||
+        if (_isCudaStub(name) ||
             (name.endsWith('.so') &&
                 (name == 'libllama.so' || name.startsWith('libggml')))) {
           names.add(name);
         }
       }
       int rank(String name) {
-        if (name == 'libcudart.so.12') return -1;
+        if (_isCudaStub(name)) return -1;
         if (name == 'libggml-base.so') return 0;
         if (name == 'libggml.so') return 1;
         if (name.startsWith('libggml-cpu')) return 2;
