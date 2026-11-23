@@ -559,12 +559,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       final names = <String>[];
       await for (final entity in libDir.list()) {
         final name = entity.path.split(Platform.pathSeparator).last;
-        if (name.endsWith('.so') &&
-            (name == 'libllama.so' || name.startsWith('libggml'))) {
+        if (name == 'libcudart.so.12' ||
+            (name.endsWith('.so') &&
+                (name == 'libllama.so' || name.startsWith('libggml')))) {
           names.add(name);
         }
       }
       int rank(String name) {
+        if (name == 'libcudart.so.12') return -1;
         if (name == 'libggml-base.so') return 0;
         if (name == 'libggml.so') return 1;
         if (name.startsWith('libggml-cpu')) return 2;

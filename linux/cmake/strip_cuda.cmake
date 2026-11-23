@@ -10,45 +10,72 @@
 #
 # Вход: BUNDLE_LIB_DIR — папка bundle/lib, CXX_COMPILER — компилятор C++.
 
-# Настоящая проверка: может ли загрузчик найти зависимости CUDA-бэкенда.
-set(_cuda_found TRUE)
-file(GLOB _cuda_probe "${BUNDLE_LIB_DIR}/libggml-cuda*")
-if(NOT _cuda_probe)
-  message(STATUS "CUDA-бэкенд ggml в bundle не найден, ничего не меняю")
-  return()
-endif()
-list(GET _cuda_probe 0 _probe_lib)
+# Нужен ли libcudart.so.12: ищем библиотеки bundle, которым он нужен, и
+# смотрим через ldd, находит ли загрузчик. Строка «not found» = CUDA нет.
+file(GLOB _libs "${BUNDLE_LIB_DIR}/lib*.so*")
+set(_cuda_missing FALSE)
 find_program(_ldd ldd)
 if(_ldd)
-  execute_process(
-    COMMAND "${_ldd}" "${_probe_lib}"
-    OUTPUT_VARIABLE _ldd_out
-    ERROR_VARIABLE _ldd_err
-    RESULT_VARIABLE _ldd_result)
-  message(STATUS "ldd ${_probe_lib}:\n${_ldd_out}${_ldd_err}")
-  if(_ldd_out MATCHES "libcudart[^\n]*not found" OR _ldd_out MATCHES "libcu[a-z]*\\.so[^\n]*not found")
-    set(_cuda_found FALSE)
-  endif()
+  foreach(_lib IN LISTS _libs)
+    if(IS_SYMLINK "${_lib}")
+      continue()
+    endif()
+    execute_process(COMMAND "${_ldd}" "${_lib}"
+      OUTPUT_VARIABLE _ldd_out ERROR_QUIET)
+    if(_ldd_out MATCHES "libcudart[^\n]*not found")
+      set(_cuda_missing TRUE)
+    endif()
+  endforeach()
 else()
-  message(STATUS "ldd не найден, проверяю CUDA по файлам")
-  file(GLOB _cuda_runtime
-    "/usr/local/cuda*/lib64/libcudart.so.12*"
-    "/usr/lib/x86_64-linux-gnu/libcudart.so.12*"
-    "/usr/lib64/libcudart.so.12*")
-  if(NOT _cuda_runtime)
-    set(_cuda_found FALSE)
+  file(GLOB _cudart "/usr/local/cuda*/lib64/libcudart.so.12*"
+    "/usr/lib/x86_64-linux-gnu/libcudart.so.12*")
+  if(NOT _cudart)
+    set(_cuda_missing TRUE)
   endif()
 endif()
 
-if(_cuda_found)
+if(NOT _cuda_missing)
   message(STATUS "CUDA runtime найден, библиотеки llama/ggml не меняются")
   return()
 endif()
 
-message(STATUS "CUDA runtime не найден: заменяю CUDA-бэкенд заглушкой (нейросеть на CPU)")
+message(STATUS "CUDA runtime не найден: ставлю заглушки (нейросеть на CPU)")
 
 if(NOT CXX_COMPILER)
   set(CXX_COMPILER "c++")
+endif()
+
+# 0. Заглушка libcudart.so.12: libggml/libllama требуют её напрямую. Она
+# экспортирует все cuda*-символы, которые нужны библиотекам bundle, и
+# возвращает 0. Нейросеть при этом работает на CPU.
+set(_cu_syms "")
+foreach(_lib IN LISTS _libs)
+  if(IS_SYMLINK "${_lib}")
+    continue()
+  endif()
+  execute_process(COMMAND nm -D --undefined-only "${_lib}"
+    OUTPUT_VARIABLE _nm ERROR_QUIET)
+  string(REGEX MATCHALL "U (cuda|__cuda)[A-Za-z0-9_]+" _found "${_nm}")
+  list(APPEND _cu_syms ${_found})
+endforeach()
+list(REMOVE_DUPLICATES _cu_syms)
+set(_cu_body "")
+foreach(_sym IN LISTS _cu_syms)
+  string(REPLACE "U " "" _cu_name "${_sym}")
+  string(APPEND _cu_body "extern \"C\" int ${_cu_name}(void) { return 0; }\n")
+endforeach()
+set(_cu_src "${BUNDLE_LIB_DIR}/cudart_stub.cpp")
+file(WRITE "${_cu_src}" "${_cu_body}")
+execute_process(COMMAND "${CXX_COMPILER}" -shared -fPIC -O1
+  "-Wl,-soname,libcudart.so.12"
+  -o "${BUNDLE_LIB_DIR}/libcudart.so.12" "${_cu_src}"
+  RESULT_VARIABLE _cu_result ERROR_VARIABLE _cu_error)
+file(REMOVE "${_cu_src}")
+if(_cu_result EQUAL 0)
+  list(LENGTH _cu_syms _cu_count)
+  message(STATUS "Создана заглушка libcudart.so.12 (символов: ${_cu_count})")
+else()
+  message(WARNING "Не удалось собрать заглушку libcudart: ${_cu_error}")
 endif()
 
 # 1. Находим настоящий CUDA-бэкенд и запоминаем его имя и SONAME.
@@ -110,36 +137,3 @@ void  ggml_backend_cuda_unregister_host_buffer(void*) {}
   endif()
 endif()
 
-# 4. Прямые зависимости остальных библиотек от CUDA-runtime (если есть).
-find_program(_patchelf patchelf)
-file(GLOB _native_libs "${BUNDLE_LIB_DIR}/lib*.so*")
-foreach(_lib IN LISTS _native_libs)
-  if(IS_SYMLINK "${_lib}")
-    continue()
-  endif()
-  execute_process(
-    COMMAND readelf -d "${_lib}"
-    OUTPUT_VARIABLE _dynamic
-    ERROR_QUIET
-    RESULT_VARIABLE _readelf_result)
-  if(NOT _readelf_result EQUAL 0)
-    continue()
-  endif()
-  string(REGEX MATCHALL "\\(NEEDED\\)[ ]+Shared library: \\[[^]]+\\]" _needed "${_dynamic}")
-  foreach(_entry IN LISTS _needed)
-    string(REGEX REPLACE ".*\\[([^]]+)\\]" "\\1" _dep "${_entry}")
-    if(_dep MATCHES "^(libcudart|libcublas|libcublasLt|libcuda|libnvrtc)")
-      get_filename_component(_name "${_lib}" NAME)
-      if(_patchelf)
-        message(STATUS "${_name}: убрана зависимость ${_dep}")
-        execute_process(
-          COMMAND "${_patchelf}" --remove-needed "${_dep}" "${_lib}"
-          ERROR_QUIET)
-      else()
-        message(WARNING
-          "${_name} зависит от ${_dep}, а patchelf не установлен. "
-          "Выполните: sudo apt install patchelf — и пересоберите.")
-      endif()
-    endif()
-  endforeach()
-endforeach()
