@@ -1,14 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi'
-    show
-        DynamicLibrary,
-        DynamicLibraryExtension,
-        Int32,
-        IntPtr,
-        Pointer,
-        Uint8,
-        Uint8Pointer;
+import 'dart:ffi' show DynamicLibrary;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -562,44 +554,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
   /// Заглушки CUDA-библиотек (libcudart.so.12, libcublas.so.12 и т.п.), которые
   /// сборка кладёт в bundle, если CUDA-toolkit в системе нет.
   static bool _isCudaStub(String name) =>
-      (name.startsWith('libcu') || name.startsWith('libnv')) &&
+      (name.startsWith('libcu') ||
+          name.startsWith('libnv') ||
+          name == 'libggml-vulkan.so.0' ||
+          name == 'libggml-cuda.so.0') &&
       name.contains('.so.');
-
-  /// Нейросети хватает CPU, а Vulkan-драйвер Mesa на Intel UHD Graphics роняет
-  /// процесс при инициализации. Прячем драйверы Vulkan и CUDA-устройства до
-  /// запуска ggml: переменные окружения читаются при первой инициализации.
-  static void _disableGpuBackends() {
-    try {
-      final libc = DynamicLibrary.process();
-      final setenv = libc.lookupFunction<
-          Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
-          int Function(Pointer<Uint8>, Pointer<Uint8>, int)>('setenv');
-      final malloc = libc.lookupFunction<Pointer<Uint8> Function(IntPtr),
-          Pointer<Uint8> Function(int)>('malloc');
-      Pointer<Uint8> cstr(String text) {
-        final units = text.codeUnits;
-        final ptr = malloc(units.length + 1);
-        final bytes = ptr.asTypedList(units.length + 1);
-        bytes.setAll(0, units);
-        bytes[units.length] = 0;
-        return ptr;
-      }
-
-      const env = <String, String>{
-        'VK_LOADER_DRIVERS_DISABLE': '*',
-        'VK_ICD_FILENAMES': '/nonexistent/no_vulkan.json',
-        'VK_DRIVER_FILES': '/nonexistent/no_vulkan.json',
-        'CUDA_VISIBLE_DEVICES': '-1',
-      };
-      env.forEach((key, value) => setenv(cstr(key), cstr(value), 1));
-    } catch (error) {
-      debugPrint('[Поколение AI] Не удалось отключить GPU-бэкенды: $error');
-    }
-  }
 
   static Future<void> _preloadLinuxLibraries() async {
     if (!Platform.isLinux) return;
-    _disableGpuBackends();
     try {
       final libDir = Directory('${File(Platform.resolvedExecutable).parent.path}/lib');
       if (!await libDir.exists()) return;
