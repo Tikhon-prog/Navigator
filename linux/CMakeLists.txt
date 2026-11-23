@@ -129,6 +129,14 @@ install(CODE "
   include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_cuda.cmake\")
   " COMPONENT Runtime)
 
+# Vulkan-бэкенд роняет программу на слабых/сырых драйверах (Intel UHD на Mesa),
+# а нейросети хватает CPU: заменяем libggml-vulkan.so заглушкой.
+install(CODE "
+  set(BUNDLE_LIB_DIR \"${INSTALL_BUNDLE_LIB_DIR}\")
+  set(CXX_COMPILER \"${CMAKE_CXX_COMPILER}\")
+  include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/strip_vulkan.cmake\")
+  " COMPONENT Runtime)
+
 # У библиотек llama/ggml SONAME вида libggml.so.0, а в bundle они лежат без
 # «.0». Создаём недостающие ссылки, иначе libllama.so не находит зависимости.
 install(CODE "
