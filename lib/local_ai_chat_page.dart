@@ -1,6 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi' show DynamicLibrary;
+import 'dart:ffi'
+    show
+        DynamicLibrary,
+        DynamicLibraryExtension,
+        Int32,
+        IntPtr,
+        Pointer,
+        Uint8,
+        Uint8Pointer;
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
