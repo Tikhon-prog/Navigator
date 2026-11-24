@@ -16,6 +16,80 @@ typedef _LocalAiActionHandler = Future<String> Function(
 );
 typedef _LocalAiRouteHandler = Future<void> Function(String destinationId, String? originId);
 
+
+/// Returns only the local tools relevant to the current question. Passing all
+/// nine schemas on every turn made even a greeting exceed llama.cpp's default
+/// 512-token batch on low-memory devices.
+bool localAiQueryNeedsSchoolContext(String rawQuery) {
+  final query = rawQuery.toLowerCase().replaceAll('ё', 'е');
+  const markers = <String>[
+    'расписан', 'урок', 'занят', 'доп', 'круж', 'секц',
+    'домашн', 'задан', 'контрольн', 'предмет', 'групп',
+    'подгрупп', 'учител', 'педагог', 'во сколько',
+    'сегодня', 'завтра', 'послезавтра', 'недел',
+    'понедельник', 'вторник', 'сред', 'четверг',
+    'пятниц', 'суббот', 'воскрес',
+  ];
+  return markers.any(query.contains);
+}
+
+Set<String> localAiToolNamesForQuery(String rawQuery) {
+  final query = rawQuery.toLowerCase().replaceAll('ё', 'е');
+  bool hasAny(List<String> markers) => markers.any(query.contains);
+
+  final names = <String>{};
+  final asksForRoute = hasAny([
+    'маршрут', 'пролож', 'как пройти', 'как дойти',
+    'как попасть', 'построй путь', 'путь до', 'путь от',
+    'пройти до', 'дойди до', 'добраться до', 'дорога до',
+  ]);
+  final hasRoomNumber =
+      RegExp(r'(?<!\d)\d{3}(?:\.\d+)?(?!\d)').hasMatch(query);
+  final asksForMap = asksForRoute ||
+      hasRoomNumber ||
+      hasAny([
+        'кабинет', 'помещ', 'этаж', 'карта', 'библиот',
+        'столов', 'бассейн', 'спортзал', 'тренажер',
+        'тренажёр', 'хореограф', 'актов', 'террас',
+      ]);
+
+  if (localAiQueryNeedsSchoolContext(query)) {
+    names.add('get_school_context');
+  }
+  if (asksForMap) names.add('search_school_map');
+  if (asksForRoute) names.add('plan_school_route');
+
+  if (hasAny(['избран'])) {
+    names
+      ..add('search_school_map')
+      ..add('set_favorite_location');
+  }
+  if (hasAny(['открой', 'открыть', 'покажи на карте', 'покажи точку'])) {
+    names
+      ..add('search_school_map')
+      ..add('open_school_location');
+  }
+  if (hasAny(['переимен', 'измени название урока', 'установи предмет']) &&
+      hasAny(['математ', 'геометр', 'алгебр', 'вероятност'])) {
+    names.add('set_math_lesson_name');
+  }
+  if (hasAny([
+    'сменить группу', 'поменяй группу', 'изменить группу',
+    'выбери группу', 'установи группу', 'подгруппу',
+  ])) {
+    names.add('set_subject_group');
+  }
+  if (hasAny(['точку старта', 'начальную точку', 'начало маршрута', 'главный вход']) &&
+      hasAny(['установи', 'сделай', 'назначь', 'выбери', 'сохрани'])) {
+    names.add('set_route_start');
+  }
+  if (hasAny(['заметку', 'заметка']) &&
+      hasAny(['сохрани', 'запиши', 'создай', 'добавь'])) {
+    names.add('save_personal_note');
+  }
+  return names;
+}
+
 class _LocalAiTool extends LLMTool {
   _LocalAiTool({
     required this.name,
@@ -162,6 +236,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
 этажи, лестницы или маршруты. Для навигации используй только сведения, которые
 приложение явно передало в сообщении. Если данных не хватает, честно скажи об этом.
 Не утверждай, что ты подключён к интернету или школьной базе.
+Если спрашивают о расписании, уроках, ДОПах или заданиях, сначала вызови get_school_context.
 Если пользователь просит построить маршрут, обязательно вызови инструмент plan_school_route. Не выдумывай коридоры и лестницы. Если просит добавить кабинет в избранное или убрать его, вызови set_favorite_location. Открывай найденную точку через open_school_location. Изменяй расписание, задания, избранное и настройки только через инструменты приложения. Не изменяй ДОПы: они доступны только для просмотра.
 ''';
 
@@ -613,6 +688,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     final chat = LlamaCppChatRepository.withModelPath(
       modelPath,
       contextSize: 4096,
+      // llm_llamacpp defaults to batchSize=512; a relevant tool schema now
+      // keeps prompts compact, while 2048 safely handles real school queries.
+      batchSize: 2048,
       nGpuLayers: 0,
     );
     _sharedChatRepository = chat;
@@ -650,7 +728,9 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
     }
     return result;
   }
-  List<LLMTool> _buildTools() => [
+  List<LLMTool> _buildTools(String query) {
+    final allowed = localAiToolNamesForQuery(query);
+    final allTools = <LLMTool>[
         _LocalAiTool(
           name: 'get_school_context',
           description:
@@ -764,10 +844,14 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
           handler: _runAction,
         ),
       ];
+    return allTools
+        .where((tool) => allowed.contains(tool.name))
+        .toList(growable: false);
+  }
 
   void _trimConversationHistory() {
     // Preserve complete user/assistant pairs and always keep the system prompt.
-    const maximumConversationMessages = 6;
+    const maximumConversationMessages = 4;
     final conversationLength = _history.length - 1;
     final overflow = conversationLength - maximumConversationMessages;
     if (overflow <= 0) return;
@@ -961,13 +1045,19 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       await _ensureLoaded();
 
       var schoolContext = '';
-      try {
-        schoolContext = await widget.schoolContextLoader?.call(text) ?? '';
-      } catch (error) {
-        if (mounted) {
-          setState(() {
-            _statusError = 'Не удалось прочитать локальное расписание: $error';
-          });
+      // In the app build, school data is fetched on demand through the
+      // get_school_context tool. Only use the callback as a fallback when no
+      // action handler is connected; never prepend a whole school week to
+      // unrelated questions such as greetings or general chat.
+      if (widget.actionHandler == null && localAiQueryNeedsSchoolContext(text)) {
+        try {
+          schoolContext = await widget.schoolContextLoader?.call(text) ?? '';
+        } catch (error) {
+          if (mounted) {
+            setState(() {
+              _statusError = 'Не удалось прочитать локальное расписание: $error';
+            });
+          }
         }
       }
       if (!mounted) return;
@@ -1014,7 +1104,7 @@ class _LocalAiChatPageState extends State<LocalAiChatPage> {
       await for (final chunk in repo.streamChat(
         _modelPath!,
         messages: messages,
-        tools: _buildTools(),
+        tools: widget.actionHandler == null ? const <LLMTool>[] : _buildTools(text),
         options: const LLMChatOptions(toolAttempts: 4),
       ).timeout(const Duration(minutes: 3))) {
         if (!gotChunk) {
