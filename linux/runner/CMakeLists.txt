@@ -20,6 +20,12 @@ apply_standard_settings(${BINARY_NAME})
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 
 # Add dependency libraries. Add any application-specific dependencies here.
+# libflutter_linux_gtk.so экспортирует свой _Unwind_RaiseException и перехватывает
+# C++-исключения всех библиотек: штатное исключение в libllama (внутри try/catch)
+# заканчивается std::terminate. Подключаем libgcc_s раньше flutter, чтобы
+# исключения шли через системный unwinder.
+target_link_options(${BINARY_NAME} PRIVATE
+  -Wl,--no-as-needed -l:libgcc_s.so.1 -Wl,--as-needed)
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 

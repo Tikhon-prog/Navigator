@@ -24,6 +24,8 @@ if ! git -C "$SRC" cat-file -e "$COMMIT^{commit}" 2>/dev/null; then
 fi
 git -C "$SRC" checkout -q "$COMMIT"
 
+python3 "$ROOT/tool/patch_llama_chat.py" "$SRC/src/llama-chat.cpp"
+
 cmake -S "$SRC" -B "$SRC/build" -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON -DGGML_NATIVE=OFF \
   -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX512=OFF \
