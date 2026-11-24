@@ -16,5 +16,12 @@ void main() {
     expect(SchoolData.locationForLesson('Обед', '')?.id, 'place_canteen');
     expect(SchoolData.locationForLesson('Математика', '102')?.id, '102');
     expect(SchoolData.locationForLesson('Математика', ''), isNull);
+
+  test('название лаборатории селекции совпадает с каталогом помещений', () {
+    expect(
+      SchoolData.title(SchoolData.room('321')),
+      'Лаборатория селекции и агротехнологий 321',
+    );
+  });
   });
 }

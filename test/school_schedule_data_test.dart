@@ -24,7 +24,7 @@ void main() {
 
   test('встроенное расписание содержит все 33 класса и непустые уроки', () async {
     final raw = await rootBundle.loadString(
-      'assets/data/school_schedule_2026-10-05.json',
+      'assets/data/school_schedule_2026-11-16.json',
     );
     final data = jsonDecode(raw) as Map<String, dynamic>;
     final classes = data['classes'] as Map<String, dynamic>;
@@ -64,7 +64,7 @@ void main() {
 
   test('время уроков содержит распознаваемое начало HH:mm', () async {
     final raw = await rootBundle.loadString(
-      'assets/data/school_schedule_2026-10-05.json',
+      'assets/data/school_schedule_2026-11-16.json',
     );
     final data = jsonDecode(raw) as Map<String, dynamic>;
     final classes = data['classes'] as Map<String, dynamic>;
@@ -86,7 +86,7 @@ void main() {
 
   test('расписание 8В обновлено по расписанию с 16.11.2026', () async {
     final raw = await rootBundle.loadString(
-      'assets/data/school_schedule_2026-10-05.json',
+      'assets/data/school_schedule_2026-11-16.json',
     );
     final data = jsonDecode(raw) as Map<String, dynamic>;
     final classes = data['classes'] as Map<String, dynamic>;

@@ -25,7 +25,7 @@ class SchoolScheduleCatalog {
     }
 
     final raw = await rootBundle.loadString(
-      'assets/data/school_schedule_2026-10-05.json',
+      'assets/data/school_schedule_2026-11-16.json',
     );
     final bundled = Map<String, dynamic>.from(jsonDecode(raw) as Map);
     final classes = Map<String, dynamic>.from(
