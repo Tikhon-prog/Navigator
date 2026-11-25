@@ -151,4 +151,16 @@ flutter build linux --release
 - Нативные библиотеки (`libllama.so`, `libggml*.so`) скачивает сама сборка из GitHub, поэтому при `flutter build linux` нужен интернет.
 - У этих библиотек SONAME вида `libggml.so.0`, а файлы кладутся без `.0`. `linux/cmake/link_sonames.cmake` на этапе сборки создаёт недостающие ссылки `*.so.0` в `bundle/lib`, а приложение дополнительно заранее подгружает библиотеки по полному пути. Ничего вручную делать не нужно.
 - Проверка: `ls -l build/linux/x64/release/bundle/lib | grep -E "llama|ggml"` — рядом с `libllama.so` и `libggml.so` должны быть ссылки `libllama.so.0`, `libggml.so.0`, `libggml-base.so.0`.
+- **Процессор без AVX (Celeron N4000 и подобные).** Готовая `libggml-cpu.so` собрана с AVX, и на таком CPU приложение молча закрывается при первом сообщении нейросети (код выхода 132, SIGILL). Проверка: `grep -c avx /proc/cpuinfo` (0 = AVX нет). Решение — один раз собрать llama.cpp без AVX (нужны `git cmake g++`, 10–20 минут, интернет):
+
+  ```bash
+  sudo apt install -y git cmake g++
+  bash tool/build_llama_cpu.sh
+  flutter clean && flutter build linux --release
+  ```
+
+  Скрипт кладёт `libllama.so`, `libggml*.so` в `linux/native_cpu/` (папка в `.gitignore`), сборка Linux подставляет их в bundle вместо готовых. Заодно он патчит llama.cpp, чтобы `llama_chat_apply_template` не бросал C++-исключение (в процессе Flutter оно заканчивается `terminate`). Коммит llama.cpp зафиксирован в скрипте и должен совпадать с версией, под которую собран `llm_llamacpp`.
+- **GPU-бэкенды отключены.** Нейросеть работает на CPU. Если на машине нет CUDA, `linux/cmake/strip_cuda.cmake` создаёт заглушки `libcudart.so.12`, `libcublas.so.12` и т.п., а `linux/cmake/strip_vulkan.cmake` кладёт заглушки `libggml-vulkan.so.0` и `libggml-cuda.so.0`; приложение загружает их первыми, поэтому чужие версии из `/usr/local/lib` не подхватываются (они роняли процесс на Intel UHD/Mesa).
+- `linux/runner/CMakeLists.txt` линкует `libgcc_s` раньше Flutter: `libflutter_linux_gtk.so` экспортирует свой `_Unwind_RaiseException`, из-за чего штатные исключения C++ в нативных библиотеках заканчивались `terminate`.
+- Диагностика молчаливого закрытия: `./build/linux/x64/debug/bundle/pokolenie; echo EXIT=$?` (132 — SIGILL, 139 — segfault, 134 — abort).
 - Модель (`.gguf`, около 490 МБ) скачивается из приложения в папку данных приложения. Если загрузка или запуск не удались, в тексте ошибки показаны причина и путь к журналу `ai.log` (лежит рядом с моделью).

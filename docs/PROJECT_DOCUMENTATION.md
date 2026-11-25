@@ -103,7 +103,7 @@
 | `lib/desktop_notification_polling_io.dart` | Получение новых серверных оповещений Windows при запущенном приложении; требует настроенного школьного API |
 | `lib/desktop_notification_polling_stub.dart` | Пустой fallback только для платформ без Windows-поллера; не используется на Windows |
 | `lib/notes_page.dart` | Личные заметки |
-| `lib/local_ai_chat_page.dart` | Локальный Qwen-чат и инструменты действий приложения |
+| `lib/local_ai_chat_page.dart` | Локальный Qwen-чат; инструменты действий подбираются по тексту запроса (`localAiToolNamesForQuery`), `batchSize` 2048 |
 | `lib/admin_panel.dart` | Административный интерфейс |
 | `assets/maps/` | Оптимизированные `floor1.webp`–`floor3.webp` используются приложением; исходный PDF и `floor1.png`–`floor3.png` сохранены в Git для редактирования планов, но исключены из APK/EXE. Производные debug-рендеры и дубли исходных PNG не хранятся |
 | `assets/data/rooms.json` | Локальный каталог помещений |
@@ -218,6 +218,10 @@ flutter build windows --release
 ```
 
 Runtime-каталог находится в `build/windows/x64/runner/Release`. Не копируй только EXE: для portable-варианта нужны соседние DLL и каталог `data`. Для обычной установки используй сформированный Inno Setup installer, если сборка его создала.
+
+### 5.3.1 Linux desktop и локальная нейросеть
+
+Сборка: `flutter build linux --release`. Нейросеть работает только на CPU. На процессорах без AVX (например, Celeron N4000) перед сборкой нужно один раз выполнить `bash tool/build_llama_cpu.sh`, иначе приложение закрывается кодом 132 (SIGILL). Остальные особенности (заглушки CUDA/Vulkan, порядок линковки `libgcc_s`, диагностика) описаны в [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md), раздел «Linux».
 
 ### 5.4 Автоматическая установка на чистой Windows
 
@@ -606,6 +610,14 @@ python -m unittest discover -s backend/tests -v
 2. Убедись, что сборка/настройка клиента знает API URL. Для локальной сборки можно задать переменную окружения `POKOLENIE_API_BASE_URL`; это публичный адрес API, не место для токенов.
 3. Проверь `NAVIGATOR_DATA_SOURCE`, путь JSON внутри процесса/контейнера, имена коллекций и формат массивов.
 4. Выполни `GET /api/health` и проверь логи сервера. Не отправляй пользователю внутренние пути/секреты из подробной ошибки.
+
+### Нейросеть на Linux: окно закрывается без ошибки
+
+Запусти `./build/linux/x64/debug/bundle/pokolenie; echo EXIT=$?`. Код 132 — процессор без AVX (см. 5.3.1), 139/134 — падение нативной библиотеки; пришли последние строки вывода и `ls -l build/linux/x64/debug/bundle/lib | grep -E "ggml|llama|cu"`. Чужие `libggml*` в `/usr/local/lib` не нужны и могут мешать.
+
+### Расписание 8Е: нет одного урока
+
+В данных 8Е 55 уроков: пропущен урок в пятницу 14:40–15:20, каб. 311, название потеряно при импорте из исходного xlsx. Добавь его в `assets/data/school_schedule_2026-11-16.json`, когда название станет известно.
 
 ### Docker запущен, но источник JSON недоступен
 
